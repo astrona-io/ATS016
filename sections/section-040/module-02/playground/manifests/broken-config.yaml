@@ -1,0 +1,26 @@
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: notification
+  namespace: fivezerothree-demo
+spec:
+  host: notification-service
+  subsets:
+    - name: v1
+      labels:
+        version: v1
+---
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: notification
+  namespace: fivezerothree-demo
+spec:
+  hosts:
+    - notification-service
+  http:
+    - route:
+        - destination:
+            host: notification-service
+            # Subset v2 is never defined: the cluster has no endpoints.
+            subset: v2

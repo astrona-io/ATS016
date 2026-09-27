@@ -1,0 +1,20 @@
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: default
+  namespace: mtlsfail-demo
+spec:
+  mtls:
+    mode: STRICT
+---
+# The client is told not to use TLS while the server requires it.
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: notification
+  namespace: mtlsfail-demo
+spec:
+  host: notification-service
+  trafficPolicy:
+    tls:
+      mode: DISABLE

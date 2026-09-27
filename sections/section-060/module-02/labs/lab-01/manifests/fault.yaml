@@ -1,0 +1,21 @@
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: notification
+  namespace: metrics-demo
+spec:
+  hosts:
+    - notification-service
+  http:
+    - fault:
+        abort:
+          httpStatus: 500
+          percentage:
+            value: 30
+        delay:
+          fixedDelay: 500ms
+          percentage:
+            value: 50
+      route:
+        - destination:
+            host: notification-service

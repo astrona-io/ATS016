@@ -1,0 +1,18 @@
+# Accepted by the API server, refused by istiod at push time:
+# the weights do not sum to 100.
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: bad-weights
+  namespace: cphealth-demo
+spec:
+  hosts:
+    - notification-service
+  http:
+    - route:
+        - destination:
+            host: notification-service
+          weight: 60
+        - destination:
+            host: notification-service
+          weight: 60

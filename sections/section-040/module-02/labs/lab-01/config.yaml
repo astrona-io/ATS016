@@ -1,0 +1,47 @@
+# Debug A 503 Caused By A Missing Subset
+# Astrona graded lab. Schema: internal/config.LabConfig.
+
+metadata:
+  name: "ats-016-lab-040-02"
+  docs:
+    guide: "solution.md"
+    solution: "solution.md"
+    question: "question.md"
+    examQuestion: "question.md"
+    prerequisites: "prerequisites.md"
+
+bootstrap:
+  init:
+    - name: "install-istio"
+      description: "Installs istioctl 1.30.5 and a demo-profile control plane"
+      type: "file"
+      source: "bootstrap/01-install-istio.sh"
+    - name: "ats-016-lab-040-02-setup"
+      description: "Creates the starting state in `fivezerothree-demo` that the task works from"
+      type: "file"
+      source: "bootstrap/02-seed-workloads.sh"
+
+testing:
+  manifests:
+    - name: "reference-solution"
+      description: "The correct end state a perfect learner produces; used by `astrona test`."
+      type: "file"
+      source: "solution/solution.yaml"
+
+validation:
+  scripts:
+    - name: "validate-traffic-200"
+      description: "Confirms a POST to notification-service returns 200 on every attempt"
+      type: "file"
+      source: "validation/validate-traffic-200.sh"
+    - name: "validate-route-resolves"
+      description: "Confirms the route names a cluster that exists in the proxy configuration"
+      type: "file"
+      source: "validation/validate-route-resolves.sh"
+    - name: "validate-no-phantom-subset"
+      description: "Confirms no DestinationRule subset was invented whose labels match no pod"
+      type: "file"
+      source: "validation/validate-no-phantom-subset.sh"
+
+teardown:
+  keepCluster: false

@@ -1,0 +1,71 @@
+# Three claimants for one host, and a shadowed rule inside one of them.
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: notification
+  namespace: routing-demo
+spec:
+  host: notification-service
+  subsets:
+    - name: v1
+      labels:
+        version: v1
+    - name: v2
+      labels:
+        version: v2
+---
+# Claimant 1: catch-all first, so both rules below it are dead.
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: notification
+  namespace: routing-demo
+spec:
+  hosts:
+    - notification-service
+  http:
+    - route:
+        - destination:
+            host: notification-service
+            subset: v1
+    - match:
+        - headers:
+            testing:
+              exact: "true"
+      route:
+        - destination:
+            host: notification-service
+            subset: v2
+---
+# Claimant 2: added later by another team to "add" the URI rule.
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: notification-priority
+  namespace: routing-demo
+spec:
+  hosts:
+    - notification-service
+  http:
+    - match:
+        - uri:
+            prefix: /priority
+      route:
+        - destination:
+            host: notification-service
+            subset: v2
+---
+# Claimant 3: a forgotten experiment nobody removed.
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: notification-experiment
+  namespace: routing-demo
+spec:
+  hosts:
+    - notification-service
+  http:
+    - route:
+        - destination:
+            host: notification-service
+            subset: v1

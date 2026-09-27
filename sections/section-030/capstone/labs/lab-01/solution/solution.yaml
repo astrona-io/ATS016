@@ -1,0 +1,28 @@
+# Reference solution for ats-016-capstone-030.
+#
+# Three fixes, none of which is an object you simply apply:
+#   1. orders-service  - remove the pod-template injection opt-out, recreate pods
+#   2. cpcapstone-legacy - point the namespace at a revision that exists
+#   3. payments-split  - remove or correct the invalid weighted route
+#
+# This manifest is the end state for (2) and (3).
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cpcapstone-legacy
+  labels:
+    istio-injection: enabled
+---
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: payments-split
+  namespace: cpcapstone-demo
+spec:
+  hosts:
+    - payments-service
+  http:
+    - route:
+        - destination:
+            host: payments-service
+          weight: 100

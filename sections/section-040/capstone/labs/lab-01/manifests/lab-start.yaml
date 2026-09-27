@@ -1,0 +1,114 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: dpcapstone-demo
+  labels:
+    istio-injection: enabled
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: notification-service-v1
+  namespace: dpcapstone-demo
+  labels:
+    app: notification-service
+    version: v1
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: notification-service
+      version: v1
+  template:
+    metadata:
+      labels:
+        app: notification-service
+        version: v1
+    spec:
+      containers:
+        - name: notification-service
+          image: kubeteam/notification-service
+          ports:
+            - containerPort: 8084
+          env:
+            - name: SERVICE_PORT
+              value: "8084"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: reporting-service
+  namespace: dpcapstone-demo
+  labels:
+    app: reporting-service
+    version: v1
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: reporting-service
+      version: v1
+  template:
+    metadata:
+      labels:
+        app: reporting-service
+        version: v1
+    spec:
+      containers:
+        - name: reporting-service
+          image: mccutchen/go-httpbin:v2.15.0
+          ports:
+            - containerPort: 8080
+          args: ["-port", "8080"]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tester
+  namespace: dpcapstone-demo
+  labels:
+    app: tester
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tester
+  template:
+    metadata:
+      labels:
+        app: tester
+    spec:
+      containers:
+        - name: tester
+          image: curlimages/curl
+          command: ["sh", "-c", "while true; do sleep 30; done"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: notification-service
+  namespace: dpcapstone-demo
+  labels:
+    app: notification-service
+spec:
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8084
+  selector:
+    app: notification-service
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: reporting-service
+  namespace: dpcapstone-demo
+  labels:
+    app: reporting-service
+spec:
+  ports:
+    - name: web
+      port: 80
+      targetPort: 8080
+  selector:
+    app: reporting-service

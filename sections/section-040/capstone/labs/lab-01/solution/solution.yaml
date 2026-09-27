@@ -1,0 +1,32 @@
+# Reference solution for ats-016-capstone-040.
+#
+# Fault 1: route to the subset that exists.
+# Fault 2: name the Service port so Istio treats it as HTTP.
+apiVersion: v1
+kind: Service
+metadata:
+  name: reporting-service
+  namespace: dpcapstone-demo
+  labels:
+    app: reporting-service
+spec:
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+  selector:
+    app: reporting-service
+---
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: notification
+  namespace: dpcapstone-demo
+spec:
+  hosts:
+    - notification-service
+  http:
+    - route:
+        - destination:
+            host: notification-service
+            subset: v1

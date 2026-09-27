@@ -1,0 +1,17 @@
+# Blocks egress from the workload to everything except DNS, which cuts the
+# proxy off from istiod on port 15012.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: block-control-plane
+  namespace: proxysync-demo
+spec:
+  podSelector:
+    matchLabels:
+      app: notification-service
+  policyTypes:
+    - Egress
+  egress:
+    - ports:
+        - protocol: UDP
+          port: 53

@@ -1,0 +1,47 @@
+# Diagnose Config Sync With proxy-status
+# Astrona graded lab. Schema: internal/config.LabConfig.
+
+metadata:
+  name: "ats-016-lab-030-02"
+  docs:
+    guide: "solution.md"
+    solution: "solution.md"
+    question: "question.md"
+    examQuestion: "question.md"
+    prerequisites: "prerequisites.md"
+
+bootstrap:
+  init:
+    - name: "install-istio"
+      description: "Installs istioctl 1.30.5 and a demo-profile control plane"
+      type: "file"
+      source: "bootstrap/01-install-istio.sh"
+    - name: "ats-016-lab-030-02-setup"
+      description: "Creates the starting state in `proxysync-demo` that the task works from"
+      type: "file"
+      source: "bootstrap/02-seed-workloads.sh"
+
+testing:
+  manifests:
+    - name: "reference-solution"
+      description: "The correct end state a perfect learner produces; used by `astrona test`."
+      type: "file"
+      source: "solution/solution.yaml"
+
+validation:
+  scripts:
+    - name: "validate-all-synced"
+      description: "Confirms every proxy in proxysync-demo appears in proxy-status and is SYNCED on all xDS types"
+      type: "file"
+      source: "validation/validate-all-synced.sh"
+    - name: "validate-workload-meshed"
+      description: "Confirms the notification workload has an istio-proxy container"
+      type: "file"
+      source: "validation/validate-workload-meshed.sh"
+    - name: "validate-traffic-ok"
+      description: "Confirms a request from the tester pod returns 200"
+      type: "file"
+      source: "validation/validate-traffic-ok.sh"
+
+teardown:
+  keepCluster: false

@@ -1,0 +1,51 @@
+# Capstone: Consolidate Three Claimants Into One Route Table
+# Astrona graded lab. Schema: internal/config.LabConfig.
+
+metadata:
+  name: "ats-016-capstone-020"
+  docs:
+    guide: "solution.md"
+    solution: "solution.md"
+    question: "question.md"
+    examQuestion: "question.md"
+    prerequisites: "prerequisites.md"
+
+bootstrap:
+  init:
+    - name: "install-istio"
+      description: "Installs istioctl 1.30.5 and a demo-profile control plane"
+      type: "file"
+      source: "bootstrap/01-install-istio.sh"
+    - name: "ats-016-capstone-020-setup"
+      description: "Creates the starting state in `routing-demo` that the task works from"
+      type: "file"
+      source: "bootstrap/02-seed-workloads.sh"
+
+testing:
+  manifests:
+    - name: "reference-solution"
+      description: "The correct end state a perfect learner produces; used by `astrona test`."
+      type: "file"
+      source: "solution/solution.yaml"
+
+validation:
+  scripts:
+    - name: "validate-single-owner"
+      description: "Confirms exactly one VirtualService claims the notification-service host on the mesh gateway"
+      type: "file"
+      source: "validation/validate-single-owner.sh"
+    - name: "validate-header-route"
+      description: "Confirms testing=true reaches v2 on every attempt"
+      type: "file"
+      source: "validation/validate-header-route.sh"
+    - name: "validate-uri-route"
+      description: "Confirms the /priority prefix reaches v2 on every attempt"
+      type: "file"
+      source: "validation/validate-uri-route.sh"
+    - name: "validate-default-route"
+      description: "Confirms every other request reaches v1"
+      type: "file"
+      source: "validation/validate-default-route.sh"
+
+teardown:
+  keepCluster: false

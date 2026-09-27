@@ -1,0 +1,48 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cpcapstone-legacy
+  labels:
+    istio.io/rev: does-not-exist
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: billing-service
+  namespace: cpcapstone-legacy
+  labels:
+    app: billing-service
+    version: v1
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: billing-service
+      version: v1
+  template:
+    metadata:
+      labels:
+        app: billing-service
+        version: v1
+    spec:
+      containers:
+        - name: billing-service
+          image: mccutchen/go-httpbin:v2.15.0
+          ports:
+            - containerPort: 8080
+          args: ["-port", "8080"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: billing-service
+  namespace: cpcapstone-legacy
+  labels:
+    app: billing-service
+spec:
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+  selector:
+    app: billing-service

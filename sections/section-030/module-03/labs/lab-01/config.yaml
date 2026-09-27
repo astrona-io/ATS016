@@ -1,0 +1,47 @@
+# Debug A Workload With No Sidecar
+# Astrona graded lab. Schema: internal/config.LabConfig.
+
+metadata:
+  name: "ats-016-lab-030-03"
+  docs:
+    guide: "solution.md"
+    solution: "solution.md"
+    question: "question.md"
+    examQuestion: "question.md"
+    prerequisites: "prerequisites.md"
+
+bootstrap:
+  init:
+    - name: "install-istio"
+      description: "Installs istioctl 1.30.5 and a demo-profile control plane"
+      type: "file"
+      source: "bootstrap/01-install-istio.sh"
+    - name: "ats-016-lab-030-03-setup"
+      description: "Creates the starting state in `noinject-demo` that the task works from"
+      type: "file"
+      source: "bootstrap/02-seed-workloads.sh"
+
+testing:
+  manifests:
+    - name: "reference-solution"
+      description: "The correct end state a perfect learner produces; used by `astrona test`."
+      type: "file"
+      source: "solution/solution.yaml"
+
+validation:
+  scripts:
+    - name: "validate-sidecar-present"
+      description: "Confirms reporting-service pods carry the istio-proxy container"
+      type: "file"
+      source: "validation/validate-sidecar-present.sh"
+    - name: "validate-optout-removed"
+      description: "Confirms the sidecar.istio.io/inject opt-out is gone from the pod template"
+      type: "file"
+      source: "validation/validate-optout-removed.sh"
+    - name: "validate-in-mesh"
+      description: "Confirms reporting-service appears in proxy-status and still serves traffic"
+      type: "file"
+      source: "validation/validate-in-mesh.sh"
+
+teardown:
+  keepCluster: false

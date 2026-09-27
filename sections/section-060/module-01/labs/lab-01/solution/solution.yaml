@@ -1,0 +1,17 @@
+# Reference solution for ats-016-lab-060-01.
+#
+# The broken VirtualService is removed entirely (it referenced a gateway and a
+# subset that do not exist, and it duplicated a host). What remains is a single
+# valid routing object for the host.
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: notification
+  namespace: kiali-demo
+spec:
+  hosts:
+    - notification-service
+  http:
+    - route:
+        - destination:
+            host: notification-service

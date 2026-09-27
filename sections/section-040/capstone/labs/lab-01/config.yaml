@@ -1,0 +1,51 @@
+# Capstone: Two 503s, Two Different Stages
+# Astrona graded lab. Schema: internal/config.LabConfig.
+
+metadata:
+  name: "ats-016-capstone-040"
+  docs:
+    guide: "solution.md"
+    solution: "solution.md"
+    question: "question.md"
+    examQuestion: "question.md"
+    prerequisites: "prerequisites.md"
+
+bootstrap:
+  init:
+    - name: "install-istio"
+      description: "Installs istioctl 1.30.5 and a demo-profile control plane"
+      type: "file"
+      source: "bootstrap/01-install-istio.sh"
+    - name: "ats-016-capstone-040-setup"
+      description: "Creates the starting state in `dpcapstone-demo` that the task works from"
+      type: "file"
+      source: "bootstrap/02-seed-workloads.sh"
+
+testing:
+  manifests:
+    - name: "reference-solution"
+      description: "The correct end state a perfect learner produces; used by `astrona test`."
+      type: "file"
+      source: "solution/solution.yaml"
+
+validation:
+  scripts:
+    - name: "validate-subset-route-fixed"
+      description: "Confirms the route names a cluster that exists with healthy endpoints"
+      type: "file"
+      source: "validation/validate-subset-route-fixed.sh"
+    - name: "validate-port-protocol"
+      description: "Confirms the Service port declares an HTTP protocol so routing applies"
+      type: "file"
+      source: "validation/validate-port-protocol.sh"
+    - name: "validate-both-services-200"
+      description: "Confirms both notification-service and reporting-service return 200"
+      type: "file"
+      source: "validation/validate-both-services-200.sh"
+    - name: "validate-http-route-exists"
+      description: "Confirms the proxy holds an HTTP route for the reporting-service port"
+      type: "file"
+      source: "validation/validate-http-route-exists.sh"
+
+teardown:
+  keepCluster: false

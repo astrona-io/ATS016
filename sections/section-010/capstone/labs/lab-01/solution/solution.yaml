@@ -1,0 +1,48 @@
+# Reference solution for ats-016-capstone-010.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: audit-demo
+  labels:
+    istio-injection: enabled
+---
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: notification
+  namespace: audit-demo
+spec:
+  host: notification-service
+  subsets:
+    - name: v1
+      labels:
+        version: v1
+---
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: notification
+  namespace: audit-demo
+spec:
+  hosts:
+    - notification-service
+  http:
+    - route:
+        - destination:
+            host: notification-service
+            subset: v1
+---
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: notification-post-only
+  namespace: audit-demo
+spec:
+  selector:
+    matchLabels:
+      app: notification-service
+  action: ALLOW
+  rules:
+    - to:
+        - operation:
+            methods: ["POST"]

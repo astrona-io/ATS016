@@ -1,0 +1,19 @@
+# A 5s delay on every request, standing in for a slow dependency.
+# The lab task is to bound it with a timeout, not to remove it.
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: notification
+  namespace: accesslog-demo
+spec:
+  hosts:
+    - notification-service
+  http:
+    - fault:
+        delay:
+          fixedDelay: 5s
+          percentage:
+            value: 100
+      route:
+        - destination:
+            host: notification-service

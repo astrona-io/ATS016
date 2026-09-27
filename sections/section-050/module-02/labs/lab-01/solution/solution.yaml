@@ -1,0 +1,25 @@
+# Reference solution for ats-016-lab-050-02.
+#
+# The server keeps STRICT. The client's DestinationRule drops its tls override
+# entirely, so Istio's default (mesh mTLS) applies. Setting
+# trafficPolicy.tls.mode: ISTIO_MUTUAL explicitly is also correct.
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: default
+  namespace: mtlsfail-demo
+spec:
+  mtls:
+    mode: STRICT
+---
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: notification
+  namespace: mtlsfail-demo
+spec:
+  host: notification-service
+  trafficPolicy:
+    connectionPool:
+      tcp:
+        maxConnections: 100

@@ -1,0 +1,11 @@
+# Reference solution for ats-016-lab-030-02.
+#
+# The fix is a namespace label plus a workload restart, not an object to apply.
+# This manifest is the end state the namespace must be in: labelled for
+# injection, so recreated pods are given a sidecar and reconnect to istiod.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: proxysync-demo
+  labels:
+    istio-injection: enabled

@@ -1,0 +1,39 @@
+# Reference solution for ats-016-capstone-050.
+#
+# The server stays STRICT. The client drops only its tls override. The ALLOW
+# policy is corrected to permit POST, and still denies everything else.
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: default
+  namespace: logcapstone-demo
+spec:
+  mtls:
+    mode: STRICT
+---
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: notification
+  namespace: logcapstone-demo
+spec:
+  host: notification-service
+  trafficPolicy:
+    connectionPool:
+      tcp:
+        maxConnections: 100
+---
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: notification-allow
+  namespace: logcapstone-demo
+spec:
+  selector:
+    matchLabels:
+      app: notification-service
+  action: ALLOW
+  rules:
+    - to:
+        - operation:
+            methods: ["POST"]

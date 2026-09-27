@@ -1,0 +1,332 @@
+# Astrona training manifest for ATS016.
+# Generated from the on-disk course structure: one `reading` entry per module
+# landing page, followed by one entry per deep-dive part, in reading order.
+
+training:
+  id: ATS016
+  title: Troubleshooting
+  description: >
+    Training material covering the Troubleshooting domain of the
+    Istio Certified Associate exam: configuration analysis, the mesh
+    control plane, and the mesh data plane.
+
+  certification:
+    name: Istio Certified Associate
+    code: ICA
+    provider: CNCF
+    domain: Troubleshooting
+    weight: 20
+
+sections:
+  - id: section-010
+    title: "Troubleshooting Configuration With istioctl"
+    curriculum_item: "Troubleshooting Configuration"
+    path: sections/section-010/README.md
+    modules:
+      - id: module-01
+        title: "Find Configuration Errors With istioctl analyze"
+        content:
+          - type: reading
+            title: "Module 1: Find Configuration Errors With istioctl analyze"
+            path: sections/section-010/module-01/course.md
+          - type: reading
+            title: "Module 1.1: What The API Server Checks, And What It Cannot"
+            path: sections/section-010/module-01/course-01-admission-and-the-analysis-gap.md
+          - type: reading
+            title: "Module 1.2: Reading What The Analyzer Says"
+            path: sections/section-010/module-01/course-02-reading-analyzer-messages.md
+          - type: reading
+            title: "Module 1.3: Choosing The Right Analysis Source"
+            path: sections/section-010/module-01/course-03-analysis-sources-and-the-fix-loop.md
+          - type: playground
+            title: "Playground: Find Configuration Errors With istioctl analyze"
+            path: sections/section-010/module-01/playground
+          - type: lab
+            title: "Lab: Find And Fix The Configuration Errors In `analyze-demo`"
+            path: sections/section-010/module-01/labs/lab-01
+      - id: module-02
+        title: "Summarise A Workload With describe, Capture A Cluster With bug-report"
+        content:
+          - type: reading
+            title: "Module 2: Summarise A Workload With describe, Capture A Cluster With bug-report"
+            path: sections/section-010/module-02/course.md
+          - type: reading
+            title: "Module 2.1: What describe Resolves For One Workload"
+            path: sections/section-010/module-02/course-01-what-describe-resolves.md
+          - type: reading
+            title: "Module 2.2: Making A Proxy Narrate One Decision"
+            path: sections/section-010/module-02/course-02-envoy-log-scopes-at-runtime.md
+          - type: reading
+            title: "Module 2.3: Capturing A Cluster With bug-report"
+            path: sections/section-010/module-02/course-03-bug-report-and-handover.md
+          - type: playground
+            title: "Playground: Summarise A Workload With describe, Capture A Cluster With bug-report"
+            path: sections/section-010/module-02/playground
+          - type: lab
+            title: "Lab: Widen A Policy Without Weakening The Mesh"
+            path: sections/section-010/module-02/labs/lab-01
+    capstone:
+      - type: lab
+        title: "Capstone: Repair A Namespace Nothing Validates"
+        path: sections/section-010/capstone/labs/lab-01
+  - id: section-020
+    title: "Debugging Conflicting And Shadowed Routes"
+    curriculum_item: "Troubleshooting Configuration"
+    path: sections/section-020/README.md
+    modules:
+      - id: module-01
+        title: "Debug Conflicting And Shadowed Routes"
+        content:
+          - type: reading
+            title: "Module 1: Debug Conflicting And Shadowed Routes"
+            path: sections/section-020/module-01/course.md
+          - type: reading
+            title: "Module 1.1: How A VirtualService Becomes A Route Table"
+            path: sections/section-020/module-01/course-01-virtualservice-to-route-table.md
+          - type: reading
+            title: "Module 1.2: One Host, Two Owners"
+            path: sections/section-020/module-01/course-02-host-ownership-and-merging.md
+          - type: reading
+            title: "Module 1.3: The Route Table Is The Ground Truth"
+            path: sections/section-020/module-01/course-03-reading-the-route-table.md
+          - type: playground
+            title: "Playground: Debug Conflicting And Shadowed Routes"
+            path: sections/section-020/module-01/playground
+          - type: lab
+            title: "Lab: Make The Header Route Actually Fire"
+            path: sections/section-020/module-01/labs/lab-01
+    capstone:
+      - type: lab
+        title: "Capstone: Consolidate Three Claimants Into One Route Table"
+        path: sections/section-020/capstone/labs/lab-01
+  - id: section-030
+    title: "Troubleshooting The Mesh Control Plane"
+    curriculum_item: "Troubleshooting the Mesh Control Plane"
+    path: sections/section-030/README.md
+    modules:
+      - id: module-01
+        title: "Check Control Plane Health"
+        content:
+          - type: reading
+            title: "Module 1: Check Control Plane Health"
+            path: sections/section-030/module-01/course.md
+          - type: reading
+            title: "Module 1.1: Four Jobs In One Process"
+            path: sections/section-030/module-01/course-01-the-four-jobs-of-istiod.md
+          - type: reading
+            title: "Module 1.2: The Instruments"
+            path: sections/section-030/module-01/course-02-instruments-logs-and-metrics.md
+          - type: reading
+            title: "Module 1.3: Outage Anatomy And Rejected Configuration"
+            path: sections/section-030/module-01/course-03-outage-anatomy-and-rejects.md
+          - type: playground
+            title: "Playground: Check Control Plane Health"
+            path: sections/section-030/module-01/playground
+          - type: lab
+            title: "Lab: The Mesh Works And Nothing Can Change"
+            path: sections/section-030/module-01/labs/lab-01
+      - id: module-02
+        title: "Diagnose Config Sync With proxy-status"
+        content:
+          - type: reading
+            title: "Module 2: Diagnose Config Sync With proxy-status"
+            path: sections/section-030/module-02/course.md
+          - type: reading
+            title: "Module 2.1: How Configuration Reaches A Proxy"
+            path: sections/section-030/module-02/course-01-xds-and-acknowledgement.md
+          - type: reading
+            title: "Module 2.2: Reading The Table"
+            path: sections/section-030/module-02/course-02-reading-the-proxy-status-table.md
+          - type: reading
+            title: "Module 2.3: Absence, And The Per-Proxy Diff"
+            path: sections/section-030/module-02/course-03-absence-and-per-proxy-diff.md
+          - type: playground
+            title: "Playground: Diagnose Config Sync With proxy-status"
+            path: sections/section-030/module-02/playground
+          - type: lab
+            title: "Lab: One Workload Vanished From The Mesh"
+            path: sections/section-030/module-02/labs/lab-01
+      - id: module-03
+        title: "Debug A Workload With No Sidecar"
+        content:
+          - type: reading
+            title: "Module 3: Debug A Workload With No Sidecar"
+            path: sections/section-030/module-03/course.md
+          - type: reading
+            title: "Module 3.1: How Injection Actually Happens"
+            path: sections/section-030/module-03/course-01-the-injection-webhook.md
+          - type: reading
+            title: "Module 3.2: Labels, Selectors And Precedence"
+            path: sections/section-030/module-03/course-02-labels-and-precedence.md
+          - type: reading
+            title: "Module 3.3: Working The Checklist"
+            path: sections/section-030/module-03/course-03-working-the-checklist.md
+          - type: playground
+            title: "Playground: Debug A Workload With No Sidecar"
+            path: sections/section-030/module-03/playground
+          - type: lab
+            title: "Lab: Bring An Exempt Workload Back Into The Mesh"
+            path: sections/section-030/module-03/labs/lab-01
+    capstone:
+      - type: lab
+        title: "Capstone: Three Workloads, Three Different Control Plane Faults"
+        path: sections/section-030/capstone/labs/lab-01
+  - id: section-040
+    title: "Reading Data Plane Configuration"
+    curriculum_item: "Troubleshooting the Mesh Data Plane"
+    path: sections/section-040/README.md
+    modules:
+      - id: module-01
+        title: "Read The Proxy Configuration"
+        content:
+          - type: reading
+            title: "Module 1: Read The Proxy Configuration"
+            path: sections/section-040/module-01/course.md
+          - type: reading
+            title: "Module 1.1: Capture And Listeners"
+            path: sections/section-040/module-01/course-01-capture-and-listeners.md
+          - type: reading
+            title: "Module 1.2: Routes"
+            path: sections/section-040/module-01/course-02-routes.md
+          - type: reading
+            title: "Module 1.3: Clusters And Endpoints"
+            path: sections/section-040/module-01/course-03-clusters-and-endpoints.md
+          - type: reading
+            title: "Module 1.4: The Inbound Direction, Certificates And Method"
+            path: sections/section-040/module-01/course-04-inbound-secrets-and-method.md
+          - type: playground
+            title: "Playground: Read The Proxy Configuration"
+            path: sections/section-040/module-01/playground
+          - type: lab
+            title: "Lab: Build The Routing, Then Prove It From The Proxy"
+            path: sections/section-040/module-01/labs/lab-01
+      - id: module-02
+        title: "Debug A 503 Caused By A Missing Subset"
+        content:
+          - type: reading
+            title: "Module 2: Debug A 503 Caused By A Missing Subset"
+            path: sections/section-040/module-02/course.md
+          - type: reading
+            title: "Module 2.1: Who Answered With 503"
+            path: sections/section-040/module-02/course-01-who-answered-with-503.md
+          - type: reading
+            title: "Module 2.2: Walking The Chain"
+            path: sections/section-040/module-02/course-02-walking-the-chain.md
+          - type: reading
+            title: "Module 2.3: Choosing The Fix, And The Other Cause"
+            path: sections/section-040/module-02/course-03-choosing-the-fix.md
+          - type: playground
+            title: "Playground: Debug A 503 Caused By A Missing Subset"
+            path: sections/section-040/module-02/playground
+          - type: lab
+            title: "Lab: Trace A 503 To Its Exact Stage"
+            path: sections/section-040/module-02/labs/lab-01
+    capstone:
+      - type: lab
+        title: "Capstone: Two 503s, Two Different Stages"
+        path: sections/section-040/capstone/labs/lab-01
+  - id: section-050
+    title: "Debugging Data Plane Request Failures"
+    curriculum_item: "Troubleshooting the Mesh Data Plane"
+    path: sections/section-050/README.md
+    modules:
+      - id: module-01
+        title: "Read Envoy Access Logs And Response Flags"
+        content:
+          - type: reading
+            title: "Module 1: Read Envoy Access Logs And Response Flags"
+            path: sections/section-050/module-01/course.md
+          - type: reading
+            title: "Module 1.1: Turning Logging On, And Scoping It"
+            path: sections/section-050/module-01/course-01-enabling-and-scoping-logs.md
+          - type: reading
+            title: "Module 1.2: The Anatomy Of A Line"
+            path: sections/section-050/module-01/course-02-anatomy-of-a-log-line.md
+          - type: reading
+            title: "Module 1.3: Flags, And Which Proxy Wrote The Line"
+            path: sections/section-050/module-01/course-03-flags-and-which-proxy.md
+          - type: reading
+            title: "Module 1.4: Producing Each Failure On Demand"
+            path: sections/section-050/module-01/course-04-producing-each-failure.md
+          - type: playground
+            title: "Playground: Read Envoy Access Logs And Response Flags"
+            path: sections/section-050/module-01/playground
+          - type: lab
+            title: "Lab: Scope The Logs, Bound The Latency, Name The Flag"
+            path: sections/section-050/module-01/labs/lab-01
+      - id: module-02
+        title: "Debug A 503 Caused By An mTLS Mismatch"
+        content:
+          - type: reading
+            title: "Module 2: Debug A 503 Caused By An mTLS Mismatch"
+            path: sections/section-050/module-02/course.md
+          - type: reading
+            title: "Module 2.1: Two Objects, Two Ends Of One Connection"
+            path: sections/section-050/module-02/course-01-two-objects-two-ends.md
+          - type: reading
+            title: "Module 2.2: The Signature"
+            path: sections/section-050/module-02/course-02-the-signature.md
+          - type: reading
+            title: "Module 2.3: Fixing It, And Proving Encryption"
+            path: sections/section-050/module-02/course-03-fixing-and-proving-encryption.md
+          - type: playground
+            title: "Playground: Debug A 503 Caused By An mTLS Mismatch"
+            path: sections/section-050/module-02/playground
+          - type: lab
+            title: "Lab: A 503 Where The Destination Log Is Empty"
+            path: sections/section-050/module-02/labs/lab-01
+    capstone:
+      - type: lab
+        title: "Capstone: Diagnose Two Failures From The Logs Alone"
+        path: sections/section-050/capstone/labs/lab-01
+  - id: section-060
+    title: "Troubleshooting With Mesh Observability"
+    curriculum_item: "Troubleshooting Configuration / the Mesh Data Plane"
+    path: sections/section-060/README.md
+    modules:
+      - id: module-01
+        title: "Troubleshoot With Kiali"
+        content:
+          - type: reading
+            title: "Module 1: Troubleshoot With Kiali"
+            path: sections/section-060/module-01/course.md
+          - type: reading
+            title: "Module 1.1: What Kiali Is Built From"
+            path: sections/section-060/module-01/course-01-what-kiali-is-built-from.md
+          - type: reading
+            title: "Module 1.2: Reading The Graph"
+            path: sections/section-060/module-01/course-02-reading-the-graph.md
+          - type: reading
+            title: "Module 1.3: Validations, Badges And Cross-Checking"
+            path: sections/section-060/module-01/course-03-validations-and-cross-checking.md
+          - type: playground
+            title: "Playground: Troubleshoot With Kiali"
+            path: sections/section-060/module-01/playground
+          - type: lab
+            title: "Lab: An Empty Graph And A Red Badge"
+            path: sections/section-060/module-01/labs/lab-01
+      - id: module-02
+        title: "Troubleshoot With Prometheus And Grafana"
+        content:
+          - type: reading
+            title: "Module 2: Troubleshoot With Prometheus And Grafana"
+            path: sections/section-060/module-02/course.md
+          - type: reading
+            title: "Module 2.1: The Metrics Pipeline"
+            path: sections/section-060/module-02/course-01-the-metrics-pipeline.md
+          - type: reading
+            title: "Module 2.2: The reporter Label And PromQL Patterns"
+            path: sections/section-060/module-02/course-02-reporter-and-promql.md
+          - type: reading
+            title: "Module 2.3: Measuring A Known Failure, And Grafana"
+            path: sections/section-060/module-02/course-03-measuring-a-failure-and-grafana.md
+          - type: playground
+            title: "Playground: Troubleshoot With Prometheus And Grafana"
+            path: sections/section-060/module-02/playground
+          - type: lab
+            title: "Lab: Measure The Failure Before You Fix It"
+            path: sections/section-060/module-02/labs/lab-01
+    capstone:
+      - type: lab
+        title: "Capstone: Measure A Failure, Fix It, Prove It"
+        path: sections/section-060/capstone/labs/lab-01

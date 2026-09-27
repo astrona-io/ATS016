@@ -1,0 +1,29 @@
+# Debug Conflicting And Shadowed Routes (PLAYGROUND) — Playground environment
+# A clean sandbox: it spins up, runs OS prep, then stays running for free
+# exploration. No task, no grading, no `astrona submit`.
+# Schema: internal/config.LabConfig.
+#
+# Runtime: kind cluster by default (no `runtime:` block). For a clean VM over
+# SSH with no Kubernetes, add a `runtime:` block with type "qemu" — see
+# references/astrona-cli.md in the skill. `scripts/scaffold_playground.sh
+# --runtime qemu` appends a starter block for you.
+
+metadata:
+  name: "ats-016-playground-020-01"
+  docs:
+    guide: "docs/overview.md"
+
+bootstrap:
+  init:
+    - name: "prepare"
+      description: "Install istioctl, install the Istio control plane, and apply the conflicting routing configuration the module diagnoses."
+      type: "file"
+      source: "bootstrap/prepare.sh"
+  manifests:
+    - name: "lab-start"
+      description: "Starting workloads (namespace, notification-service v1 and v2 Deployments, Service, tester client)."
+      type: "file"
+      source: "manifests/lab-start.yaml"
+
+teardown:
+  keepCluster: false

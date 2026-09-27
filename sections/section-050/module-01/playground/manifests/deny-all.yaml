@@ -1,0 +1,12 @@
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: deny-all
+  namespace: accesslog-demo
+spec:
+  selector:
+    matchLabels:
+      app: notification-service
+  action: DENY
+  rules:
+    - {}

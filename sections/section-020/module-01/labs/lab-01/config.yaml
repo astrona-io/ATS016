@@ -1,0 +1,47 @@
+# Debug Conflicting And Shadowed Routes
+# Astrona graded lab. Schema: internal/config.LabConfig.
+
+metadata:
+  name: "ats-016-lab-020-01"
+  docs:
+    guide: "solution.md"
+    solution: "solution.md"
+    question: "question.md"
+    examQuestion: "question.md"
+    prerequisites: "prerequisites.md"
+
+bootstrap:
+  init:
+    - name: "install-istio"
+      description: "Installs istioctl 1.30.5 and a demo-profile control plane"
+      type: "file"
+      source: "bootstrap/01-install-istio.sh"
+    - name: "ats-016-lab-020-01-setup"
+      description: "Creates the starting state in `conflict-demo` that the task works from"
+      type: "file"
+      source: "bootstrap/02-seed-workloads.sh"
+
+testing:
+  manifests:
+    - name: "reference-solution"
+      description: "The correct end state a perfect learner produces; used by `astrona test`."
+      type: "file"
+      source: "solution/solution.yaml"
+
+validation:
+  scripts:
+    - name: "validate-single-owner"
+      description: "Confirms exactly one VirtualService claims the notification-service host"
+      type: "file"
+      source: "validation/validate-single-owner.sh"
+    - name: "validate-header-route"
+      description: "Confirms requests carrying testing=true reach v2 on every attempt"
+      type: "file"
+      source: "validation/validate-header-route.sh"
+    - name: "validate-default-route"
+      description: "Confirms requests without the header reach v1 on every attempt"
+      type: "file"
+      source: "validation/validate-default-route.sh"
+
+teardown:
+  keepCluster: false

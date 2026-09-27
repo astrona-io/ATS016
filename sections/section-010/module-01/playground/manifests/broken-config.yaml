@@ -1,0 +1,30 @@
+# Both resources apply cleanly and are semantically wrong.
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: notification
+  namespace: analyze-demo
+spec:
+  host: notification-service
+  subsets:
+    - name: v1
+      labels:
+        version: v1
+---
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: notification
+  namespace: analyze-demo
+spec:
+  hosts:
+    - notification-service
+  gateways:
+    # This gateway does not exist.
+    - missing-gateway
+  http:
+    - route:
+        - destination:
+            host: notification-service
+            # This subset is not defined in the DestinationRule.
+            subset: v3

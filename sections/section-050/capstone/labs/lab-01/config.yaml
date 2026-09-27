@@ -1,0 +1,51 @@
+# Capstone: Diagnose Two Failures From The Logs Alone
+# Astrona graded lab. Schema: internal/config.LabConfig.
+
+metadata:
+  name: "ats-016-capstone-050"
+  docs:
+    guide: "solution.md"
+    solution: "solution.md"
+    question: "question.md"
+    examQuestion: "question.md"
+    prerequisites: "prerequisites.md"
+
+bootstrap:
+  init:
+    - name: "install-istio"
+      description: "Installs istioctl 1.30.5 and a demo-profile control plane"
+      type: "file"
+      source: "bootstrap/01-install-istio.sh"
+    - name: "ats-016-capstone-050-setup"
+      description: "Creates the starting state in `logcapstone-demo` that the task works from"
+      type: "file"
+      source: "bootstrap/02-seed-workloads.sh"
+
+testing:
+  manifests:
+    - name: "reference-solution"
+      description: "The correct end state a perfect learner produces; used by `astrona test`."
+      type: "file"
+      source: "solution/solution.yaml"
+
+validation:
+  scripts:
+    - name: "validate-mtls-fixed"
+      description: "Confirms the client no longer disables TLS and the server is still STRICT"
+      type: "file"
+      source: "validation/validate-mtls-fixed.sh"
+    - name: "validate-authz-fixed"
+      description: "Confirms the AuthorizationPolicy permits the intended method and still denies the rest"
+      type: "file"
+      source: "validation/validate-authz-fixed.sh"
+    - name: "validate-both-paths"
+      description: "Confirms the permitted request returns 200 and the denied one returns 403"
+      type: "file"
+      source: "validation/validate-both-paths.sh"
+    - name: "validate-encryption-proven"
+      description: "Confirms the destination reports connection_security_policy=mutual_tls"
+      type: "file"
+      source: "validation/validate-encryption-proven.sh"
+
+teardown:
+  keepCluster: false

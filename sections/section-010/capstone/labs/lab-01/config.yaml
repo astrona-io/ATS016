@@ -1,0 +1,51 @@
+# Capstone: Repair A Namespace Nothing Validates
+# Astrona graded lab. Schema: internal/config.LabConfig.
+
+metadata:
+  name: "ats-016-capstone-010"
+  docs:
+    guide: "solution.md"
+    solution: "solution.md"
+    question: "question.md"
+    examQuestion: "question.md"
+    prerequisites: "prerequisites.md"
+
+bootstrap:
+  init:
+    - name: "install-istio"
+      description: "Installs istioctl 1.30.5 and a demo-profile control plane"
+      type: "file"
+      source: "bootstrap/01-install-istio.sh"
+    - name: "ats-016-capstone-010-setup"
+      description: "Creates the starting state in `audit-demo` that the task works from"
+      type: "file"
+      source: "bootstrap/02-seed-workloads.sh"
+
+testing:
+  manifests:
+    - name: "reference-solution"
+      description: "The correct end state a perfect learner produces; used by `astrona test`."
+      type: "file"
+      source: "solution/solution.yaml"
+
+validation:
+  scripts:
+    - name: "validate-analyze-all-clean"
+      description: "Confirms istioctl analyze reports no Error or Warning findings in audit-demo"
+      type: "file"
+      source: "validation/validate-analyze-all-clean.sh"
+    - name: "validate-namespace-injected"
+      description: "Confirms audit-demo is labelled for injection and every workload carries a sidecar"
+      type: "file"
+      source: "validation/validate-namespace-injected.sh"
+    - name: "validate-policy-effective"
+      description: "Confirms the AuthorizationPolicy selects the workload and permits only POST"
+      type: "file"
+      source: "validation/validate-policy-effective.sh"
+    - name: "validate-traffic-correct"
+      description: "Confirms POST returns 200 and GET returns 403"
+      type: "file"
+      source: "validation/validate-traffic-correct.sh"
+
+teardown:
+  keepCluster: false

@@ -1,0 +1,15 @@
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: broken
+  namespace: kiali-demo
+spec:
+  hosts:
+    - notification-service
+  gateways:
+    - does-not-exist
+  http:
+    - route:
+        - destination:
+            host: notification-service
+            subset: nonexistent

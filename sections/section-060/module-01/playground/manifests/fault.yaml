@@ -1,0 +1,17 @@
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: notification
+  namespace: kiali-demo
+spec:
+  hosts:
+    - notification-service
+  http:
+    - fault:
+        abort:
+          httpStatus: 500
+          percentage:
+            value: 30
+      route:
+        - destination:
+            host: notification-service

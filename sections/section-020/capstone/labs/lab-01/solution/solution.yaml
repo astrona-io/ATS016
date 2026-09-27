@@ -1,0 +1,30 @@
+# Reference solution for ats-016-capstone-020.
+# One object owns the host. Specific matches first, catch-all last.
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: notification
+  namespace: routing-demo
+spec:
+  hosts:
+    - notification-service
+  http:
+    - match:
+        - headers:
+            testing:
+              exact: "true"
+      route:
+        - destination:
+            host: notification-service
+            subset: v2
+    - match:
+        - uri:
+            prefix: /priority
+      route:
+        - destination:
+            host: notification-service
+            subset: v2
+    - route:
+        - destination:
+            host: notification-service
+            subset: v1

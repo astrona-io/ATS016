@@ -1,0 +1,10 @@
+# Scope access logging to this namespace instead of the whole mesh.
+apiVersion: telemetry.istio.io/v1
+kind: Telemetry
+metadata:
+  name: access-logs
+  namespace: accesslog-demo
+spec:
+  accessLogging:
+    - providers:
+        - name: envoy

@@ -1,0 +1,47 @@
+# Debug A 503 Caused By An mTLS Mismatch
+# Astrona graded lab. Schema: internal/config.LabConfig.
+
+metadata:
+  name: "ats-016-lab-050-02"
+  docs:
+    guide: "solution.md"
+    solution: "solution.md"
+    question: "question.md"
+    examQuestion: "question.md"
+    prerequisites: "prerequisites.md"
+
+bootstrap:
+  init:
+    - name: "install-istio"
+      description: "Installs istioctl 1.30.5 and a demo-profile control plane"
+      type: "file"
+      source: "bootstrap/01-install-istio.sh"
+    - name: "ats-016-lab-050-02-setup"
+      description: "Creates the starting state in `mtlsfail-demo` that the task works from"
+      type: "file"
+      source: "bootstrap/02-seed-workloads.sh"
+
+testing:
+  manifests:
+    - name: "reference-solution"
+      description: "The correct end state a perfect learner produces; used by `astrona test`."
+      type: "file"
+      source: "solution/solution.yaml"
+
+validation:
+  scripts:
+    - name: "validate-traffic-200"
+      description: "Confirms a POST to notification-service returns 200"
+      type: "file"
+      source: "validation/validate-traffic-200.sh"
+    - name: "validate-strict-preserved"
+      description: "Confirms the PeerAuthentication is still STRICT and was not relaxed"
+      type: "file"
+      source: "validation/validate-strict-preserved.sh"
+    - name: "validate-mutual-tls"
+      description: "Confirms the destination reports connection_security_policy=mutual_tls"
+      type: "file"
+      source: "validation/validate-mutual-tls.sh"
+
+teardown:
+  keepCluster: false

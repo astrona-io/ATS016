@@ -1,0 +1,56 @@
+# Capstone: Three Workloads, Three Different Control Plane Faults
+# Astrona graded lab. Schema: internal/config.LabConfig.
+
+metadata:
+  name: "ats-016-capstone-030"
+  docs:
+    guide: "solution.md"
+    solution: "solution.md"
+    question: "question.md"
+    examQuestion: "question.md"
+    prerequisites: "prerequisites.md"
+
+bootstrap:
+  init:
+    - name: "install-istio"
+      description: "Installs istioctl 1.30.5 and a demo-profile control plane"
+      type: "file"
+      source: "bootstrap/01-install-istio.sh"
+    - name: "ats-016-capstone-030-setup"
+      description: "Creates the starting state in `cpcapstone-demo` that the task works from"
+      type: "file"
+      source: "bootstrap/02-seed-workloads.sh"
+  manifests:
+    - name: "legacy-namespace"
+      description: "A second namespace pinned to a control plane revision that does not exist."
+      type: "file"
+      source: "manifests/legacy-namespace.yaml"
+
+testing:
+  manifests:
+    - name: "reference-solution"
+      description: "The correct end state a perfect learner produces; used by `astrona test`."
+      type: "file"
+      source: "solution/solution.yaml"
+
+validation:
+  scripts:
+    - name: "validate-all-three-synced"
+      description: "Confirms all three workloads appear in proxy-status and are SYNCED"
+      type: "file"
+      source: "validation/validate-all-three-synced.sh"
+    - name: "validate-orders-meshed"
+      description: "Confirms orders-service carries a sidecar after its opt-out was removed"
+      type: "file"
+      source: "validation/validate-orders-meshed.sh"
+    - name: "validate-billing-revision"
+      description: "Confirms billing-service is served by an istiod revision that exists"
+      type: "file"
+      source: "validation/validate-billing-revision.sh"
+    - name: "validate-rejected-config-gone"
+      description: "Confirms the invalid VirtualService was removed and traffic flows"
+      type: "file"
+      source: "validation/validate-rejected-config-gone.sh"
+
+teardown:
+  keepCluster: false

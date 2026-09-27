@@ -1,0 +1,51 @@
+# Capstone: Measure A Failure, Fix It, Prove It
+# Astrona graded lab. Schema: internal/config.LabConfig.
+
+metadata:
+  name: "ats-016-capstone-060"
+  docs:
+    guide: "solution.md"
+    solution: "solution.md"
+    question: "question.md"
+    examQuestion: "question.md"
+    prerequisites: "prerequisites.md"
+
+bootstrap:
+  init:
+    - name: "install-istio"
+      description: "Installs istioctl 1.30.5 and a demo-profile control plane, plus the prometheus and kiali and grafana addons"
+      type: "file"
+      source: "bootstrap/01-install-istio.sh"
+    - name: "ats-016-capstone-060-setup"
+      description: "Creates the starting state in `obscapstone-demo` that the task works from"
+      type: "file"
+      source: "bootstrap/02-seed-workloads.sh"
+
+testing:
+  manifests:
+    - name: "reference-solution"
+      description: "The correct end state a perfect learner produces; used by `astrona test`."
+      type: "file"
+      source: "solution/solution.yaml"
+
+validation:
+  scripts:
+    - name: "validate-addons-running"
+      description: "Confirms Prometheus, Kiali and Grafana are all Running"
+      type: "file"
+      source: "validation/validate-addons-running.sh"
+    - name: "validate-telemetry-scoped"
+      description: "Confirms a Telemetry object scopes access logging to obscapstone-demo"
+      type: "file"
+      source: "validation/validate-telemetry-scoped.sh"
+    - name: "validate-fault-removed"
+      description: "Confirms the injected fault is gone and the error ratio has returned to zero"
+      type: "file"
+      source: "validation/validate-fault-removed.sh"
+    - name: "validate-config-clean"
+      description: "Confirms istioctl analyze reports no issues and traffic returns 200"
+      type: "file"
+      source: "validation/validate-config-clean.sh"
+
+teardown:
+  keepCluster: false

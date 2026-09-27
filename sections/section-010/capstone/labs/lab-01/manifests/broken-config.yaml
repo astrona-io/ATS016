@@ -1,0 +1,49 @@
+# Three faults, none of which the API server objects to.
+#
+# 1. The namespace is not labelled for injection (see lab-start.yaml), so the
+#    policy below selects pods that have no proxy to enforce it.
+# 2. The VirtualService routes to a subset nothing defines and binds to a
+#    Gateway that does not exist.
+# 3. The AuthorizationPolicy's selector matches no pod, so it is inert.
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: notification
+  namespace: audit-demo
+spec:
+  host: notification-service
+  subsets:
+    - name: v1
+      labels:
+        version: v1
+---
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: notification
+  namespace: audit-demo
+spec:
+  hosts:
+    - notification-service
+  gateways:
+    - audit-gateway
+  http:
+    - route:
+        - destination:
+            host: notification-service
+            subset: v3
+---
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: notification-post-only
+  namespace: audit-demo
+spec:
+  selector:
+    matchLabels:
+      app: notifications
+  action: ALLOW
+  rules:
+    - to:
+        - operation:
+            methods: ["POST"]

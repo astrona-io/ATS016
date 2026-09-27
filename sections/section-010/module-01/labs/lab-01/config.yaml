@@ -1,0 +1,47 @@
+# Find Configuration Errors With istioctl analyze
+# Astrona graded lab. Schema: internal/config.LabConfig.
+
+metadata:
+  name: "ats-016-lab-010-01"
+  docs:
+    guide: "solution.md"
+    solution: "solution.md"
+    question: "question.md"
+    examQuestion: "question.md"
+    prerequisites: "prerequisites.md"
+
+bootstrap:
+  init:
+    - name: "install-istio"
+      description: "Installs istioctl 1.30.5 and a demo-profile control plane"
+      type: "file"
+      source: "bootstrap/01-install-istio.sh"
+    - name: "ats-016-lab-010-01-setup"
+      description: "Creates the starting state in `analyze-demo` that the task works from"
+      type: "file"
+      source: "bootstrap/02-seed-workloads.sh"
+
+testing:
+  manifests:
+    - name: "reference-solution"
+      description: "The correct end state a perfect learner produces; used by `astrona test`."
+      type: "file"
+      source: "solution/solution.yaml"
+
+validation:
+  scripts:
+    - name: "validate-analyze-clean"
+      description: "Confirms istioctl analyze reports no issues in analyze-demo"
+      type: "file"
+      source: "validation/validate-analyze-clean.sh"
+    - name: "validate-traffic-restored"
+      description: "Confirms a POST to notification-service returns 200 from the tester pod"
+      type: "file"
+      source: "validation/validate-traffic-restored.sh"
+    - name: "validate-subset-reference"
+      description: "Confirms the VirtualService routes only to subsets the DestinationRule defines"
+      type: "file"
+      source: "validation/validate-subset-reference.sh"
+
+teardown:
+  keepCluster: false

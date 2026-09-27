@@ -1,0 +1,42 @@
+# Two failures that look identical from a curl and are not.
+#
+# 1. mTLS mismatch: the server is STRICT, the client DestinationRule disables TLS.
+# 2. Authorization: the ALLOW policy permits only PUT, so the intended POST is
+#    refused — and an ALLOW policy denies everything it does not name.
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: default
+  namespace: logcapstone-demo
+spec:
+  mtls:
+    mode: STRICT
+---
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: notification
+  namespace: logcapstone-demo
+spec:
+  host: notification-service
+  trafficPolicy:
+    connectionPool:
+      tcp:
+        maxConnections: 100
+    tls:
+      mode: DISABLE
+---
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: notification-allow
+  namespace: logcapstone-demo
+spec:
+  selector:
+    matchLabels:
+      app: notification-service
+  action: ALLOW
+  rules:
+    - to:
+        - operation:
+            methods: ["PUT"]

@@ -1,0 +1,36 @@
+# A partially failing dependency plus a dangling reference.
+#
+# The fault injection makes 40% of requests fail with 503; the second object
+# claims the same host and routes to a subset nothing defines, so the behaviour
+# is both bad AND undefined.
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: notification
+  namespace: obscapstone-demo
+spec:
+  hosts:
+    - notification-service
+  http:
+    - fault:
+        abort:
+          httpStatus: 503
+          percentage:
+            value: 40
+      route:
+        - destination:
+            host: notification-service
+---
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: notification-canary
+  namespace: obscapstone-demo
+spec:
+  hosts:
+    - notification-service
+  http:
+    - route:
+        - destination:
+            host: notification-service
+            subset: canary

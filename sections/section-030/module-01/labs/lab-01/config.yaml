@@ -1,0 +1,47 @@
+# Check Control Plane Health
+# Astrona graded lab. Schema: internal/config.LabConfig.
+
+metadata:
+  name: "ats-016-lab-030-01"
+  docs:
+    guide: "solution.md"
+    solution: "solution.md"
+    question: "question.md"
+    examQuestion: "question.md"
+    prerequisites: "prerequisites.md"
+
+bootstrap:
+  init:
+    - name: "install-istio"
+      description: "Installs istioctl 1.30.5 and a demo-profile control plane"
+      type: "file"
+      source: "bootstrap/01-install-istio.sh"
+    - name: "ats-016-lab-030-01-setup"
+      description: "Creates the starting state in `cphealth-demo` that the task works from"
+      type: "file"
+      source: "bootstrap/02-seed-workloads.sh"
+
+testing:
+  manifests:
+    - name: "reference-solution"
+      description: "The correct end state a perfect learner produces; used by `astrona test`."
+      type: "file"
+      source: "solution/solution.yaml"
+
+validation:
+  scripts:
+    - name: "validate-istiod-healthy"
+      description: "Confirms istiod is Running, ready and serving config"
+      type: "file"
+      source: "validation/validate-istiod-healthy.sh"
+    - name: "validate-rejected-config-removed"
+      description: "Confirms the invalid weighted VirtualService no longer exists"
+      type: "file"
+      source: "validation/validate-rejected-config-removed.sh"
+    - name: "validate-workload-resynced"
+      description: "Confirms every proxy in cphealth-demo is SYNCED and traffic returns 200"
+      type: "file"
+      source: "validation/validate-workload-resynced.sh"
+
+teardown:
+  keepCluster: false
