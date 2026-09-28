@@ -20,7 +20,7 @@ while read -r POD CONTAINERS; do
     rc=1
   fi
 done <<< "$(kubectl -n "$NS" get pods --field-selector=status.phase=Running \
-  -o jsonpath='{range .items[*]}{.metadata.name}{" "}{range .spec.containers[*]}{.name}{","}{end}{"\n"}{end}')"
+  -o jsonpath='{range .items[*]}{.metadata.name}{" "}{range .spec.initContainers[*]}{.name}{","}{end}{range .spec.containers[*]}{.name}{","}{end}{"\n"}{end}')"
 
 [ $rc -eq 0 ] && echo "PASS: namespace is labelled and every running pod carries a sidecar."
 exit $rc

@@ -4,7 +4,7 @@ set -uo pipefail
 
 NS="noinject-demo"
 CONTAINERS="$(kubectl -n "$NS" get pods -l app=reporting-service \
-  -o jsonpath='{.items[0].spec.containers[*].name}' 2>/dev/null)"
+  -o jsonpath='{.items[0].spec.initContainers[*].name} {.items[0].spec.containers[*].name}' 2>/dev/null)"
 
 if [ -z "$CONTAINERS" ]; then
   echo "FAIL: no reporting-service pod found in $NS."

@@ -24,7 +24,7 @@ if [ -n "$REV" ]; then
 fi
 
 C="$(kubectl -n "$NS" get pods -l app=billing-service \
-  -o jsonpath='{.items[0].spec.containers[*].name}' 2>/dev/null)"
+  -o jsonpath='{.items[0].spec.initContainers[*].name} {.items[0].spec.containers[*].name}' 2>/dev/null)"
 if ! printf '%s' "$C" | grep -q 'istio-proxy'; then
   echo "FAIL: billing-service containers are '$C' — no istio-proxy."
   echo "      A label change does not recreate pods; restart the Deployment."
