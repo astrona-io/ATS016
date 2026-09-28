@@ -28,12 +28,16 @@ spec:
     spec:
       containers:
         - name: orders-service
-          image: kubeteam/notification-service
+          image: nginx:1.27-alpine
           ports:
             - containerPort: 8084
-          env:
-            - name: SERVICE_PORT
-              value: "8084"
+          volumeMounts:
+            - name: nginx-conf
+              mountPath: /etc/nginx/conf.d
+      volumes:
+        - name: nginx-conf
+          configMap:
+            name: orders-service-v1-nginx-conf
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -60,7 +64,7 @@ spec:
           image: mccutchen/go-httpbin:v2.15.0
           ports:
             - containerPort: 8080
-          args: ["-port", "8080"]
+          command: ["/bin/go-httpbin", "-port", "8080"]
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -113,3 +117,18 @@ spec:
       targetPort: 8080
   selector:
     app: payments-service
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: orders-service-v1-nginx-conf
+  namespace: cpcapstone-demo
+data:
+  default.conf: |
+    server {
+      listen 8084;
+      location / {
+        default_type application/json;
+        return 200 '{"service":"orders-service","version":"v1"}';
+      }
+    }

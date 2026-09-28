@@ -30,7 +30,7 @@ spec:
           image: mccutchen/go-httpbin:v2.15.0
           ports:
             - containerPort: 8080
-          args: ["-port", "8080"]
+          command: ["/bin/go-httpbin", "-port", "8080"]
 ---
 apiVersion: v1
 kind: Service
