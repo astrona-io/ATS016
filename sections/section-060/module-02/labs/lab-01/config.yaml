@@ -22,6 +22,11 @@ bootstrap:
       source: "bootstrap/02-seed-workloads.sh"
 
 testing:
+  init:
+    - name: "wait-for-istiod"
+      description: "Waits for the validating webhook to answer before applying Istio objects"
+      type: "file"
+      source: "testing/wait-for-istiod.sh"
   manifests:
     - name: "reference-solution"
       description: "The correct end state a perfect learner produces; used by `astrona test`."
