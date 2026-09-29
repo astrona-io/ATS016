@@ -74,7 +74,7 @@ explicitly — one less thing to drift:
 
 ```sh
 kubectl -n mtlsfail-demo patch destinationrule notification --type json \
-  -p '[{"op":"remove","path":"/spec/trafficPolicy/tls"}]'
+  -p '[{"op":"remove","path":"/spec/trafficPolicy"}]'
 kubectl -n mtlsfail-demo exec deploy/tester -- \
   curl -s -o /dev/null -w '%{http_code}\n' -X POST http://notification-service/notify
 ```

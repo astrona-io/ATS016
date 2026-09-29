@@ -32,11 +32,10 @@ testing:
       description: "Waits for the validating webhook to answer before applying Istio objects"
       type: "file"
       source: "testing/wait-for-istiod.sh"
-  manifests:
     - name: "reference-solution"
-      description: "The correct end state a perfect learner produces; used by `astrona test`."
+      description: "The remediation a correct learner performs; used by `astrona test`"
       type: "file"
-      source: "solution/solution.yaml"
+      source: "solution/apply.sh"
 
 validation:
   scripts:
