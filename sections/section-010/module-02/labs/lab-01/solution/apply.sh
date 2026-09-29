@@ -25,6 +25,13 @@ spec:
             methods: ["POST", "GET"]
 EOF
 
+# Step 4 of the walkthrough: put the rbac log scope back to info. The guide
+# writes this against a $POD it set earlier; resolve the pod here so the script
+# stands on its own.
+POD=$(kubectl -n describe-demo get pod -l app=notification-service \
+  -o jsonpath='{.items[0].metadata.name}')
+istioctl proxy-config log "$POD" -n describe-demo --level rbac:info
+
 # Wait for the pods being replaced to actually go away. `rollout status` returns
 # as soon as the new pod is available, while the old one is still terminating -
 # and a terminating pod still reports phase Running, so both the checks and
