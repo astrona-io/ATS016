@@ -60,10 +60,16 @@ spec:
     spec:
       containers:
         - name: reporting-service
-          image: mccutchen/go-httpbin:v2.15.0
+          image: nginx:1.27-alpine
           ports:
             - containerPort: 8080
-          command: ["/bin/go-httpbin", "-port", "8080"]
+          volumeMounts:
+            - name: nginx-conf
+              mountPath: /etc/nginx/conf.d
+      volumes:
+        - name: nginx-conf
+          configMap:
+            name: reporting-service-nginx-conf
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -129,5 +135,20 @@ data:
       location / {
         default_type application/json;
         return 200 '["EMAIL"]';
+      }
+    }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: reporting-service-nginx-conf
+  namespace: dpcapstone-demo
+data:
+  default.conf: |
+    server {
+      listen 8080;
+      location / {
+        default_type application/json;
+        return 200 '{"service":"reporting-service"}';
       }
     }

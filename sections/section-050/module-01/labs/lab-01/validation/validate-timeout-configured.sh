@@ -16,7 +16,7 @@ for item in d.get("items",[]):
         if r.get("timeout"): timeout=r["timeout"]
         f=(r.get("fault") or {}).get("delay") or {}
         if f.get("fixedDelay"): delay=f["fixedDelay"]
-print(f"{timeout or \"NONE\"} {delay or \"NONE\"}")')"
+print((timeout or "NONE") + " " + (delay or "NONE"))')"
 
 set -- $RESULT
 TIMEOUT="${1:-NONE}"; DELAY="${2:-NONE}"

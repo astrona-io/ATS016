@@ -11,6 +11,17 @@ set -eu
 kubectl -n istio-system scale deploy istiod --replicas=1
 kubectl -n istio-system rollout status deploy istiod --timeout=180s
 
+# istiod was scaled to zero in this lab, so the pre-flight wait could not help:
+# the webhook only becomes reachable once the fix above brings it back. Applying
+# an Istio object before then fails with "failed calling webhook
+# validation.istio.io: connect: connection refused".
+for _ in $(seq 1 90); do
+  kubectl -n istio-system get endpoints istiod \
+    -o jsonpath='{.subsets[*].addresses[*].ip}' 2>/dev/null | grep -q . && break
+  sleep 2
+done
+sleep 5
+
 kubectl -n cphealth-demo delete virtualservice bad-weights --ignore-not-found
 
 kubectl apply -f - <<'EOF'

@@ -17,7 +17,10 @@ if [ -z "$LEVELS" ]; then
   exit 1
 fi
 
-RBAC="$(printf '%s\n' "$LEVELS" | grep -E '^rbac:' | awk '{print $2}')"
+# istioctl 1.30 prints the scopes indented under "active loggers:", so an
+# anchored ^rbac: never matches and the level reads as empty. Strip the spaces
+# before looking.
+RBAC="$(printf '%s\n' "$LEVELS" | tr -d '[:blank:]' | grep -E '^rbac:' | cut -d: -f2)"
 if [ "$RBAC" != "info" ]; then
   echo "FAIL: the rbac log scope is '$RBAC', expected 'info'."
   echo "      Restore it with: istioctl proxy-config log $POD -n $NS --level rbac:info"
