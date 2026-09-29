@@ -62,7 +62,7 @@ first and the unconditional route last:
 
 ```sh
 kubectl -n routing-demo delete virtualservice notification-priority notification-experiment
-kubectl apply -f - <<'EOF'
+cat > virtualservice-notification.yaml <<'EOF'
 apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
@@ -92,6 +92,7 @@ spec:
             host: notification-service
             subset: v1
 EOF
+kubectl apply -f virtualservice-notification.yaml
 ```
 
 Order matters between the two specific rules only if they could both match the
@@ -162,3 +163,13 @@ which is an explicit, ordered mechanism rather than an incidental merge.
   never appears.
 - Re-introduce `notification-experiment`, then diff the proxy route table before
   and after.
+
+---
+
+## Reference
+
+The official documentation for everything this task touches — open these rather than trying to recall field names:
+
+- [Configuration analysis messages](https://istio.io/latest/docs/reference/config/analysis/) — every `IST####` code and what triggers it
+- [Debugging Envoy and istiod](https://istio.io/latest/docs/ops/diagnostic-tools/proxy-cmd/) — `proxy-status`, `proxy-config` and the workflow around them
+- [Destination rule reference](https://istio.io/latest/docs/reference/config/networking/destination-rule/) — the traffic objects a broken route points at

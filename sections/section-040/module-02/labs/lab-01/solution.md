@@ -95,8 +95,10 @@ kubectl -n fivezerothree-demo get pods --show-labels | grep notification
 
 Only `version=v1` pods exist. So the route is wrong, not the `DestinationRule`:
 
+Write the manifest to a file and apply the file. It is the habit the exam rewards — you get something you can re-read, edit and re-apply, instead of a heredoc that is gone the moment it runs.
+
 ```sh
-kubectl apply -f - <<'EOF'
+cat > virtualservice-notification.yaml <<'EOF'
 apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
@@ -111,6 +113,7 @@ spec:
             host: notification-service
             subset: v1
 EOF
+kubectl apply -f virtualservice-notification.yaml
 ```
 
 ```sh
@@ -169,3 +172,15 @@ constraint exists to reject exactly this.
   different cause.
 - Delete the `DestinationRule` entirely and compare the response flag.
 - Scale the Deployment to zero and observe `UH` instead of `NC`.
+
+---
+
+## Reference
+
+The official documentation for everything this task touches — open these rather than trying to recall field names:
+
+- [Configuration analysis messages](https://istio.io/latest/docs/reference/config/analysis/) — every `IST####` code and what triggers it
+- [Debugging Envoy and istiod](https://istio.io/latest/docs/ops/diagnostic-tools/proxy-cmd/) — `proxy-status`, `proxy-config` and the workflow around them
+- [Envoy access logs](https://istio.io/latest/docs/tasks/observability/logs/access-log/) — turning logging on and reading the response flags
+- [Common problems: network issues](https://istio.io/latest/docs/ops/common-problems/) — the catalogue of 503 causes and how to tell them apart
+- [Destination rule reference](https://istio.io/latest/docs/reference/config/networking/destination-rule/) — the traffic objects a broken route points at

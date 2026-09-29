@@ -33,8 +33,10 @@ when a `DestinationRule` creates them.
 
 ## Step 2 — Define the subsets
 
+Write the manifest to a file and apply the file. It is the habit the exam rewards — you get something you can re-read, edit and re-apply, instead of a heredoc that is gone the moment it runs.
+
 ```sh
-kubectl apply -f - <<'EOF'
+cat > destinationrule-notification.yaml <<'EOF'
 apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
@@ -50,6 +52,7 @@ spec:
       labels:
         version: v2
 EOF
+kubectl apply -f destinationrule-notification.yaml
 istioctl proxy-config cluster deploy/tester -n proxycfg-demo \
   --fqdn notification-service.proxycfg-demo.svc.cluster.local
 ```
@@ -62,7 +65,7 @@ traffic — it created destinations, it did not route anything to them.
 Specific match first, unconditional last:
 
 ```sh
-kubectl apply -f - <<'EOF'
+cat > virtualservice-notification.yaml <<'EOF'
 apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
@@ -85,6 +88,7 @@ spec:
             host: notification-service
             subset: v1
 EOF
+kubectl apply -f virtualservice-notification.yaml
 ```
 
 Note `exact: "true"` is **quoted**. Unquoted it is a YAML boolean, not the
@@ -184,3 +188,13 @@ astrona submit
 - Find the listener filter chain that handles mTLS on the inbound side.
 - Point the header rule at a subset `v3` that does not exist and follow the
   chain until it breaks.
+
+---
+
+## Reference
+
+The official documentation for everything this task touches — open these rather than trying to recall field names:
+
+- [Configuration analysis messages](https://istio.io/latest/docs/reference/config/analysis/) — every `IST####` code and what triggers it
+- [Debugging Envoy and istiod](https://istio.io/latest/docs/ops/diagnostic-tools/proxy-cmd/) — `proxy-status`, `proxy-config` and the workflow around them
+- [Destination rule reference](https://istio.io/latest/docs/reference/config/networking/destination-rule/) — the traffic objects a broken route points at

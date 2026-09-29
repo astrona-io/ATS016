@@ -101,7 +101,7 @@ Three faults, not one:
 
 ```sh
 kubectl -n obscapstone-demo delete virtualservice notification-canary
-kubectl apply -f - <<'EOF'
+cat > virtualservice-notification.yaml <<'EOF'
 apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
@@ -115,6 +115,7 @@ spec:
         - destination:
             host: notification-service
 EOF
+kubectl apply -f virtualservice-notification.yaml
 ```
 
 No `canary` subset is invented: no pod carries such a label, and creating one
@@ -126,8 +127,10 @@ astrona submit
 
 ## Step 6 — Declare access logging
 
+Write the manifest to a file and apply the file. It is the habit the exam rewards — you get something you can re-read, edit and re-apply, instead of a heredoc that is gone the moment it runs.
+
 ```sh
-kubectl apply -f - <<'EOF'
+cat > telemetry-access-logs.yaml <<'EOF'
 apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
@@ -138,6 +141,7 @@ spec:
     - providers:
         - name: envoy
 EOF
+kubectl apply -f telemetry-access-logs.yaml
 ```
 
 Metrics answer "how much, how bad, since when". Logs answer "what happened to
@@ -216,3 +220,14 @@ outbound traffic, **Istio Control Plane** for push errors and rejects.
   `[5m]` window than a `[1m]` one.
 - Use the Control Plane dashboard to correlate a config push with a latency
   spike.
+
+---
+
+## Reference
+
+The official documentation for everything this task touches — open these rather than trying to recall field names:
+
+- [Configuration analysis messages](https://istio.io/latest/docs/reference/config/analysis/) — every `IST####` code and what triggers it
+- [Envoy access logs](https://istio.io/latest/docs/tasks/observability/logs/access-log/) — turning logging on and reading the response flags
+- [Common problems: network issues](https://istio.io/latest/docs/ops/common-problems/) — the catalogue of 503 causes and how to tell them apart
+- [Destination rule reference](https://istio.io/latest/docs/reference/config/networking/destination-rule/) — the traffic objects a broken route points at

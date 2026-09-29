@@ -69,7 +69,7 @@ salvageable — remove it, and make sure a valid route for the host remains:
 
 ```sh
 kubectl -n kiali-demo delete virtualservice broken
-kubectl apply -f - <<'EOF'
+cat > virtualservice-notification.yaml <<'EOF'
 apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
@@ -83,6 +83,7 @@ spec:
         - destination:
             host: notification-service
 EOF
+kubectl apply -f virtualservice-notification.yaml
 istioctl analyze -n kiali-demo
 ```
 
@@ -146,3 +147,13 @@ kubectl -n kiali-demo exec deploy/tester -- pkill -f 'while true' || true
 - Compare Kiali's validation list with `istioctl analyze --all-namespaces`.
 - Apply `manifests/fault.yaml`, watch the edge turn red, and correlate the
   percentage with the raw `response_code` counters.
+
+---
+
+## Reference
+
+The official documentation for everything this task touches — open these rather than trying to recall field names:
+
+- [Configuration analysis messages](https://istio.io/latest/docs/reference/config/analysis/) — every `IST####` code and what triggers it
+- [Common problems: network issues](https://istio.io/latest/docs/ops/common-problems/) — the catalogue of 503 causes and how to tell them apart
+- [Destination rule reference](https://istio.io/latest/docs/reference/config/networking/destination-rule/) — the traffic objects a broken route points at

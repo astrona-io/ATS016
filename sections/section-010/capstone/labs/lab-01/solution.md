@@ -69,8 +69,10 @@ kubectl -n audit-demo get destinationrule notification -o jsonpath='{.spec.subse
 Only `version=v1` exists, and the `DestinationRule` defines only `v1`. Nothing
 is exposed outside the mesh, so the gateway binding is simply wrong:
 
+Write the manifest to a file and apply the file. It is the habit the exam rewards — you get something you can re-read, edit and re-apply, instead of a heredoc that is gone the moment it runs.
+
 ```sh
-kubectl apply -f - <<'EOF'
+cat > virtualservice-notification.yaml <<'EOF'
 apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
@@ -85,6 +87,7 @@ spec:
             host: notification-service
             subset: v1
 EOF
+kubectl apply -f virtualservice-notification.yaml
 ```
 
 Creating an `audit-gateway` or a `v3` subset would silence the analyzer and
@@ -151,3 +154,16 @@ astrona submit
 - Deleting the `AuthorizationPolicy` because `GET` was failing — here it was not
   even the thing refusing.
 - Testing only `POST`. A policy that permits everything also passes that test.
+
+---
+
+## Reference
+
+The official documentation for everything this task touches — open these rather than trying to recall field names:
+
+- [Configuration analysis messages](https://istio.io/latest/docs/reference/config/analysis/) — every `IST####` code and what triggers it
+- [Describing pod configuration](https://istio.io/latest/docs/ops/diagnostic-tools/istioctl-describe/) — what the mesh is applying to one workload
+- [Common problems: network issues](https://istio.io/latest/docs/ops/common-problems/) — the catalogue of 503 causes and how to tell them apart
+- [Authorization policy](https://istio.io/latest/docs/reference/config/security/authorization-policy/) — the object whose deny you may be debugging
+- [Destination rule reference](https://istio.io/latest/docs/reference/config/networking/destination-rule/) — the traffic objects a broken route points at
+- [Sidecar injection](https://istio.io/latest/docs/setup/additional-setup/sidecar-injection/) — why a pod came up without a proxy

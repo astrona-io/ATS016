@@ -39,3 +39,13 @@ In the namespace `metrics-demo`:
 - No fault injection remains, and a `POST` from `tester` returns `200`.
 - Prometheus holds `istio_requests_total` series for the workload with
   `response_code="200"`.
+
+---
+
+## Reference
+
+The official documentation for everything this task touches — open these rather than trying to recall field names:
+
+- [Configuration analysis messages](https://istio.io/latest/docs/reference/config/analysis/) — every `IST####` code and what triggers it
+- [Envoy access logs](https://istio.io/latest/docs/tasks/observability/logs/access-log/) — turning logging on and reading the response flags
+- [Destination rule reference](https://istio.io/latest/docs/reference/config/networking/destination-rule/) — the traffic objects a broken route points at

@@ -20,8 +20,10 @@ without a bound is a caller's problem, not a server's.
 Mesh-wide logging is an install setting; a `Telemetry` object is a namespaced
 Kubernetes object you can apply, scope and delete without touching the install:
 
+Write the manifest to a file and apply the file. It is the habit the exam rewards — you get something you can re-read, edit and re-apply, instead of a heredoc that is gone the moment it runs.
+
 ```sh
-kubectl apply -f - <<'EOF'
+cat > telemetry-access-logs.yaml <<'EOF'
 apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
@@ -32,6 +34,7 @@ spec:
     - providers:
         - name: envoy
 EOF
+kubectl apply -f telemetry-access-logs.yaml
 ```
 
 `envoy` is the built-in provider name for the standard text access log. Scope is
@@ -52,7 +55,7 @@ fault filter runs before the router, so the request would wait the full five
 seconds and return 200 with the `DI` flag instead.)
 
 ```sh
-kubectl apply -f - <<'EOF'
+cat > virtualservice-notification.yaml <<'EOF'
 apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
@@ -72,6 +75,7 @@ spec:
         - destination:
             host: notification-service
 EOF
+kubectl apply -f virtualservice-notification.yaml
 ```
 
 ## Step 4 — Produce the flag and read it
@@ -144,3 +148,14 @@ way to see which failure dominates.
 - Set a custom `accessLogFormat` that includes the upstream cluster name.
 - Tighten a `connectionPool` until you can produce `UO`, and compare its
   duration field with the `UT` line above.
+
+---
+
+## Reference
+
+The official documentation for everything this task touches — open these rather than trying to recall field names:
+
+- [Configuration analysis messages](https://istio.io/latest/docs/reference/config/analysis/) — every `IST####` code and what triggers it
+- [Envoy access logs](https://istio.io/latest/docs/tasks/observability/logs/access-log/) — turning logging on and reading the response flags
+- [Common problems: network issues](https://istio.io/latest/docs/ops/common-problems/) — the catalogue of 503 causes and how to tell them apart
+- [Destination rule reference](https://istio.io/latest/docs/reference/config/networking/destination-rule/) — the traffic objects a broken route points at

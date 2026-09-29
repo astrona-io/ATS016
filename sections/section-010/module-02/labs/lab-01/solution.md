@@ -48,8 +48,10 @@ kubectl -n describe-demo logs $POD -c istio-proxy --tail=20 | grep -i rbac
 
 Add `GET` to the permitted methods. Everything else stays as it was:
 
+Write the manifest to a file and apply the file. It is the habit the exam rewards — you get something you can re-read, edit and re-apply, instead of a heredoc that is gone the moment it runs.
+
 ```sh
-kubectl apply -f - <<'EOF'
+cat > authorizationpolicy-notification-post-only.yaml <<'EOF'
 apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
@@ -65,6 +67,7 @@ spec:
         - operation:
             methods: ["POST", "GET"]
 EOF
+kubectl apply -f authorizationpolicy-notification-post-only.yaml
 ```
 
 `kubectl patch` works equally well:
@@ -145,3 +148,14 @@ astrona submit
 - Compare `describe` output for a meshed and an unmeshed pod.
 - Produce a scoped `istioctl bug-report --include describe-demo --since 10m` and
   list what it collected.
+
+---
+
+## Reference
+
+The official documentation for everything this task touches — open these rather than trying to recall field names:
+
+- [Configuration analysis messages](https://istio.io/latest/docs/reference/config/analysis/) — every `IST####` code and what triggers it
+- [Debugging Envoy and istiod](https://istio.io/latest/docs/ops/diagnostic-tools/proxy-cmd/) — `proxy-status`, `proxy-config` and the workflow around them
+- [Describing pod configuration](https://istio.io/latest/docs/ops/diagnostic-tools/istioctl-describe/) — what the mesh is applying to one workload
+- [Authorization policy](https://istio.io/latest/docs/reference/config/security/authorization-policy/) — the object whose deny you may be debugging

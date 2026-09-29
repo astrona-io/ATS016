@@ -34,3 +34,13 @@ In the namespace `kiali-demo`:
 - `istioctl analyze -n kiali-demo` reports no findings.
 - Request metrics exist for the `tester` → `notification-service` edge, so the
   graph has something to draw.
+
+---
+
+## Reference
+
+The official documentation for everything this task touches — open these rather than trying to recall field names:
+
+- [Configuration analysis messages](https://istio.io/latest/docs/reference/config/analysis/) — every `IST####` code and what triggers it
+- [Common problems: network issues](https://istio.io/latest/docs/ops/common-problems/) — the catalogue of 503 causes and how to tell them apart
+- [Destination rule reference](https://istio.io/latest/docs/reference/config/networking/destination-rule/) — the traffic objects a broken route points at
