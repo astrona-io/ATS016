@@ -45,8 +45,11 @@ astrona submit
 
 ## Step 3 — Bound the delay with a timeout
 
-Add `timeout` to the existing route. Keep the fault — the task is to bound the
-slow dependency, not to delete the simulation of it:
+Add `timeout` to the route. The dependency itself is slow — roughly five
+seconds — so the wait happens upstream, where a route timeout can cut it short.
+(Had the delay come from a `fault.delay` on this same rule, it would not: the
+fault filter runs before the router, so the request would wait the full five
+seconds and return 200 with the `DI` flag instead.)
 
 ```sh
 kubectl apply -f - <<'EOF'

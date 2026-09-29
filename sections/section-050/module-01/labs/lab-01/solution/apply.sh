@@ -30,12 +30,7 @@ spec:
   hosts:
     - notification-service
   http:
-    - fault:
-        delay:
-          fixedDelay: 5s
-          percentage:
-            value: 100
-      timeout: 2s
+    - timeout: 2s
       route:
         - destination:
             host: notification-service

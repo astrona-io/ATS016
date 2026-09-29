@@ -30,8 +30,9 @@ In the namespace `accesslog-demo`:
 
 ## Constraints
 
-- **Do not remove the injected delay.** The task is to bound it, not to hide it.
-  The `VirtualService` must still carry the 5s `fault.delay`.
+- **Do not touch the dependency.** `notification-service` really does take about
+  five seconds to answer; the task is to bound the wait from the caller's side,
+  not to make the dependency faster.
 - The timeout must be on the `VirtualService` route, not a client-side `curl`
   option.
 - Do not change the mesh-wide install configuration.
@@ -40,6 +41,5 @@ In the namespace `accesslog-demo`:
 
 - A `Telemetry` object in `accesslog-demo` enables the `envoy` access log
   provider.
-- The `VirtualService` for `notification-service` sets `timeout: 2s` and still
-  injects the 5s delay.
+- The `VirtualService` for `notification-service` sets `timeout: 2s`.
 - The `tester` proxy's access log contains a `UT` response flag.
