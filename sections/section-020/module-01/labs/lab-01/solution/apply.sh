@@ -33,5 +33,17 @@ spec:
             subset: v1
 EOF
 
-# Let the change reach the proxies before the checks read them back.
-sleep 12
+# Wait for the pods being replaced to actually go away. `rollout status` returns
+# as soon as the new pod is available, while the old one is still terminating -
+# and a terminating pod still reports phase Running, so both the checks and
+# `istioctl analyze` see a workload "missing the Istio proxy" that is on its way
+# out. Then give the proxies a moment to receive the new configuration.
+for _ in $(seq 1 60); do
+  leaving=$(kubectl get pods -A \
+    -o jsonpath='{range .items[*]}{.metadata.namespace}{" "}{.metadata.deletionTimestamp}{"\n"}{end}' 2>/dev/null \
+    | grep -vE '^(kube-system|kube-public|kube-node-lease|local-path-storage) ' \
+    | awk 'NF>1')
+  [ -z "$leaving" ] && break
+  sleep 2
+done
+sleep 8
