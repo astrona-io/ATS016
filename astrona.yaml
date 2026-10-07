@@ -44,6 +44,7 @@ sections:
           - type: lab
             title: "Lab: Find And Fix The Configuration Errors In `analyze-demo`"
             path: sections/section-010/module-01/labs/lab-01
+            difficulty: intermediate
       - id: module-02
         title: "Summarise A Workload With describe, Capture A Cluster With bug-report"
         content:
@@ -65,10 +66,12 @@ sections:
           - type: lab
             title: "Lab: Widen A Policy Without Weakening The Mesh"
             path: sections/section-010/module-02/labs/lab-01
+            difficulty: intermediate
     capstone:
       - type: lab
         title: "Capstone: Repair A Namespace Nothing Validates"
         path: sections/section-010/capstone/labs/lab-01
+        difficulty: advanced
   - id: section-020
     title: "Debugging Conflicting And Shadowed Routes"
     curriculum_item: "Troubleshooting Configuration"
@@ -95,10 +98,12 @@ sections:
           - type: lab
             title: "Lab: Make The Header Route Actually Fire"
             path: sections/section-020/module-01/labs/lab-01
+            difficulty: intermediate
     capstone:
       - type: lab
         title: "Capstone: Consolidate Three Claimants Into One Route Table"
         path: sections/section-020/capstone/labs/lab-01
+        difficulty: advanced
   - id: section-030
     title: "Troubleshooting The Mesh Control Plane"
     curriculum_item: "Troubleshooting the Mesh Control Plane"
@@ -125,6 +130,7 @@ sections:
           - type: lab
             title: "Lab: The Mesh Works And Nothing Can Change"
             path: sections/section-030/module-01/labs/lab-01
+            difficulty: intermediate
       - id: module-02
         title: "Diagnose Config Sync With proxy-status"
         content:
@@ -146,6 +152,7 @@ sections:
           - type: lab
             title: "Lab: One Workload Vanished From The Mesh"
             path: sections/section-030/module-02/labs/lab-01
+            difficulty: intermediate
       - id: module-03
         title: "Debug A Workload With No Sidecar"
         content:
@@ -167,10 +174,12 @@ sections:
           - type: lab
             title: "Lab: Bring An Exempt Workload Back Into The Mesh"
             path: sections/section-030/module-03/labs/lab-01
+            difficulty: intermediate
     capstone:
       - type: lab
         title: "Capstone: Three Workloads, Three Different Control Plane Faults"
         path: sections/section-030/capstone/labs/lab-01
+        difficulty: advanced
   - id: section-040
     title: "Reading Data Plane Configuration"
     curriculum_item: "Troubleshooting the Mesh Data Plane"
@@ -200,6 +209,7 @@ sections:
           - type: lab
             title: "Lab: Build The Routing, Then Prove It From The Proxy"
             path: sections/section-040/module-01/labs/lab-01
+            difficulty: intermediate
       - id: module-02
         title: "Debug A 503 Caused By A Missing Subset"
         content:
@@ -221,10 +231,12 @@ sections:
           - type: lab
             title: "Lab: Trace A 503 To Its Exact Stage"
             path: sections/section-040/module-02/labs/lab-01
+            difficulty: intermediate
     capstone:
       - type: lab
         title: "Capstone: Two 503s, Two Different Stages"
         path: sections/section-040/capstone/labs/lab-01
+        difficulty: advanced
   - id: section-050
     title: "Debugging Data Plane Request Failures"
     curriculum_item: "Troubleshooting the Mesh Data Plane"
@@ -254,6 +266,7 @@ sections:
           - type: lab
             title: "Lab: Scope The Logs, Bound The Latency, Name The Flag"
             path: sections/section-050/module-01/labs/lab-01
+            difficulty: intermediate
       - id: module-02
         title: "Debug A 503 Caused By An mTLS Mismatch"
         content:
@@ -275,10 +288,12 @@ sections:
           - type: lab
             title: "Lab: A 503 Where The Destination Log Is Empty"
             path: sections/section-050/module-02/labs/lab-01
+            difficulty: intermediate
     capstone:
       - type: lab
         title: "Capstone: Diagnose Two Failures From The Logs Alone"
         path: sections/section-050/capstone/labs/lab-01
+        difficulty: advanced
   - id: section-060
     title: "Troubleshooting With Mesh Observability"
     curriculum_item: "Troubleshooting Configuration / the Mesh Data Plane"
@@ -305,6 +320,7 @@ sections:
           - type: lab
             title: "Lab: An Empty Graph And A Red Badge"
             path: sections/section-060/module-01/labs/lab-01
+            difficulty: intermediate
       - id: module-02
         title: "Troubleshoot With Prometheus And Grafana"
         content:
@@ -326,7 +342,9 @@ sections:
           - type: lab
             title: "Lab: Measure The Failure Before You Fix It"
             path: sections/section-060/module-02/labs/lab-01
+            difficulty: intermediate
     capstone:
       - type: lab
         title: "Capstone: Measure A Failure, Fix It, Prove It"
         path: sections/section-060/capstone/labs/lab-01
+        difficulty: advanced
