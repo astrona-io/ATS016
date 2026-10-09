@@ -6,9 +6,9 @@ Solve this question on: `terminal`
 
 ## Scenario
 
-Astronaut, the planet (namespace) `audit-demo` was set up in a hurry before a compliance review. Everything on it applied without a single error, and the team believes the namespace is:
+The namespace `audit-demo` was set up in a hurry before a compliance review. Every object in it applied without an error, and the team believes the namespace is:
 
-- in the mesh, with a communications officer (sidecar proxy) on every ship;
+- in the mesh, with a sidecar proxy (Envoy) in every pod;
 - routing traffic to a defined subset;
 - restricted so that only `POST` is allowed on `notification-service`.
 

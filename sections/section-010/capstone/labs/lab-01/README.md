@@ -1,3 +1,7 @@
+---
+estimated_duration: 35m
+---
+
 # Capstone: Repair A Namespace Nothing Validates
 
 - **ID:** CAPSTONE

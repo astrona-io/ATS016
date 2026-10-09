@@ -1,8 +1,8 @@
-# Widen A Policy Without Weakening The Mesh
+# Capture A Limited bug-report Archive
 # Astrona graded lab. Schema: internal/config.LabConfig.
 
 metadata:
-  name: "ats-016-lab-010-02"
+  name: "ats-016-lab-010-02-02"
   docs:
     guide: "solution.md"
     solution: "solution.md"
@@ -16,8 +16,8 @@ bootstrap:
       description: "Installs istioctl 1.30.5 and a demo-profile control plane"
       type: "file"
       source: "bootstrap/01-install-istio.sh"
-    - name: "ats-016-lab-010-02-setup"
-      description: "Creates the starting state in `describe-demo` that the task works from"
+    - name: "ats-016-lab-010-02-02-setup"
+      description: "Creates describe-demo and the decoy namespace noise-demo, and removes any old archive"
       type: "file"
       source: "bootstrap/02-seed-workloads.sh"
 
@@ -28,24 +28,24 @@ testing:
       type: "file"
       source: "testing/wait-for-istiod.sh"
     - name: "reference-solution"
-      description: "The remediation a correct learner performs; used by `astrona test`"
+      description: "The capture a correct learner takes; used by `astrona test`"
       type: "file"
       source: "solution/apply.sh"
 
 validation:
   scripts:
-    - name: "validate-authz-both-verbs"
-      description: "Confirms the AuthorizationPolicy now allows GET as well as POST on notification-service"
+    - name: "validate-archive-exists"
+      description: "Confirms /tmp/ats-016-bug-report/bug-report.tar.gz exists and can be read"
       type: "file"
-      source: "validation/validate-authz-both-verbs.sh"
-    - name: "validate-mtls-strict"
-      description: "Confirms the effective PeerAuthentication mode for the workload is still STRICT"
+      source: "validation/validate-archive-exists.sh"
+    - name: "validate-target-captured"
+      description: "Confirms the archive holds the notification-service proxy's configuration dump and istiod data"
       type: "file"
-      source: "validation/validate-mtls-strict.sh"
-    - name: "validate-log-level-restored"
-      description: "Confirms the proxy rbac log scope was returned to warning"
+      source: "validation/validate-target-captured.sh"
+    - name: "validate-no-extra-proxies"
+      description: "Confirms no other proxy (tester, noise-demo, gateways) is in the archive"
       type: "file"
-      source: "validation/validate-log-level-restored.sh"
+      source: "validation/validate-no-extra-proxies.sh"
 
 teardown:
   keepCluster: false

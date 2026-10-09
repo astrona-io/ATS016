@@ -2,8 +2,9 @@
 
 Before starting this lab you should be able to:
 
-- Use `kubectl` to inspect and edit objects in a namespace.
-- Read a `VirtualService` and a `DestinationRule` and say what each controls.
+- Use `kubectl` to inspect, label and edit objects in a namespace, and to restart a Deployment.
+- Read a `VirtualService`, a `DestinationRule` and an `AuthorizationPolicy` and say what each controls.
+- Run `istioctl analyze` and `istioctl x describe pod`.
 - Send a test request from one pod to another with `curl`.
 
 ## What the environment gives you

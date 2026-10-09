@@ -1,18 +1,18 @@
 # Solution: Widen A Policy Without Weakening The Mesh
 
-Work the task yourself first, astronaut. Running `astrona submit -c sections/section-010/module-02/labs/lab-01` after a step tells you which checks pass, without telling you what is left.
+Work the task yourself first. Running `astrona submit -c sections/section-010/module-02/labs/lab-01` after a step tells you which checks pass, without telling you what is left.
 
-The grader checks three things: `GET` and `POST` return `200` while `DELETE` returns `403` (and the policy still exists), the mutual TLS mode is still `STRICT`, and the `rbac` log scope is back at `info`.
+The grader checks three things: `GET` and `POST` return `200` while `DELETE` returns `403` (and the policy still exists), the mutual TLS (mTLS) mode is still `STRICT`, and the `rbac` log scope is back at `warning`.
 
 ## Step 1: Find out what applies to the pod
 
-Four objects exist on the planet. Listing them says nothing about which ones reach the workload, or what they add up to:
+Four objects exist in the namespace. Listing them says nothing about which ones reach the workload, or what they add up to:
 
 ```sh
 kubectl -n describe-demo get virtualservice,destinationrule,peerauthentication,authorizationpolicy
 ```
 
-Ask for the ship's dossier instead. First store the pod name, then describe it:
+Ask `istioctl x describe pod` for the effective result instead. First store the pod name, then describe the pod:
 
 ```sh
 export POD=$(kubectl -n describe-demo get pod -l app=notification-service -o jsonpath='{.items[0].metadata.name}')
@@ -29,9 +29,9 @@ Effective PeerAuthentication:
 
 The `RBAC policies` line names the exact rule that judges your requests. That is the object to change. `Effective PeerAuthentication` is the value the task says you must leave alone.
 
-## Step 2: Confirm it from the proxy's own words
+## Step 2: Confirm it from the proxy's own log
 
-The proxy was left at `rbac:debug`, so it already logs its authorization decisions. Send a `GET` and read the log:
+The sidecar proxy in the `notification-service` pod was left at `rbac:debug`, so it already logs its authorization decisions. Send a `GET` from the `tester` pod and read the log of the `istio-proxy` container:
 
 ```sh
 kubectl -n describe-demo exec deploy/tester -- \
@@ -43,7 +43,7 @@ kubectl -n describe-demo logs $POD -c istio-proxy --tail=20 | grep -i rbac
 [... debug envoy rbac] enforced denied, matched policy none
 ```
 
-`matched policy none` is the implicit deny at work. An `ALLOW` policy **forbids everything it does not name**, so a policy that lists only `POST` refuses `GET` without ever mentioning it.
+`matched policy none` means an `ALLOW` policy selects the workload and the request matched none of its rules. An `ALLOW` policy **denies everything it does not name**, so a policy that lists only `POST` refuses `GET` without ever mentioning it.
 
 ## Step 3: Widen the policy, not the mesh
 
@@ -83,22 +83,18 @@ kubectl -n describe-demo patch authorizationpolicy notification-post-only --type
 
 ## Step 4: Put the log level back
 
-A raised scope costs processor time and log volume until the pod restarts, and nothing reminds you. Set it back and check:
+A raised scope costs processor time and log volume until the pod restarts, and nothing reminds you. In this install every scope starts at `warning`, so set `rbac` back to `warning` and check:
 
 ```sh
-istioctl proxy-config log $POD -n describe-demo --level rbac:info
-istioctl proxy-config log $POD -n describe-demo | grep '^rbac:'
+istioctl proxy-config log $POD -n describe-demo --level rbac:warning
+istioctl proxy-config log $POD -n describe-demo | grep -E '(rbac|router):'
 ```
 
-```text
-rbac: info
-```
-
-Run with no `--level`, the same command *reports* the current levels instead of setting them. That is also how you check a proxy somebody else was debugging. If your `istioctl` prints the scopes indented under an `active loggers:` heading, the `^` in the `grep` matches nothing; drop it and look for the `rbac` line.
+Both lines should read `warning`. Run with no `--level`, the same command *reports* the current levels instead of setting them. That is also how you check a proxy somebody else was debugging.
 
 ## Step 5: Check all three outcomes
 
-Send `GET`, `POST` and `DELETE`, then read the effective mutual TLS mode:
+Send `GET`, `POST` and `DELETE`, then read the effective mTLS mode:
 
 ```sh
 for M in GET POST DELETE; do
@@ -119,7 +115,7 @@ DELETE 403
 
 ## Step 6: Submit
 
-Send the mission for grading:
+Send the lab for grading:
 
 ```sh
 astrona submit -c sections/section-010/module-02/labs/lab-01
@@ -139,6 +135,7 @@ astrona submit -c sections/section-010/module-02/labs/lab-01
 - Reading only the top of the `describe` output. The warnings at the bottom are often the answer.
 - Expecting `describe` to show problems across the cluster. It shows one pod.
 - Leaving the proxy log level at `debug`. It is a real performance cost and lasts until the pod restarts.
+- Setting the scope back to `info` and calling it the default. A default Istio 1.30 sidecar starts every scope at `warning`.
 - Assuming a `403` came from the application. The sidecar refused it before the container saw the request, which is why the application log is empty.
 
 ## Practice on your own
@@ -146,4 +143,4 @@ astrona submit -c sections/section-010/module-02/labs/lab-01
 - Break the Service port name and run `describe` again to see the protocol warning.
 - Use `--level connection:debug` and follow a single connection through the log.
 - Compare the `describe` output for a pod in the mesh and a pod outside it.
-- Produce a limited `istioctl bug-report --include describe-demo --since 10m` and list what it collected.
+- Produce a limited `istioctl bug-report --include describe-demo --duration 10m` and list what it collected.

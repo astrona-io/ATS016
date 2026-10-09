@@ -1,25 +1,26 @@
 # Solution: Repair A Namespace Nothing Validates
 
-Astronaut, this planet has three faults, and the analyzer reports only one of them as an `Error`. That is the point of the capstone: severity describes what Istio *will do*, not how much trouble you are in.
+This namespace has three faults, and the analyzer reports only one of them as an `Error`. That is the point of the capstone: severity describes what Istio *will do* with an object, not how much trouble you are in.
 
 The grader checks four things: no `Error` or `Warning` from `istioctl analyze`, an injection label plus a sidecar in every running pod, a policy that selects running pods and allows exactly `POST`, and real traffic (`POST` gets `200`, `GET` gets `403`).
 
 ## Step 1: List every finding
 
-Run the pre-flight inspector on the namespace:
+Run the analyzer on the namespace:
 
 ```sh
 istioctl analyze -n audit-demo
 ```
 
+You should see something like this (shortened; the order can differ):
+
 ```text
 Error   [IST0101] (VirtualService notification.audit-demo) Referenced gateway not found: "audit-gateway"
 Error   [IST0101] (VirtualService notification.audit-demo) Referenced host+subset in destinationrule not found: "notification-service+v3"
-Warning [IST0102] (Namespace audit-demo) The namespace is not enabled for Istio injection...
-Info    [IST0103] (Pod notification-service-v1-...) The pod is missing the Istio proxy.
+Info    [IST0102] (Namespace audit-demo) The namespace is not enabled for Istio injection...
 ```
 
-Read all the way to the bottom. The `Warning` and the `Info` are the expensive ones here. A namespace carrying mesh configuration without injection means no ship has a communications officer, so **every policy on the planet applies to nothing**.
+Read all the way to the bottom. The `Info` line is the expensive one here. A namespace without the injection label gets no sidecar proxies, so **every Istio policy in the namespace applies to nothing**. Notice that there is no `IST0103` for the pods yet: the analyzer only checks pods for a missing proxy in namespaces that have injection switched on.
 
 ## Step 2: Find the fault the analyzer does not report
 
@@ -39,11 +40,11 @@ notification-service-v1-...   notification-service
 notification-service-v1-...   app=notification-service,version=v1
 ```
 
-The policy selects `app=notifications`, but the pods carry `app=notification-service`. The selector matches nothing, so the guard's list is posted at no airlock: the policy is valid, applied, and enforced on zero workloads. No analyzer reports this, which is why the task asks you to read the effective state instead of the intent.
+The policy selects `app=notifications`, but the pods carry `app=notification-service`. The selector matches nothing, so the policy is valid, applied, and enforced on zero workloads. No analyzer reports this, which is why the task asks you to read the effective state instead of the intent.
 
 ## Step 3: Label the namespace and recreate the pods
 
-The injection webhook (the launch-pad crew) only puts a communications officer on board when a pod is **created**. So the label alone changes nothing for pods that already run. Label the planet, then restart both Deployments:
+The sidecar injection webhook, a mutating admission webhook run by `istiod`, adds the `istio-proxy` container only when a pod is **created**. So the label alone changes nothing for pods that already run; if you run the analyzer between the label and the restart, it now reports `IST0103` (a `Warning`) for each pod without a proxy. Label the namespace, then restart both Deployments:
 
 ```sh
 kubectl label namespace audit-demo istio-injection=enabled
@@ -105,7 +106,7 @@ The method list stays as it is. The intent was `POST` only, and the task is to m
 
 ## Step 6: Prove the effective state
 
-Run the analyzer, read the ship's dossier, and send both methods:
+Run the analyzer, read the effective configuration of the `notification-service` pod with `istioctl x describe pod`, and send both methods from the `tester` pod:
 
 ```sh
 istioctl analyze -n audit-demo
@@ -139,15 +140,15 @@ astrona submit -c sections/section-010/capstone/labs/lab-01
 
 | Fault | Severity reported | Real consequence |
 | --- | --- | --- |
-| Namespace not injected | `Warning` | every mesh policy in the namespace applies to nothing |
-| Pod without a proxy | `Info` | that workload is outside the mesh entirely |
+| Namespace not injected | `Info` (`IST0102`) | every Istio policy in the namespace applies to nothing |
+| Pod without a proxy | `Warning` (`IST0103`), only once the namespace is labelled | that workload is outside the mesh entirely |
 | Subset reference that points at nothing | `Error` | `503` on every request |
 | Gateway reference that points at nothing | `Error` | the object binds to nothing |
 | Selector matching no pod | **not reported** | an authorization control that exists on paper only |
 
 ## Common mistakes
 
-- Reading only the Errors and declaring the namespace fixed.
+- Reading only the `Error` lines and declaring the namespace fixed.
 - Labelling the namespace and not recreating the pods.
 - Creating the missing `Gateway` or subset to make findings disappear.
 - Deleting the `AuthorizationPolicy` because `GET` was failing. Here it was not even the thing refusing.

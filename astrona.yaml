@@ -128,7 +128,7 @@ modules:
         tags: [istioctl-x-describe, authorizationpolicy, peerauthentication, mtls-strict, envoy-log-level, rbac-403]
         learning_goals:
           - Read which policies apply to one workload with istioctl x describe pod
-          - Raise the rbac log scope to see why a request is denied, then set it back to info
+          - Raise the rbac log scope to see why a request is denied, then set it back to warning
           - Allow GET as well as POST while the workload stays on STRICT mutual TLS
         resources:
           - name: "Understand your mesh with istioctl describe"
@@ -141,8 +141,27 @@ modules:
         title: "Capturing A Cluster With bug-report"
         path: sections/section-010/module-02/course-03-bug-report-and-handover.md
       - type: reading
-        title: "Wrap-Up: Mission Debrief"
-        path: sections/section-010/module-02/course-04-wrap-up.md
+        title: Question
+        path: sections/section-010/module-02/labs/lab-02/question.md
+      - type: lab
+        title: "Capture A Limited bug-report Archive Lab"
+        path: sections/section-010/module-02/labs/lab-02
+        difficulty: beginner
+        estimated_duration: 15m
+        topic: configuration
+        task_kind: build
+        tags: [bug-report, istiod-logs, proxy-config, access-log]
+        learning_goals:
+          - Limit an istioctl bug-report capture to one Deployment and istiod with --include
+          - Write the archive to a chosen folder and check its contents with tar before handing it over
+        resources:
+          - name: "istioctl bug-report command reference"
+            url: https://istio.io/latest/docs/reference/commands/istioctl/#istioctl-bug-report
+          - name: "Debugging Envoy and istiod"
+            url: https://istio.io/latest/docs/ops/diagnostic-tools/proxy-cmd/
+      - type: reading
+        title: Summary
+        path: sections/section-010/module-02/course-04-summary.md
 
       - type: reading
         title: Question

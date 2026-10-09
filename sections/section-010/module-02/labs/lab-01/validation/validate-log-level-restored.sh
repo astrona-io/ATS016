@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# PASS when the notification proxy's rbac log scope is back at info.
+# PASS when the notification proxy's rbac log scope is back at warning, the
+# level every scope starts at in a default Istio 1.30 sidecar.
 set -uo pipefail
 
 NS="describe-demo"
@@ -21,11 +22,11 @@ fi
 # anchored ^rbac: never matches and the level reads as empty. Strip the spaces
 # before looking.
 RBAC="$(printf '%s\n' "$LEVELS" | tr -d '[:blank:]' | grep -E '^rbac:' | cut -d: -f2)"
-if [ "$RBAC" != "info" ]; then
-  echo "FAIL: the rbac log scope is '$RBAC', expected 'info'."
-  echo "      Restore it with: istioctl proxy-config log $POD -n $NS --level rbac:info"
+if [ "$RBAC" != "warning" ]; then
+  echo "FAIL: the rbac log scope is '$RBAC', expected 'warning'."
+  echo "      Restore it with: istioctl proxy-config log $POD -n $NS --level rbac:warning"
   exit 1
 fi
 
-echo "PASS: the rbac log scope is back at info."
+echo "PASS: the rbac log scope is back at warning."
 exit 0

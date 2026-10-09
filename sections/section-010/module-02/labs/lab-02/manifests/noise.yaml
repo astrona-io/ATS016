@@ -1,0 +1,30 @@
+# A second injected namespace. Its proxies must NOT end up in the archive:
+# the capture is for the platform team investigating describe-demo only.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: noise-demo
+  labels:
+    istio-injection: enabled
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tester
+  namespace: noise-demo
+  labels:
+    app: tester
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tester
+  template:
+    metadata:
+      labels:
+        app: tester
+    spec:
+      containers:
+        - name: tester
+          image: curlimages/curl
+          command: ["sh", "-c", "while true; do sleep 30; done"]
