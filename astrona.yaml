@@ -1,332 +1,661 @@
-# Astrona training manifest for ATS016.
-# Generated from the on-disk course structure: one `reading` entry per module
-# landing page, followed by one entry per deep-dive part, in reading order.
+# Course manifest for ATS016 - Troubleshooting (Istio Certified Associate).
+#
+# One entry per section under `modules:`. Each section lists, in order: its
+# README, then for each module the landing page (course.md), its parts
+# (course-0N-*.md), and right after the part a lab tests, the lab's
+# question.md reading and the `type: lab` entry. The module's wrap-up page
+# comes last. The section capstone closes the section. Playgrounds are not
+# listed: the landing page's playground marker shows them. solution.md is
+# never listed.
+#
+# Every `path:` is relative to this file.
 
 training:
   id: ATS016
-  title: Troubleshooting
+  title: "ICA: Troubleshooting"
   description: >
-    Training material covering the Troubleshooting domain of the
-    Istio Certified Associate exam: configuration analysis, the mesh
-    control plane, and the mesh data plane.
+    Training material covering the Istio Certified Associate (ICA)
+    Troubleshooting domain: finding configuration errors with istioctl,
+    conflicting and shadowed routes, control plane health, configuration
+    sync and sidecar injection, reading proxy configuration, access logs and
+    response flags, mTLS mismatches, and troubleshooting with Kiali,
+    Prometheus and Grafana. Each module pairs a layered reader with an
+    ungraded hands-on playground and a graded practice lab. Each section
+    closes with an integration capstone.
+    Built and verified against Istio 1.30.5.
 
   certification:
     name: Istio Certified Associate
     code: ICA
-    provider: CNCF
+    provider: CNCF / Linux Foundation
     domain: Troubleshooting
     weight: 20
 
-sections:
-  - id: section-010
+modules:
+
+  - id: module-010
     title: "Troubleshooting Configuration With istioctl"
-    curriculum_item: "Troubleshooting Configuration"
-    path: sections/section-010/README.md
-    modules:
-      - id: module-01
+    description: >
+      Find configuration that the API server accepted but that does not work:
+      istioctl analyze for a whole configuration set, istioctl x describe pod
+      for one workload, Envoy log levels changed at runtime, and bug-report
+      for handing a problem to someone else.
+
+    content:
+      - type: reading
+        title: Section Overview
+        path: sections/section-010/README.md
+
+      - type: reading
         title: "Find Configuration Errors With istioctl analyze"
-        content:
-          - type: reading
-            title: "Module 1: Find Configuration Errors With istioctl analyze"
-            path: sections/section-010/module-01/course.md
-          - type: reading
-            title: "Module 1.1: What The API Server Checks, And What It Cannot"
-            path: sections/section-010/module-01/course-01-admission-and-the-analysis-gap.md
-          - type: reading
-            title: "Module 1.2: Reading What The Analyzer Says"
-            path: sections/section-010/module-01/course-02-reading-analyzer-messages.md
-          - type: reading
-            title: "Module 1.3: Choosing The Right Analysis Source"
-            path: sections/section-010/module-01/course-03-analysis-sources-and-the-fix-loop.md
-          - type: playground
-            title: "Playground: Find Configuration Errors With istioctl analyze"
-            path: sections/section-010/module-01/playground
-          - type: lab
-            title: "Lab: Find And Fix The Configuration Errors In `analyze-demo`"
-            path: sections/section-010/module-01/labs/lab-01
-      - id: module-02
+        path: sections/section-010/module-01/course.md
+      - type: reading
+        title: "What The API Server Checks, And What It Cannot"
+        path: sections/section-010/module-01/course-01-admission-and-the-analysis-gap.md
+      - type: reading
+        title: "Reading What The Analyzer Says"
+        path: sections/section-010/module-01/course-02-reading-analyzer-messages.md
+      - type: reading
+        title: "Choosing The Right Analysis Source"
+        path: sections/section-010/module-01/course-03-analysis-sources-and-the-fix-loop.md
+      - type: reading
+        title: Question
+        path: sections/section-010/module-01/labs/lab-01/question.md
+      - type: lab
+        title: "Find And Fix The Configuration Errors Lab"
+        path: sections/section-010/module-01/labs/lab-01
+        difficulty: beginner
+        estimated_duration: 15m
+        topic: configuration
+        task_kind: troubleshooting
+        tags: [istioctl-analyze, ist0101, virtualservice, destinationrule, subsets, gateway]
+        learning_goals:
+          - Find every reference that does not resolve with istioctl analyze
+          - Fix the VirtualService so it routes only to subsets and gateways that exist
+          - Prove the fix with a clean analyze run and a 200 from the tester pod
+        resources:
+          - name: "Diagnose your configuration with istioctl analyze"
+            url: https://istio.io/latest/docs/ops/diagnostic-tools/istioctl-analyze/
+          - name: "Configuration analysis messages"
+            url: https://istio.io/latest/docs/reference/config/analysis/
+          - name: "IST0101 ReferencedResourceNotFound"
+            url: https://istio.io/latest/docs/reference/config/analysis/ist0101/
+
+      - type: reading
         title: "Summarise A Workload With describe, Capture A Cluster With bug-report"
-        content:
-          - type: reading
-            title: "Module 2: Summarise A Workload With describe, Capture A Cluster With bug-report"
-            path: sections/section-010/module-02/course.md
-          - type: reading
-            title: "Module 2.1: What describe Resolves For One Workload"
-            path: sections/section-010/module-02/course-01-what-describe-resolves.md
-          - type: reading
-            title: "Module 2.2: Making A Proxy Narrate One Decision"
-            path: sections/section-010/module-02/course-02-envoy-log-scopes-at-runtime.md
-          - type: reading
-            title: "Module 2.3: Capturing A Cluster With bug-report"
-            path: sections/section-010/module-02/course-03-bug-report-and-handover.md
-          - type: playground
-            title: "Playground: Summarise A Workload With describe, Capture A Cluster With bug-report"
-            path: sections/section-010/module-02/playground
-          - type: lab
-            title: "Lab: Widen A Policy Without Weakening The Mesh"
-            path: sections/section-010/module-02/labs/lab-01
-    capstone:
+        path: sections/section-010/module-02/course.md
+      - type: reading
+        title: "What describe Resolves For One Workload"
+        path: sections/section-010/module-02/course-01-what-describe-resolves.md
+      - type: reading
+        title: "Making A Proxy Narrate One Decision"
+        path: sections/section-010/module-02/course-02-envoy-log-scopes-at-runtime.md
+      - type: reading
+        title: "Capturing A Cluster With bug-report"
+        path: sections/section-010/module-02/course-03-bug-report-and-handover.md
+      - type: reading
+        title: Question
+        path: sections/section-010/module-02/labs/lab-01/question.md
       - type: lab
-        title: "Capstone: Repair A Namespace Nothing Validates"
+        title: "Widen A Policy Without Weakening The Mesh Lab"
+        path: sections/section-010/module-02/labs/lab-01
+        difficulty: intermediate
+        estimated_duration: 15m
+        topic: configuration
+        task_kind: troubleshooting
+        tags: [istioctl-x-describe, authorizationpolicy, peerauthentication, mtls-strict, envoy-log-level, rbac-403]
+        learning_goals:
+          - Read which policies apply to one workload with istioctl x describe pod
+          - Raise the rbac log scope to see why a request is denied, then set it back to info
+          - Allow GET as well as POST while the workload stays on STRICT mutual TLS
+        resources:
+          - name: "Understand your mesh with istioctl describe"
+            url: https://istio.io/latest/docs/ops/diagnostic-tools/istioctl-describe/
+          - name: "Debugging Envoy and istiod"
+            url: https://istio.io/latest/docs/ops/diagnostic-tools/proxy-cmd/
+          - name: "AuthorizationPolicy reference"
+            url: https://istio.io/latest/docs/reference/config/security/authorization-policy/
+
+      - type: reading
+        title: Question
+        path: sections/section-010/capstone/labs/lab-01/question.md
+      - type: lab
+        title: "Repair A Namespace Nothing Validates Capstone"
         path: sections/section-010/capstone/labs/lab-01
-  - id: section-020
+        difficulty: intermediate
+        estimated_duration: 35m
+        topic: configuration
+        task_kind: troubleshooting
+        tags: [istioctl-analyze, istioctl-x-describe, sidecar-injection, authorizationpolicy, subsets, rbac-403]
+        learning_goals:
+          - Clear every Error and Warning istioctl analyze reports in a namespace
+          - Bring the namespace into the mesh so every workload carries a sidecar
+          - Make an AuthorizationPolicy select its workload and allow only POST
+        resources:
+          - name: "Diagnose your configuration with istioctl analyze"
+            url: https://istio.io/latest/docs/ops/diagnostic-tools/istioctl-analyze/
+          - name: "Understand your mesh with istioctl describe"
+            url: https://istio.io/latest/docs/ops/diagnostic-tools/istioctl-describe/
+          - name: "AuthorizationPolicy reference"
+            url: https://istio.io/latest/docs/reference/config/security/authorization-policy/
+
+  - id: module-020
     title: "Debugging Conflicting And Shadowed Routes"
-    curriculum_item: "Troubleshooting Configuration"
-    path: sections/section-020/README.md
-    modules:
-      - id: module-01
+    description: >
+      How VirtualServices become one route table, what happens when two
+      objects claim one host, and how to find a route rule that can never
+      fire by reading the route table the proxy actually holds.
+
+    content:
+      - type: reading
+        title: Section Overview
+        path: sections/section-020/README.md
+
+      - type: reading
         title: "Debug Conflicting And Shadowed Routes"
-        content:
-          - type: reading
-            title: "Module 1: Debug Conflicting And Shadowed Routes"
-            path: sections/section-020/module-01/course.md
-          - type: reading
-            title: "Module 1.1: How A VirtualService Becomes A Route Table"
-            path: sections/section-020/module-01/course-01-virtualservice-to-route-table.md
-          - type: reading
-            title: "Module 1.2: One Host, Two Owners"
-            path: sections/section-020/module-01/course-02-host-ownership-and-merging.md
-          - type: reading
-            title: "Module 1.3: The Route Table Is The Ground Truth"
-            path: sections/section-020/module-01/course-03-reading-the-route-table.md
-          - type: playground
-            title: "Playground: Debug Conflicting And Shadowed Routes"
-            path: sections/section-020/module-01/playground
-          - type: lab
-            title: "Lab: Make The Header Route Actually Fire"
-            path: sections/section-020/module-01/labs/lab-01
-    capstone:
+        path: sections/section-020/module-01/course.md
+      - type: reading
+        title: "How A VirtualService Becomes A Route Table"
+        path: sections/section-020/module-01/course-01-virtualservice-to-route-table.md
+      - type: reading
+        title: "One Host, Two Owners"
+        path: sections/section-020/module-01/course-02-host-ownership-and-merging.md
+      - type: reading
+        title: "The Route Table Is The Ground Truth"
+        path: sections/section-020/module-01/course-03-reading-the-route-table.md
+      - type: reading
+        title: Question
+        path: sections/section-020/module-01/labs/lab-01/question.md
       - type: lab
-        title: "Capstone: Consolidate Three Claimants Into One Route Table"
+        title: "Make The Header Route Actually Fire Lab"
+        path: sections/section-020/module-01/labs/lab-01
+        difficulty: intermediate
+        estimated_duration: 20m
+        topic: routing
+        task_kind: troubleshooting
+        tags: [virtualservice, rule-order, shadowed-route, host-conflict, header-matching, proxy-config]
+        learning_goals:
+          - Find the second VirtualService that claims the same host and merge it into one
+          - Move the header match above the catch-all route so it can fire
+          - Prove from the route table and real requests that testing=true reaches v2
+        resources:
+          - name: "VirtualService reference"
+            url: https://istio.io/latest/docs/reference/config/networking/virtual-service/
+          - name: "Traffic management problems"
+            url: https://istio.io/latest/docs/ops/common-problems/network-issues/
+          - name: "Debugging Envoy and istiod"
+            url: https://istio.io/latest/docs/ops/diagnostic-tools/proxy-cmd/
+
+      - type: reading
+        title: Question
+        path: sections/section-020/capstone/labs/lab-01/question.md
+      - type: lab
+        title: "Consolidate Three Claimants Into One Route Table Capstone"
         path: sections/section-020/capstone/labs/lab-01
-  - id: section-030
+        difficulty: advanced
+        estimated_duration: 30m
+        topic: routing
+        task_kind: troubleshooting
+        tags: [virtualservice, host-conflict, shadowed-route, rule-order, header-matching, uri-matching, proxy-config]
+        learning_goals:
+          - Replace three VirtualServices for one host with a single one
+          - Order header, path and catch-all rules so every rule can fire
+          - Prove each route with repeated real requests
+        resources:
+          - name: "VirtualService reference"
+            url: https://istio.io/latest/docs/reference/config/networking/virtual-service/
+          - name: "Traffic management problems"
+            url: https://istio.io/latest/docs/ops/common-problems/network-issues/
+
+  - id: module-030
     title: "Troubleshooting The Mesh Control Plane"
-    curriculum_item: "Troubleshooting the Mesh Control Plane"
-    path: sections/section-030/README.md
-    modules:
-      - id: module-01
+    description: >
+      Check that istiod is healthy, that every proxy holds the configuration
+      istiod sent (proxy-status, ACK and NACK), and that every workload has a
+      sidecar at all (the injection webhook, labels and precedence).
+
+    content:
+      - type: reading
+        title: Section Overview
+        path: sections/section-030/README.md
+
+      - type: reading
         title: "Check Control Plane Health"
-        content:
-          - type: reading
-            title: "Module 1: Check Control Plane Health"
-            path: sections/section-030/module-01/course.md
-          - type: reading
-            title: "Module 1.1: Four Jobs In One Process"
-            path: sections/section-030/module-01/course-01-the-four-jobs-of-istiod.md
-          - type: reading
-            title: "Module 1.2: The Instruments"
-            path: sections/section-030/module-01/course-02-instruments-logs-and-metrics.md
-          - type: reading
-            title: "Module 1.3: Outage Anatomy And Rejected Configuration"
-            path: sections/section-030/module-01/course-03-outage-anatomy-and-rejects.md
-          - type: playground
-            title: "Playground: Check Control Plane Health"
-            path: sections/section-030/module-01/playground
-          - type: lab
-            title: "Lab: The Mesh Works And Nothing Can Change"
-            path: sections/section-030/module-01/labs/lab-01
-      - id: module-02
+        path: sections/section-030/module-01/course.md
+      - type: reading
+        title: "Four Jobs In One Process"
+        path: sections/section-030/module-01/course-01-the-four-jobs-of-istiod.md
+      - type: reading
+        title: "The Instruments"
+        path: sections/section-030/module-01/course-02-instruments-logs-and-metrics.md
+      - type: reading
+        title: "Outage Anatomy And Rejected Configuration"
+        path: sections/section-030/module-01/course-03-outage-anatomy-and-rejects.md
+      - type: reading
+        title: Question
+        path: sections/section-030/module-01/labs/lab-01/question.md
+      - type: lab
+        title: "The Mesh Works And Nothing Can Change Lab"
+        path: sections/section-030/module-01/labs/lab-01
+        difficulty: intermediate
+        estimated_duration: 20m
+        topic: control-plane
+        task_kind: troubleshooting
+        tags: [istiod-health, istiod-logs, validating-webhook, proxy-status, virtualservice, xds]
+        learning_goals:
+          - Bring istiod back to a running, ready state and prove it serves configuration
+          - Find and remove the configuration istiod rejected
+          - Prove every proxy in the namespace is SYNCED and traffic returns 200
+        resources:
+          - name: "Component logging"
+            url: https://istio.io/latest/docs/ops/diagnostic-tools/component-logging/
+          - name: "Configuration validation problems"
+            url: https://istio.io/latest/docs/ops/common-problems/validation/
+          - name: "Debugging Envoy and istiod"
+            url: https://istio.io/latest/docs/ops/diagnostic-tools/proxy-cmd/
+
+      - type: reading
         title: "Diagnose Config Sync With proxy-status"
-        content:
-          - type: reading
-            title: "Module 2: Diagnose Config Sync With proxy-status"
-            path: sections/section-030/module-02/course.md
-          - type: reading
-            title: "Module 2.1: How Configuration Reaches A Proxy"
-            path: sections/section-030/module-02/course-01-xds-and-acknowledgement.md
-          - type: reading
-            title: "Module 2.2: Reading The Table"
-            path: sections/section-030/module-02/course-02-reading-the-proxy-status-table.md
-          - type: reading
-            title: "Module 2.3: Absence, And The Per-Proxy Diff"
-            path: sections/section-030/module-02/course-03-absence-and-per-proxy-diff.md
-          - type: playground
-            title: "Playground: Diagnose Config Sync With proxy-status"
-            path: sections/section-030/module-02/playground
-          - type: lab
-            title: "Lab: One Workload Vanished From The Mesh"
-            path: sections/section-030/module-02/labs/lab-01
-      - id: module-03
+        path: sections/section-030/module-02/course.md
+      - type: reading
+        title: "How Configuration Reaches A Proxy"
+        path: sections/section-030/module-02/course-01-xds-and-acknowledgement.md
+      - type: reading
+        title: "Reading The Table"
+        path: sections/section-030/module-02/course-02-reading-the-proxy-status-table.md
+      - type: reading
+        title: "Absence, And The Per-Proxy Diff"
+        path: sections/section-030/module-02/course-03-absence-and-per-proxy-diff.md
+      - type: reading
+        title: Question
+        path: sections/section-030/module-02/labs/lab-01/question.md
+      - type: lab
+        title: "One Workload Vanished From The Mesh Lab"
+        path: sections/section-030/module-02/labs/lab-01
+        difficulty: intermediate
+        estimated_duration: 15m
+        topic: control-plane
+        task_kind: troubleshooting
+        tags: [proxy-status, xds, network-policy, sidecar-injection]
+        learning_goals:
+          - Find which workload is missing from istioctl proxy-status and why
+          - Restore the connection so every proxy is SYNCED on all xDS types
+          - Prove a request from the tester pod returns 200
+        resources:
+          - name: "Debugging Envoy and istiod"
+            url: https://istio.io/latest/docs/ops/diagnostic-tools/proxy-cmd/
+          - name: "Application requirements and ports"
+            url: https://istio.io/latest/docs/ops/deployment/application-requirements/
+
+      - type: reading
         title: "Debug A Workload With No Sidecar"
-        content:
-          - type: reading
-            title: "Module 3: Debug A Workload With No Sidecar"
-            path: sections/section-030/module-03/course.md
-          - type: reading
-            title: "Module 3.1: How Injection Actually Happens"
-            path: sections/section-030/module-03/course-01-the-injection-webhook.md
-          - type: reading
-            title: "Module 3.2: Labels, Selectors And Precedence"
-            path: sections/section-030/module-03/course-02-labels-and-precedence.md
-          - type: reading
-            title: "Module 3.3: Working The Checklist"
-            path: sections/section-030/module-03/course-03-working-the-checklist.md
-          - type: playground
-            title: "Playground: Debug A Workload With No Sidecar"
-            path: sections/section-030/module-03/playground
-          - type: lab
-            title: "Lab: Bring An Exempt Workload Back Into The Mesh"
-            path: sections/section-030/module-03/labs/lab-01
-    capstone:
+        path: sections/section-030/module-03/course.md
+      - type: reading
+        title: "How Injection Actually Happens"
+        path: sections/section-030/module-03/course-01-the-injection-webhook.md
+      - type: reading
+        title: "Labels, Selectors And Precedence"
+        path: sections/section-030/module-03/course-02-labels-and-precedence.md
+      - type: reading
+        title: "Working The Checklist"
+        path: sections/section-030/module-03/course-03-working-the-checklist.md
+      - type: reading
+        title: Question
+        path: sections/section-030/module-03/labs/lab-01/question.md
       - type: lab
-        title: "Capstone: Three Workloads, Three Different Control Plane Faults"
+        title: "Bring An Exempt Workload Back Into The Mesh Lab"
+        path: sections/section-030/module-03/labs/lab-01
+        difficulty: beginner
+        estimated_duration: 15m
+        topic: injection
+        task_kind: troubleshooting
+        tags: [sidecar-injection, injection-opt-out, proxy-status, istioctl-analyze]
+        learning_goals:
+          - Find the pod-template annotation that keeps a workload out of the mesh
+          - Remove the opt-out and roll the workload so its pods get a sidecar
+          - Prove the workload appears in proxy-status and still serves traffic
+        resources:
+          - name: "Sidecar injection problems"
+            url: https://istio.io/latest/docs/ops/common-problems/injection/
+          - name: "Installing the sidecar"
+            url: https://istio.io/latest/docs/setup/additional-setup/sidecar-injection/
+
+      - type: reading
+        title: Question
+        path: sections/section-030/capstone/labs/lab-01/question.md
+      - type: lab
+        title: "Three Workloads, Three Different Control Plane Faults Capstone"
         path: sections/section-030/capstone/labs/lab-01
-  - id: section-040
+        difficulty: advanced
+        estimated_duration: 40m
+        topic: control-plane
+        task_kind: troubleshooting
+        tags: [proxy-status, sidecar-injection, injection-opt-out, revisions, validating-webhook, xds]
+        learning_goals:
+          - Bring three workloads with three different faults into the mesh
+          - Point a namespace at an istiod revision that exists
+          - Prove all three workloads are SYNCED in proxy-status and traffic flows
+        resources:
+          - name: "Sidecar injection problems"
+            url: https://istio.io/latest/docs/ops/common-problems/injection/
+          - name: "Canary upgrades with revisions"
+            url: https://istio.io/latest/docs/setup/upgrade/canary/
+          - name: "Debugging Envoy and istiod"
+            url: https://istio.io/latest/docs/ops/diagnostic-tools/proxy-cmd/
+
+  - id: module-040
     title: "Reading Data Plane Configuration"
-    curriculum_item: "Troubleshooting the Mesh Data Plane"
-    path: sections/section-040/README.md
-    modules:
-      - id: module-01
+    description: >
+      Read what one proxy is configured to do, layer by layer (listeners,
+      routes, clusters, endpoints, secrets), and use that chain to trace a
+      503 to the exact stage that produced it.
+
+    content:
+      - type: reading
+        title: Section Overview
+        path: sections/section-040/README.md
+
+      - type: reading
         title: "Read The Proxy Configuration"
-        content:
-          - type: reading
-            title: "Module 1: Read The Proxy Configuration"
-            path: sections/section-040/module-01/course.md
-          - type: reading
-            title: "Module 1.1: Capture And Listeners"
-            path: sections/section-040/module-01/course-01-capture-and-listeners.md
-          - type: reading
-            title: "Module 1.2: Routes"
-            path: sections/section-040/module-01/course-02-routes.md
-          - type: reading
-            title: "Module 1.3: Clusters And Endpoints"
-            path: sections/section-040/module-01/course-03-clusters-and-endpoints.md
-          - type: reading
-            title: "Module 1.4: The Inbound Direction, Certificates And Method"
-            path: sections/section-040/module-01/course-04-inbound-secrets-and-method.md
-          - type: playground
-            title: "Playground: Read The Proxy Configuration"
-            path: sections/section-040/module-01/playground
-          - type: lab
-            title: "Lab: Build The Routing, Then Prove It From The Proxy"
-            path: sections/section-040/module-01/labs/lab-01
-      - id: module-02
+        path: sections/section-040/module-01/course.md
+      - type: reading
+        title: "Capture And Listeners"
+        path: sections/section-040/module-01/course-01-capture-and-listeners.md
+      - type: reading
+        title: "Routes"
+        path: sections/section-040/module-01/course-02-routes.md
+      - type: reading
+        title: "Clusters And Endpoints"
+        path: sections/section-040/module-01/course-03-clusters-and-endpoints.md
+      - type: reading
+        title: "The Inbound Direction, Certificates And Method"
+        path: sections/section-040/module-01/course-04-inbound-secrets-and-method.md
+      - type: reading
+        title: Question
+        path: sections/section-040/module-01/labs/lab-01/question.md
+      - type: lab
+        title: "Build The Routing, Then Prove It From The Proxy Lab"
+        path: sections/section-040/module-01/labs/lab-01
+        difficulty: intermediate
+        estimated_duration: 25m
+        topic: data-plane
+        task_kind: build
+        tags: [proxy-config, routes, clusters, endpoints, subsets, header-matching, destinationrule, virtualservice]
+        learning_goals:
+          - Write a DestinationRule with v1 and v2 subsets and a VirtualService that sends testing=true to v2
+          - Prove from the proxy route table that the header route points at the v2 cluster
+          - Prove both subset clusters have a HEALTHY endpoint
+        resources:
+          - name: "Debugging Envoy and istiod"
+            url: https://istio.io/latest/docs/ops/diagnostic-tools/proxy-cmd/
+          - name: "DestinationRule reference"
+            url: https://istio.io/latest/docs/reference/config/networking/destination-rule/
+          - name: "VirtualService reference"
+            url: https://istio.io/latest/docs/reference/config/networking/virtual-service/
+
+      - type: reading
         title: "Debug A 503 Caused By A Missing Subset"
-        content:
-          - type: reading
-            title: "Module 2: Debug A 503 Caused By A Missing Subset"
-            path: sections/section-040/module-02/course.md
-          - type: reading
-            title: "Module 2.1: Who Answered With 503"
-            path: sections/section-040/module-02/course-01-who-answered-with-503.md
-          - type: reading
-            title: "Module 2.2: Walking The Chain"
-            path: sections/section-040/module-02/course-02-walking-the-chain.md
-          - type: reading
-            title: "Module 2.3: Choosing The Fix, And The Other Cause"
-            path: sections/section-040/module-02/course-03-choosing-the-fix.md
-          - type: playground
-            title: "Playground: Debug A 503 Caused By A Missing Subset"
-            path: sections/section-040/module-02/playground
-          - type: lab
-            title: "Lab: Trace A 503 To Its Exact Stage"
-            path: sections/section-040/module-02/labs/lab-01
-    capstone:
+        path: sections/section-040/module-02/course.md
+      - type: reading
+        title: "Who Answered With 503"
+        path: sections/section-040/module-02/course-01-who-answered-with-503.md
+      - type: reading
+        title: "Walking The Chain"
+        path: sections/section-040/module-02/course-02-walking-the-chain.md
+      - type: reading
+        title: "Choosing The Fix, And The Other Cause"
+        path: sections/section-040/module-02/course-03-choosing-the-fix.md
+      - type: reading
+        title: Question
+        path: sections/section-040/module-02/labs/lab-01/question.md
       - type: lab
-        title: "Capstone: Two 503s, Two Different Stages"
+        title: "Trace A 503 To Its Exact Stage Lab"
+        path: sections/section-040/module-02/labs/lab-01
+        difficulty: intermediate
+        estimated_duration: 15m
+        topic: data-plane
+        task_kind: troubleshooting
+        tags: [proxy-config, routes, clusters, subsets, 503-nc, destinationrule]
+        learning_goals:
+          - Walk the route, cluster and endpoint chain to the stage that fails
+          - Fix the route without inventing a subset whose labels match no pod
+          - Prove every request returns 200
+        resources:
+          - name: "Debugging Envoy and istiod"
+            url: https://istio.io/latest/docs/ops/diagnostic-tools/proxy-cmd/
+          - name: "Traffic management problems"
+            url: https://istio.io/latest/docs/ops/common-problems/network-issues/
+
+      - type: reading
+        title: Question
+        path: sections/section-040/capstone/labs/lab-01/question.md
+      - type: lab
+        title: "Two 503s, Two Different Stages Capstone"
         path: sections/section-040/capstone/labs/lab-01
-  - id: section-050
+        difficulty: advanced
+        estimated_duration: 35m
+        topic: data-plane
+        task_kind: troubleshooting
+        tags: [proxy-config, routes, clusters, endpoints, protocol-selection, service-ports]
+        learning_goals:
+          - Trace two 503s on two services to two different stages of the proxy chain
+          - Fix a route that names a cluster that does not exist
+          - Declare the HTTP protocol on a Service port so routing rules apply
+        resources:
+          - name: "Debugging Envoy and istiod"
+            url: https://istio.io/latest/docs/ops/diagnostic-tools/proxy-cmd/
+          - name: "Protocol selection"
+            url: https://istio.io/latest/docs/ops/configuration/traffic-management/protocol-selection/
+
+  - id: module-050
     title: "Debugging Data Plane Request Failures"
-    curriculum_item: "Troubleshooting the Mesh Data Plane"
-    path: sections/section-050/README.md
-    modules:
-      - id: module-01
+    description: >
+      Turn access logging on and scope it, read every field of an access log
+      line and its response flag, tell which proxy wrote it, and debug a 503
+      caused by an mTLS mismatch without weakening the mesh.
+
+    content:
+      - type: reading
+        title: Section Overview
+        path: sections/section-050/README.md
+
+      - type: reading
         title: "Read Envoy Access Logs And Response Flags"
-        content:
-          - type: reading
-            title: "Module 1: Read Envoy Access Logs And Response Flags"
-            path: sections/section-050/module-01/course.md
-          - type: reading
-            title: "Module 1.1: Turning Logging On, And Scoping It"
-            path: sections/section-050/module-01/course-01-enabling-and-scoping-logs.md
-          - type: reading
-            title: "Module 1.2: The Anatomy Of A Line"
-            path: sections/section-050/module-01/course-02-anatomy-of-a-log-line.md
-          - type: reading
-            title: "Module 1.3: Flags, And Which Proxy Wrote The Line"
-            path: sections/section-050/module-01/course-03-flags-and-which-proxy.md
-          - type: reading
-            title: "Module 1.4: Producing Each Failure On Demand"
-            path: sections/section-050/module-01/course-04-producing-each-failure.md
-          - type: playground
-            title: "Playground: Read Envoy Access Logs And Response Flags"
-            path: sections/section-050/module-01/playground
-          - type: lab
-            title: "Lab: Scope The Logs, Bound The Latency, Name The Flag"
-            path: sections/section-050/module-01/labs/lab-01
-      - id: module-02
+        path: sections/section-050/module-01/course.md
+      - type: reading
+        title: "Turning Logging On, And Scoping It"
+        path: sections/section-050/module-01/course-01-enabling-and-scoping-logs.md
+      - type: reading
+        title: "The Anatomy Of A Line"
+        path: sections/section-050/module-01/course-02-anatomy-of-a-log-line.md
+      - type: reading
+        title: "Flags, And Which Proxy Wrote The Line"
+        path: sections/section-050/module-01/course-03-flags-and-which-proxy.md
+      - type: reading
+        title: "Producing Each Failure On Demand"
+        path: sections/section-050/module-01/course-04-producing-each-failure.md
+      - type: reading
+        title: Question
+        path: sections/section-050/module-01/labs/lab-01/question.md
+      - type: lab
+        title: "Scope The Logs, Bound The Latency, Name The Flag Lab"
+        path: sections/section-050/module-01/labs/lab-01
+        difficulty: intermediate
+        estimated_duration: 25m
+        topic: request-failures
+        task_kind: build
+        tags: [telemetry, access-log, timeouts, response-flags, 504-ut, virtualservice]
+        learning_goals:
+          - Turn access logging on for one namespace with a Telemetry object
+          - Set a 2 second timeout on notification-service with a VirtualService
+          - Produce a timeout and find its UT response flag in the client proxy log
+        resources:
+          - name: "Envoy access logs"
+            url: https://istio.io/latest/docs/tasks/observability/logs/access-log/
+          - name: "Telemetry API reference"
+            url: https://istio.io/latest/docs/reference/config/telemetry/
+          - name: "Envoy access log format and response flags"
+            url: https://www.envoyproxy.io/docs/envoy/latest/configuration/observability/access_log/usage
+
+      - type: reading
         title: "Debug A 503 Caused By An mTLS Mismatch"
-        content:
-          - type: reading
-            title: "Module 2: Debug A 503 Caused By An mTLS Mismatch"
-            path: sections/section-050/module-02/course.md
-          - type: reading
-            title: "Module 2.1: Two Objects, Two Ends Of One Connection"
-            path: sections/section-050/module-02/course-01-two-objects-two-ends.md
-          - type: reading
-            title: "Module 2.2: The Signature"
-            path: sections/section-050/module-02/course-02-the-signature.md
-          - type: reading
-            title: "Module 2.3: Fixing It, And Proving Encryption"
-            path: sections/section-050/module-02/course-03-fixing-and-proving-encryption.md
-          - type: playground
-            title: "Playground: Debug A 503 Caused By An mTLS Mismatch"
-            path: sections/section-050/module-02/playground
-          - type: lab
-            title: "Lab: A 503 Where The Destination Log Is Empty"
-            path: sections/section-050/module-02/labs/lab-01
-    capstone:
+        path: sections/section-050/module-02/course.md
+      - type: reading
+        title: "Two Objects, Two Ends Of One Connection"
+        path: sections/section-050/module-02/course-01-two-objects-two-ends.md
+      - type: reading
+        title: "The Signature"
+        path: sections/section-050/module-02/course-02-the-signature.md
+      - type: reading
+        title: "Fixing It, And Proving Encryption"
+        path: sections/section-050/module-02/course-03-fixing-and-proving-encryption.md
+      - type: reading
+        title: Question
+        path: sections/section-050/module-02/labs/lab-01/question.md
       - type: lab
-        title: "Capstone: Diagnose Two Failures From The Logs Alone"
+        title: "A 503 Where The Destination Log Is Empty Lab"
+        path: sections/section-050/module-02/labs/lab-01
+        difficulty: intermediate
+        estimated_duration: 20m
+        topic: security
+        task_kind: troubleshooting
+        tags: [mtls-mismatch, mtls-strict, peerauthentication, destinationrule, access-log, 503-uf]
+        learning_goals:
+          - Read the access logs on both sides to find a connection that never arrived
+          - Remove the client-side TLS setting that conflicts with STRICT mutual TLS
+          - Prove the connection is mutual TLS without relaxing the PeerAuthentication
+        resources:
+          - name: "Security problems"
+            url: https://istio.io/latest/docs/ops/common-problems/security-issues/
+          - name: "PeerAuthentication reference"
+            url: https://istio.io/latest/docs/reference/config/security/peer_authentication/
+          - name: "DestinationRule reference"
+            url: https://istio.io/latest/docs/reference/config/networking/destination-rule/
+
+      - type: reading
+        title: Question
+        path: sections/section-050/capstone/labs/lab-01/question.md
+      - type: lab
+        title: "Diagnose Two Failures From The Logs Alone Capstone"
         path: sections/section-050/capstone/labs/lab-01
-  - id: section-060
+        difficulty: advanced
+        estimated_duration: 35m
+        topic: request-failures
+        task_kind: troubleshooting
+        tags: [access-log, response-flags, mtls-mismatch, mtls-strict, authorizationpolicy, rbac-403]
+        learning_goals:
+          - Tell an mTLS mismatch from an authorization denial using only the access logs
+          - Fix the client TLS setting while the server stays STRICT
+          - Correct the AuthorizationPolicy so the intended method gets 200 and the rest 403
+        resources:
+          - name: "Envoy access logs"
+            url: https://istio.io/latest/docs/tasks/observability/logs/access-log/
+          - name: "Security problems"
+            url: https://istio.io/latest/docs/ops/common-problems/security-issues/
+          - name: "AuthorizationPolicy reference"
+            url: https://istio.io/latest/docs/reference/config/security/authorization-policy/
+
+  - id: module-060
     title: "Troubleshooting With Mesh Observability"
-    curriculum_item: "Troubleshooting Configuration / the Mesh Data Plane"
-    path: sections/section-060/README.md
-    modules:
-      - id: module-01
+    description: >
+      Use Kiali, Prometheus and Grafana to see where a failure is, how big it
+      is and since when, and to prove a fix worked, knowing what each tool is
+      built from and what it cannot show.
+
+    content:
+      - type: reading
+        title: Section Overview
+        path: sections/section-060/README.md
+
+      - type: reading
         title: "Troubleshoot With Kiali"
-        content:
-          - type: reading
-            title: "Module 1: Troubleshoot With Kiali"
-            path: sections/section-060/module-01/course.md
-          - type: reading
-            title: "Module 1.1: What Kiali Is Built From"
-            path: sections/section-060/module-01/course-01-what-kiali-is-built-from.md
-          - type: reading
-            title: "Module 1.2: Reading The Graph"
-            path: sections/section-060/module-01/course-02-reading-the-graph.md
-          - type: reading
-            title: "Module 1.3: Validations, Badges And Cross-Checking"
-            path: sections/section-060/module-01/course-03-validations-and-cross-checking.md
-          - type: playground
-            title: "Playground: Troubleshoot With Kiali"
-            path: sections/section-060/module-01/playground
-          - type: lab
-            title: "Lab: An Empty Graph And A Red Badge"
-            path: sections/section-060/module-01/labs/lab-01
-      - id: module-02
-        title: "Troubleshoot With Prometheus And Grafana"
-        content:
-          - type: reading
-            title: "Module 2: Troubleshoot With Prometheus And Grafana"
-            path: sections/section-060/module-02/course.md
-          - type: reading
-            title: "Module 2.1: The Metrics Pipeline"
-            path: sections/section-060/module-02/course-01-the-metrics-pipeline.md
-          - type: reading
-            title: "Module 2.2: The reporter Label And PromQL Patterns"
-            path: sections/section-060/module-02/course-02-reporter-and-promql.md
-          - type: reading
-            title: "Module 2.3: Measuring A Known Failure, And Grafana"
-            path: sections/section-060/module-02/course-03-measuring-a-failure-and-grafana.md
-          - type: playground
-            title: "Playground: Troubleshoot With Prometheus And Grafana"
-            path: sections/section-060/module-02/playground
-          - type: lab
-            title: "Lab: Measure The Failure Before You Fix It"
-            path: sections/section-060/module-02/labs/lab-01
-    capstone:
+        path: sections/section-060/module-01/course.md
+      - type: reading
+        title: "What Kiali Is Built From"
+        path: sections/section-060/module-01/course-01-what-kiali-is-built-from.md
+      - type: reading
+        title: "Reading The Graph"
+        path: sections/section-060/module-01/course-02-reading-the-graph.md
+      - type: reading
+        title: "Validations, Badges And Cross-Checking"
+        path: sections/section-060/module-01/course-03-validations-and-cross-checking.md
+      - type: reading
+        title: Question
+        path: sections/section-060/module-01/labs/lab-01/question.md
       - type: lab
-        title: "Capstone: Measure A Failure, Fix It, Prove It"
+        title: "An Empty Graph And A Red Badge Lab"
+        path: sections/section-060/module-01/labs/lab-01
+        difficulty: intermediate
+        estimated_duration: 25m
+        topic: observability
+        task_kind: troubleshooting
+        tags: [kiali, prometheus, istio-metrics, istioctl-analyze, virtualservice]
+        learning_goals:
+          - Get the Prometheus and Kiali addons running so the graph can fill
+          - Fix the configuration Kiali marks as invalid and confirm with istioctl analyze
+          - Prove request metrics exist for the tester to notification-service edge
+        resources:
+          - name: "Kiali integration"
+            url: https://istio.io/latest/docs/ops/integrations/kiali/
+          - name: "Prometheus integration"
+            url: https://istio.io/latest/docs/ops/integrations/prometheus/
+          - name: "Visualizing your mesh"
+            url: https://istio.io/latest/docs/tasks/observability/kiali/
+
+      - type: reading
+        title: "Troubleshoot With Prometheus And Grafana"
+        path: sections/section-060/module-02/course.md
+      - type: reading
+        title: "The Metrics Pipeline"
+        path: sections/section-060/module-02/course-01-the-metrics-pipeline.md
+      - type: reading
+        title: "The reporter Label And PromQL Patterns"
+        path: sections/section-060/module-02/course-02-reporter-and-promql.md
+      - type: reading
+        title: "Measuring A Known Failure, And Grafana"
+        path: sections/section-060/module-02/course-03-measuring-a-failure-and-grafana.md
+      - type: reading
+        title: Question
+        path: sections/section-060/module-02/labs/lab-01/question.md
+      - type: lab
+        title: "Measure The Failure Before You Fix It Lab"
+        path: sections/section-060/module-02/labs/lab-01
+        difficulty: intermediate
+        estimated_duration: 25m
+        topic: observability
+        task_kind: troubleshooting
+        tags: [prometheus, grafana, promql, istio-metrics, reporter-label, fault-injection]
+        learning_goals:
+          - Measure an error ratio with a PromQL query over istio_requests_total
+          - Remove the fault-injecting VirtualService that causes the failures
+          - Prove with Prometheus that the workload now answers with 200
+        resources:
+          - name: "Istio standard metrics"
+            url: https://istio.io/latest/docs/reference/config/metrics/
+          - name: "Querying metrics from Prometheus"
+            url: https://istio.io/latest/docs/tasks/observability/metrics/querying-metrics/
+          - name: "Grafana integration"
+            url: https://istio.io/latest/docs/ops/integrations/grafana/
+
+      - type: reading
+        title: Question
+        path: sections/section-060/capstone/labs/lab-01/question.md
+      - type: lab
+        title: "Measure A Failure, Fix It, Prove It Capstone"
         path: sections/section-060/capstone/labs/lab-01
+        difficulty: advanced
+        estimated_duration: 40m
+        topic: observability
+        task_kind: troubleshooting
+        tags: [prometheus, kiali, grafana, telemetry, fault-injection, istioctl-analyze, istio-metrics]
+        learning_goals:
+          - Get Prometheus, Kiali and Grafana running and scope access logging to one namespace
+          - Find and remove the injected fault, a dangling subset and a duplicated host
+          - Prove with metrics that the error ratio is back to zero
+        resources:
+          - name: "Kiali integration"
+            url: https://istio.io/latest/docs/ops/integrations/kiali/
+          - name: "Istio standard metrics"
+            url: https://istio.io/latest/docs/reference/config/metrics/
+          - name: "Telemetry API reference"
+            url: https://istio.io/latest/docs/reference/config/telemetry/
