@@ -2,7 +2,7 @@
 
 Solve this question on: `terminal`
 
-Astronaut, three teams have each written a flight plan for the same beacon, and the signals now fly wherever the merge sends them. Istio 1.30.5 is installed.
+Three teams have each written routing for the same Service, and requests now go wherever the proxy happens to send them. Istio 1.30.5 is installed.
 
 Over the past year, three teams have each added a `VirtualService` for `notification-service` in the namespace `routing-demo`. `v1` answers `["EMAIL"]` and `v2` answers `["EMAIL","SMS"]`.
 
@@ -14,14 +14,14 @@ The intended behaviour, written in three separate tickets, is:
 | path starts with `/priority` | `v2` |
 | anything else | `v1` |
 
-None of it works reliably. `istioctl analyze` reports only `Warning`s, and restarting the workloads changes nothing.
+None of it works reliably. `kubectl apply` accepted every object, and restarting the workloads changes nothing.
 
 ## Your task
 
 In the namespace `routing-demo`:
 
 1. Find out how many objects claim the host, and what the proxy's route table really contains. Do not trust any single YAML file.
-2. Merge the routing so all three intended behaviours hold.
+2. Combine the routing into one object so all three intended behaviours hold.
 
 ## Constraints
 

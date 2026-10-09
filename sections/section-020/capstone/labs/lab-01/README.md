@@ -1,3 +1,7 @@
+---
+estimated_duration: 30m
+---
+
 # Capstone: Consolidate Three Claimants Into One Route Table
 
 - **ID:** CAPSTONE

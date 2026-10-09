@@ -1,16 +1,12 @@
 # One Host, Two Owners
 
-Astronaut, a `VirtualService` (a flight plan for a beacon) becomes one ordered list of routes inside one virtual host, and the sidecar proxy follows the first route that fits. This part asks the next question: what happens when **two** flight plans want to fill the same list? The answer is not "the newer one wins", and it is not "Istio rejects one". It is worse than either, and knowing why stops you from writing it.
+A `VirtualService` becomes one ordered list of routes inside one virtual host, and the sidecar proxy follows the first route that fits. This part asks the next question: what happens when **two** `VirtualService` objects claim the same host? The answer is not "the newer one wins", and it is not "Istio rejects one". Knowing what really happens stops you from writing it, and tells you where to look when you meet it.
 
-## Fixing the order would not be enough
+## Find a host with two owners
 
-Before going further, check that this planet has a second problem. One command does it, and it is worth making a habit.
+Before you change any rule order, check whether more than one object claims the host. One command does it, and it is worth making a habit. It lists every `VirtualService` in the namespace with the hosts it claims and the gateways it is bound to.
 
 <!-- astrona:playground:renew -->
-
-### Find a host with two claimants
-
-List every `VirtualService` in the namespace with the hosts it claims and the gateways it is bound to:
 
 ```sh
 kubectl -n conflict-demo get virtualservice \
@@ -20,42 +16,38 @@ kubectl -n conflict-demo get virtualservice \
 You should see something like:
 
 ```text
-NAME                  HOSTS                      GATEWAYS
-notification          [notification-service]     <none>
-notification-extra    [notification-service]     <none>
+NAME                 HOSTS                    GATEWAYS
+notification         [notification-service]   <none>
+notification-extra   [notification-service]   <none>
 ```
 
-Two objects, one host, and neither is bound to a gateway. So both apply to traffic inside the mesh, and both describe the same virtual host. Run this in any namespace where routing behaves inconsistently, before you read a line of either object. The `GATEWAYS` column matters too, for a reason the end of this part explains.
+Two objects claim one host, and neither is bound to a gateway. So both apply to traffic inside the mesh, and both describe the same virtual host. Run this command in any namespace where routing behaves inconsistently, before you read a line of either object. The `GATEWAYS` column matters too, for a reason the end of this part explains.
 
-## What Istio does with two claimants
+## What Istio does with two owners
 
-`istiod`, mission control, does not reject either object, and it does not pick a winner. It **merges** them into the single virtual host the proxy can hold, by joining their route lists.
+`istiod` does not reject either object. For the sidecar proxies, it also does not merge them: **host merging is not supported in sidecars**. While `istiod` builds a proxy's route configuration, the first object that claims the host creates the virtual host. Every later object for the same host is dropped for that host, and `istiod` only records it in its `pilot_vservice_dup_domain` metric.
 
 ```mermaid
 flowchart TB
-    A["VirtualService: notification"] -->|"routes A, B"| VH["VirtualHost: notification-service"]
-    B["VirtualService: notification-extra"] -->|"route C"| VH
-    VH -->|"A, B, C in some order"| P["sidecar route table"]
+    A["VirtualService: notification"] -->|"one of them"| VH["VirtualHost: notification-service"]
+    B["VirtualService: notification-extra"] -->|"the other is dropped"| X["ignored"]
+    VH -->|"its rules only"| P["sidecar route table"]
 ```
 
-The diagram shows two flight plans poured into one checklist. All the routes arrive. What you do not control is their order, and the order is the whole meaning, because the first match wins. A configuration whose meaning depends on an order nobody chose is not "slightly risky". Its behaviour is simply not decided by what you wrote.
+The diagram shows two objects for one host, where only one reaches the proxy's route table. Which one wins depends on the internal order in which `istiod` processes objects, not on anything in your YAML. Istio does not promise any order, so its analyzer calls the result undefined behavior.
 
 The practical results are what make this worth a part of its own:
 
-- **It works.** Traffic flows, requests get answers, nothing errors. There is no outage to investigate.
-- **It is stable until it is not.** The order holds until one of the objects is edited, created again, or synced again. Then it may change.
-- **The change that breaks it need not touch the object that breaks.** Someone edits `notification-extra`, and the behaviour of `notification` changes. There is no trail from cause to effect.
-- **It passes every test you would think to run.** A test suite written after the merge settled treats the current order as the expected behaviour.
+- **It works.** Requests get answers and nothing reports an error, so there is no outage to investigate.
+- **Whole rules disappear.** Every rule in the losing object is gone, however correct it is.
+- **The change that breaks it need not touch the object that breaks.** Someone deletes or recreates `notification-extra`, and the behaviour of `notification` changes.
+- **It passes every test you would think to run.** A test written after the winner settled treats the current result as the expected behaviour.
 
-Istio's own documentation calls the outcome for conflicting hosts undefined. The practical rule is absolute: **exactly one `VirtualService` per host, per gateway scope.**
+The practical rule is absolute: **exactly one `VirtualService` per host, per gateway scope.**
 
-## What the analyzer says, and how loudly
+## What the analyzer says
 
-`istioctl analyze` is the pre-flight inspector: it reads every object together and reports problems with a code, a severity and the object it blames. This is a case where the severity can fool you.
-
-### Ask the analyzer
-
-Run the analyzer on the planet:
+`istioctl analyze` reads every Istio object together and reports each problem with a severity, an `IST####` code and the object it blames. Run it on the namespace:
 
 ```sh
 istioctl analyze -n conflict-demo
@@ -64,50 +56,53 @@ istioctl analyze -n conflict-demo
 You should see something like:
 
 ```text
-Warning [IST0109] (VirtualService notification-extra.conflict-demo) The VirtualServices notification-extra.conflict-demo, notification.conflict-demo associated with mesh gateway define the same host notification-service which can lead to undefined behavior. This can be fixed by merging the conflicting VirtualServices into a single resource.
+Error [IST0109] (VirtualService conflict-demo/notification-extra) The VirtualServices conflict-demo/notification,conflict-demo/notification-extra associated with mesh gateway define the same host */notification-service.conflict-demo.svc.cluster.local which can lead to undefined behavior. This can be fixed by merging the conflicting VirtualServices into a single resource.
+Error [IST0109] (VirtualService conflict-demo/notification) The VirtualServices conflict-demo/notification,conflict-demo/notification-extra associated with mesh gateway define the same host */notification-service.conflict-demo.svc.cluster.local which can lead to undefined behavior. This can be fixed by merging the conflicting VirtualServices into a single resource.
+Warning [IST0130] (VirtualService conflict-demo/notification) VirtualService rule #1 not used (route without matches defined before).
+Error: Analyzers found issues when analyzing namespace: conflict-demo.
+See https://istio.io/v1.30/docs/reference/config/analysis for more information about causes and resolutions.
 ```
 
-It is a `Warning`, not an `Error`: nothing here is invalid, and Istio will serve this configuration forever. Two phrases in the message are exact. **`associated with mesh gateway`** names the scope where the conflict lives. **`undefined behavior`** is a statement about the result not being decided, not a hedge. The suggested fix, merging into one object, is the only correct one.
+The analyzer prints the `IST0109` message twice, once on each object that claims the host, and it names each object as `<namespace>/<name>`. The third line, `IST0130`, is the shadowed rule inside `notification`; this part is about the first problem.
 
-The message also tells you how the problem was found. The analyzer compared two objects. The Kubernetes API server checks each object on its own when you apply it, like a registry clerk who never compares one form with another, so both objects passed. Only a tool that reads the whole set can see the clash.
+`IST0109` is an `Error`, and yet `kubectl apply` accepted both objects and Istio serves them. Two phrases in the message are exact. **`associated with mesh gateway`** names the scope where the conflict lives. **`undefined behavior`** says the result is not decided by the configuration. The suggested fix, merging the rules into one object, is the correct one.
 
-## Scope: gateways are what make two objects legitimate
+The message also shows how the problem was found. The analyzer compared two objects. The API server checks each object on its own when you apply it, so both objects passed. Only a tool that reads the whole configuration set can see the clash.
 
-The phrase `associated with mesh gateway` points at the real ownership rule. A `VirtualService` applies within a **gateway scope**, set by `spec.gateways`:
+## Gateway scope decides whether two objects conflict
+
+The phrase `associated with mesh gateway` points at the real ownership rule. A `VirtualService` applies within a **gateway scope**, set by `spec.gateways`. An ingress gateway is an Envoy proxy at the edge of the mesh that accepts traffic from outside the cluster; a `Gateway` object configures it. The special name `mesh` means all the sidecar proxies inside the mesh:
 
 | `spec.gateways` | Scope |
 | --- | --- |
-| omitted | `mesh`, the default: applies to sidecars inside the mesh |
+| omitted | `mesh`, the default: applies to the sidecar proxies inside the mesh |
 | `["mesh"]` | the same, written out |
-| `["my-gateway"]` | only traffic arriving through that `Gateway` (the spaceport arrival gate) |
+| `["my-gateway"]` | only traffic arriving through that `Gateway` |
 | `["mesh", "my-gateway"]` | both |
 
-Two objects that claim one host **in different scopes are not in conflict**. They describe different virtual hosts, in different proxies' route configurations. That is the intended design when traffic from outside the solar system needs different routing from traffic inside it:
+Two objects that claim one host **in different scopes do not conflict**. They describe different virtual hosts, in the route configurations of different proxies. That is the intended design when traffic from outside the cluster needs different routing from traffic inside it:
 
 ```mermaid
 flowchart LR
-    E["notification-external"] -->|"gateways: public-gw"| G["ingress gateway route table"]
-    I["notification-internal"] -->|"gateways: mesh"| S["every sidecar route table"]
+    E["notification-external"] -->|"gateways: public-gw"| G["ingress gateway routes"]
+    I["notification-internal"] -->|"gateways: mesh"| S["sidecar routes"]
 ```
 
-The diagram shows two objects for one host that never meet, because each lands in a different proxy. So "one object per host" is shorthand. The exact rule is **one object per host per scope**. Splitting by gateway binding is the legitimate way to have two, but a `VirtualService` that lists both `mesh` and a gateway brings the overlap straight back.
+The diagram shows two objects for one host that never meet, because each one reaches a different proxy. So "one object per host" is shorthand, and the exact rule is **one object per host per scope**. A `VirtualService` that lists both `mesh` and a gateway brings the overlap straight back.
 
-## The merge does have documented rules: do not rely on them
+## Planned ways to split routing
 
-Istio does define merge behaviour in a few cases. For services bound to a gateway, a `VirtualService` without a rule for the root path can be merged with others. And delegation, through `spec.http[].delegate`, is an explicit, ordered way to combine objects.
+Istio does support splitting one host's routing across objects in two cases, and both are written down rather than left to chance. For objects bound to a **gateway**, `istiod` merges the route rules of several objects for the same host. Catch-all rules move to the end of the merged list, and the first catch-all applied overrides the others. This merge works only for gateways, never for sidecars.
 
-Delegation is the supported answer when several teams really need to own parts of one host's routing. A root `VirtualService` owns the host and hands path prefixes to other objects by name. The combination is then written down, not guessed.
+The other case is **delegation**, through `spec.http[].delegate`. A root `VirtualService` owns the host and hands named parts of its routing, such as path prefixes, to other `VirtualService` objects. This is the supported answer when several teams really need to own parts of one host's routing, because the combination is explicit and ordered.
 
-What you should not do is rely on the *accidental* merge of two independent objects that happen to name the same host. That is the difference between a planned combination and a collision.
+You now know that two `VirtualService` objects for one host in the mesh scope are not merged: the proxy uses one of them and drops the other, and `istioctl analyze` reports it as `IST0109`. You also know that different gateway scopes, gateway merging and delegation are the planned ways to split routing. What is still open is proof. You have the analyzer's message, but not yet the route table the proxy actually holds.
 
 ## Common pitfalls
 
 > [!WARNING]
-> - **Splitting one host across two `VirtualService` objects in the same scope.** Istio merges them and you do not control the order. Merge them into one, or separate them by gateway binding.
-> - **Ignoring `IST0109` because it is only a Warning.** Valid configuration with undefined behaviour is the worst mix: it passes every test you write.
-> - **Assuming the newer object wins.** Nothing in Istio says so. Neither does creation time, name order or file order in your repository.
-> - **Believing a conflict is solved because the symptom moved.** Editing either object can reshuffle the merge. A symptom that moves without a deliberate fix is still undefined behaviour.
+> - **Splitting one host across two `VirtualService` objects in the mesh scope.** The sidecar proxy uses only one of them. Merge the rules into one object, or separate the objects by gateway binding.
+> - **Expecting Istio to merge the rules for sidecars.** Host merging works only for objects bound to a gateway.
+> - **Assuming the newer object wins.** Nothing in the API says so. Neither does the name or the order of files in your repository.
+> - **Believing a conflict is solved because the symptom moved.** Deleting or recreating either object can change which one wins. A symptom that moves without a deliberate fix is still undefined behavior.
 > - **Listing both `mesh` and a gateway in `spec.gateways` on two objects.** The scopes overlap again, and you are back where you started.
-> - **Using delegation to hide a collision.** Delegation is for planned combination. If two teams collide, decide who owns the host first.
-
-> *One host, one VirtualService, per gateway scope: anything else hands the order to something you do not control.*

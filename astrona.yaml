@@ -203,7 +203,7 @@ modules:
         task_kind: troubleshooting
         tags: [virtualservice, rule-order, shadowed-route, host-conflict, header-matching, proxy-config]
         learning_goals:
-          - Find the second VirtualService that claims the same host and merge it into one
+          - Find the second VirtualService that claims the same host and leave one owner
           - Move the header match above the catch-all route so it can fire
           - Prove from the route table and real requests that testing=true reaches v2
         resources:
@@ -214,8 +214,8 @@ modules:
           - name: "Debugging Envoy and istiod"
             url: https://istio.io/latest/docs/ops/diagnostic-tools/proxy-cmd/
       - type: reading
-        title: "Wrap-Up: Mission Debrief"
-        path: sections/section-020/module-01/course-04-wrap-up.md
+        title: Summary
+        path: sections/section-020/module-01/course-04-summary.md
 
       - type: reading
         title: Question

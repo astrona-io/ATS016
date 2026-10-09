@@ -25,22 +25,26 @@ kubectl -n conflict-demo get virtualservice \
 ```
 
 ```text
-NAME                  HOSTS                     GATEWAYS
-notification          [notification-service]    <none>
-notification-extra    [notification-service]    <none>
+NAME                 HOSTS                    GATEWAYS
+notification         [notification-service]   <none>
+notification-extra   [notification-service]   <none>
 ```
 
-Two objects, one host, both on the mesh gateway. Istio **merges** them into one virtual host, and nothing you control decides the order of the merged rules. The analyzer says so:
+Two objects, one host, both on the mesh gateway. Host merging is not supported in sidecars, so the proxy uses only one of the two objects for this host and drops the other. Nothing in your YAML decides which one wins. The analyzer says so:
 
 ```sh
 istioctl analyze -n conflict-demo
 ```
 
 ```text
-Warning [IST0109] ... define the same host notification-service which can lead to undefined behavior.
+Error [IST0109] (VirtualService conflict-demo/notification-extra) The VirtualServices conflict-demo/notification,conflict-demo/notification-extra associated with mesh gateway define the same host */notification-service.conflict-demo.svc.cluster.local which can lead to undefined behavior. This can be fixed by merging the conflicting VirtualServices into a single resource.
+Error [IST0109] (VirtualService conflict-demo/notification) The VirtualServices conflict-demo/notification,conflict-demo/notification-extra associated with mesh gateway define the same host */notification-service.conflict-demo.svc.cluster.local which can lead to undefined behavior. This can be fixed by merging the conflicting VirtualServices into a single resource.
+Warning [IST0130] (VirtualService conflict-demo/notification) VirtualService rule #1 not used (route without matches defined before).
+Error: Analyzers found issues when analyzing namespace: conflict-demo.
+See https://istio.io/v1.30/docs/reference/config/analysis for more information about causes and resolutions.
 ```
 
-The output above is shortened. It is a `Warning`, not an `Error`: nothing here is invalid, which is why it survived.
+The analyzer reports both causes. `IST0109` appears once on each object that claims the host. `IST0109` is an `Error`, yet `kubectl apply` accepted both objects: the API server checks each object on its own and never compares two of them.
 
 ## Step 3: Find cause two, a shadowed rule
 
@@ -50,22 +54,26 @@ Print the `spec` of the `notification` object:
 kubectl -n conflict-demo get virtualservice notification -o yaml | sed -n '/^spec:/,$p'
 ```
 
-The catch-all route sits at index 0 and the header rule at index 1. The proxy walks `http:` from the top and **the first match wins**. A rule with no `match` block becomes a prefix match on `/`, which is true for every request, so everything below it can never be reached.
+The catch-all route sits at index 0 and the header rule at index 1. The sidecar proxy (Envoy) walks `http:` from the top and **the first match wins**. A rule with no `match` block becomes a prefix match on `/`, which is true for every request, so every rule below it is shadowed and never reached. So even if the proxy uses this object, the header rule never fires. This is the `IST0130` warning from the analyzer: rule `#1` is the second rule, because the count starts at `0`.
 
 ## Step 4: Confirm from the proxy before you change anything
 
 Ask the client's proxy what it really holds for port 80:
 
 ```sh
-istioctl proxy-config routes deploy/tester -n conflict-demo \
-  --name 80 -o json | grep -E '"cluster"|"exact_match"' | head
+istioctl proxy-config routes deploy/tester -n conflict-demo --name 80 -o json \
+  | grep -E '"exact"|"cluster": "outbound\|80\|v'
 ```
 
-Only `v1` clusters appear, and there is no header match anywhere. As far as this proxy is concerned, the route to `v2` does not exist. That is the decisive evidence, and the reason the YAML alone could not tell you.
+```text
+                            "cluster": "outbound|80|v1|notification-service.conflict-demo.svc.cluster.local",
+```
+
+Only the `v1` cluster appears, and there is no `exact` header match anywhere. As far as this proxy is concerned, the route to `v2` does not exist. That is the decisive evidence, and the reason the YAML alone could not tell you.
 
 ## Step 5: Fix both causes
 
-First delete the duplicate claimant, so one object owns the host:
+First delete the duplicate object, so one object owns the host:
 
 ```sh
 kubectl -n conflict-demo delete virtualservice notification-extra
@@ -139,16 +147,16 @@ All three checks should pass: one owner for the host with no `IST0109`, the head
 
 | Shortcut | What happens |
 | --- | --- |
-| Add a third `VirtualService` to "override" the others | that makes the conflict worse instead of solving it |
-| Reorder the rules but keep both objects | the merge can reshuffle them again when either is edited |
+| Add a third `VirtualService` to "override" the others | the proxy still uses only one object for the host, and you cannot say which |
+| Reorder the rules but keep both objects | the proxy may keep using `notification-extra`, and `IST0109` stays |
 | Delete `notification` instead of `notification-extra` | you keep the object with no header rule at all |
 | Bind one object to a gateway to "separate" them | fine in general, but the task needs mesh traffic to have one owner |
 
 ## Common mistakes
 
 - Reading only the YAML you wrote. The proxy's route table is the only record of what is in force.
-- Putting the catch-all route first. Every rule under it can never be reached, and nothing warns you when you apply it.
-- Assuming the merge order stays the same. It can change when an unrelated object is edited.
+- Putting the catch-all route first. Every rule under it can never be reached. The apply still succeeds and only prints a `Warning` line that is easy to miss.
+- Assuming the winning object stays the same. It can change when either object is deleted or recreated.
 - Checking one path. Fixing the header route by making the default unreachable is not a fix.
 
 ## Practice variations

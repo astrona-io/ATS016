@@ -2,7 +2,7 @@
 
 Solve this question on: `terminal`
 
-Astronaut, a flight plan on the planet `conflict-demo` never does what it says. Istio 1.30.5 is installed.
+A routing rule in the namespace `conflict-demo` never does what it says. Istio 1.30.5 is installed.
 
 `notification-service` in the namespace `conflict-demo` runs two versions. `v1` answers `["EMAIL"]` and `v2` answers `["EMAIL","SMS"]`, so the reply tells you which version answered.
 
@@ -13,7 +13,7 @@ kubectl -n conflict-demo exec deploy/tester -- sh -c \
   'curl -s -X POST -H "testing: true" http://notification-service/notify; echo'
 ```
 
-`istioctl analyze` reports nothing more serious than a `Warning`.
+`kubectl apply` accepted every object, and nobody has acted on what `istioctl analyze` reports.
 
 ## Your task
 

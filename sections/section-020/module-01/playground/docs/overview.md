@@ -1,22 +1,44 @@
 # Overview: Debug Conflicting And Shadowed Routes (Playground)
 
-> Declared in [`../config.yaml`](../config.yaml) under `metadata.docs.guide`.
+This is a **playground**, not a lab. It starts a fresh cluster, installs Istio and the starting workloads, applies routing that is in conflict on purpose, and then waits. There is no task, no `astrona submit` and no pass or fail. Explore, break things, `astrona destroy`, start over.
 
-This is a **playground**, not a lab: a training solar system in the simulator. The environment starts clean, runs `bootstrap/prepare.sh`, applies the starting workloads, and then waits. There is no task, no `astrona submit`, and no pass or fail. Explore, break things, `astrona destroy`, and start over.
+## What's in the box
 
-## What is in the box
+- A single-node `kind` Kubernetes cluster. `kubectl` is already pointed at it.
+- **Istio 1.30.5**, installed with the `demo` profile, and `istioctl` on your PATH. `istiod` is Istio's control plane: it turns Istio resources into proxy configuration and sends it to every sidecar proxy.
+- Namespace **`conflict-demo`**, labelled `istio-injection=enabled`. Every pod shows `2/2`: the application container plus its `istio-proxy` sidecar proxy (Envoy), which handles all inbound and outbound traffic of the pod.
 
-- A single-node `kind` Kubernetes cluster with `kubectl` already pointed at it.
-- **Istio 1.30.5**, installed with the `demo` profile, plus `istioctl` on your PATH.
-- The planet (namespace) **`conflict-demo`**, with sidecar injection on, holding:
-  - `notification-service-v1` and `notification-service-v2` behind one Service, `notification-service`, on port 80. `v1` answers `["EMAIL"]` and `v2` answers `["EMAIL","SMS"]`, so the reply tells you which one answered.
-  - `tester`: a client pod with `curl`, your test ship.
-- **Routing in conflict on purpose** (`manifests/broken-config.yaml`): a `DestinationRule` with subsets `v1` and `v2`, a `VirtualService` whose catch-all route sits above its header rule, and a second `VirtualService` claiming the same host.
+  | Workload | What it is |
+  | --- | --- |
+  | `notification-service-v1` | Deployment with the label `version: v1`; answers `["EMAIL"]` |
+  | `notification-service-v2` | Deployment with the label `version: v2`; answers `["EMAIL","SMS"]` |
+  | `notification-service` | Service on port `80` in front of both versions |
+  | `tester` | Client pod with `curl`; send test requests from here |
 
-## Things to try
+- **Routing in conflict, on purpose.** A `DestinationRule` named `notification` defines the subsets `v1` and `v2`. A `VirtualService` named `notification` has its catch-all route above its header rule for `testing: true`. A second `VirtualService`, `notification-extra`, claims the same host.
 
-- Fix only the rule order, leaving both `VirtualService` objects in place, and send the header request many times. Decide for yourself whether you would ship the result.
-- Delete `notification-extra` first instead, and watch which symptom moves.
-- Compare `istioctl proxy-config routes deploy/tester -n conflict-demo -o json` before and after each change. The route table is the only record of what really happened.
-- Give the second `VirtualService` a different host and run `istioctl analyze` again. The `IST0109` warning should disappear.
-- Add a third rule matching `uri: prefix: /notify` below the catch-all, then confirm from the route table that it never appears.
+## Helpers
+
+Paste these once in each new terminal. `send_requests` sends ten `POST` requests to `notification-service` from the `tester` pod and prints each distinct reply once; pass a header as the first argument, for example `send_requests "testing: true"`. `show_routes` prints the clusters and header matches in the route configuration for port `80` of the `tester` proxy.
+
+```sh
+send_requests() {
+  kubectl -n conflict-demo exec deploy/tester -- sh -c \
+    "for i in \$(seq 1 10); do curl -s -X POST ${1:+-H \"$1\"} http://notification-service/notify; echo; done" | sort -u
+}
+show_routes() {
+  istioctl proxy-config routes deploy/tester -n conflict-demo \
+    --name 80 -o json | grep -E '"cluster"|"exact_match"|"prefix"'
+}
+```
+
+Use them like this: `send_requests`, `send_requests "testing: true"`, `show_routes`.
+
+## Practice tasks
+
+- Run `show_routes` and `istioctl analyze -n conflict-demo` before you change anything. Decide which `VirtualService` the proxy is using, and why the header route is missing.
+- Fix only the rule order in `notification`, leave `notification-extra` in place, and run `send_requests "testing: true"` and `show_routes`. Decide whether you would ship the result.
+- Delete `notification-extra` instead, and watch which symptom changes and which one stays.
+- Give the second `VirtualService` a different host and run `istioctl analyze` again. The `IST0109` message should disappear.
+- Add a third rule matching `uri: prefix: /notify` below the catch-all, then confirm with `show_routes` that it can never be reached.
+- Change the header value in the match to `exact: true` without quotes and apply it. Read which stage of the API server rejects it.

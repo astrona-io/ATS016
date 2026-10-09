@@ -1,8 +1,8 @@
 # Solution: Consolidate Three Claimants Into One Route Table
 
-This capstone has two separate faults: three owners for one host, and a shadowed rule inside one of them. This walkthrough counts the owners, asks the proxy what it really runs, merges everything into one object in the right order, and checks all three paths. The grader checks four things: one owner with no `IST0109`, the header path on `v2`, the `/priority` path on `v2`, and every other request on `v1`.
+This capstone has two separate faults: three owners for one host, and a shadowed rule inside one of them. This walkthrough counts the owners, asks the proxy what it really runs, combines every rule into one object in the right order, and checks all three paths. The grader checks four things: one owner with no `IST0109`, the header path on `v2`, the `/priority` path on `v2`, and every other request on `v1`.
 
-## Step 1: Count the claimants before reading any of them
+## Step 1: Count the owners before reading any of them
 
 List every `VirtualService` with its hosts and gateways:
 
@@ -18,7 +18,7 @@ notification-priority      [notification-service]    <none>
 notification-experiment    [notification-service]    <none>
 ```
 
-Three objects, one host, all on the mesh gateway (an omitted `gateways:` field means `mesh`). Istio **merges** them into one virtual host, and nothing you control decides the order of the merged rules.
+Three objects, one host, all on the mesh gateway (an omitted `gateways:` field means `mesh`). Host merging is not supported in sidecars: the sidecar proxy (Envoy) uses the rules of only one of the three objects for this host and drops the other two. Nothing in your YAML decides which one wins.
 
 Run the analyzer:
 
@@ -27,10 +27,10 @@ istioctl analyze -n routing-demo
 ```
 
 ```text
-Warning [IST0109] ... define the same host notification-service which can lead to undefined behavior.
+Error [IST0109] ... define the same host notification-service which can lead to undefined behavior.
 ```
 
-The output above is shortened. It is a `Warning`, because nothing is invalid. `undefined behavior` is exact: the configuration works, and its meaning can change when any one of the three objects is edited.
+The output above is shortened. `IST0109` is an `Error`, yet `kubectl apply` accepted all three objects, because the API server checks each object on its own. `undefined behavior` is exact: requests get answers, and which object is in use can change when any one of the three is deleted or recreated.
 
 ## Step 2: Ask the proxy what it is really running
 
@@ -41,7 +41,7 @@ istioctl proxy-config routes deploy/tester -n routing-demo \
   --name 80 -o json | grep -E '"cluster"|"exact_match"|"prefix"' | head -20
 ```
 
-Whatever order you see, nobody chose it. Reading the three YAML files could not have told you this, and that is the lesson this capstone is built around.
+The clusters and matches you see belong to one object only, and nobody chose which one. Reading the three YAML files could not have told you this, and that is the lesson this capstone is built around.
 
 ## Step 3: Understand the second fault
 
@@ -51,13 +51,13 @@ Print the rules of the `notification` object:
 kubectl -n routing-demo get virtualservice notification -o yaml | sed -n '/^ *http:/,$p'
 ```
 
-Its catch-all sits at index 0 and its header rule at index 1. The proxy walks the list from the top and **the first match wins**. A rule with no `match` becomes a prefix match on `/`, which is true for every request, so everything below it can never be reached, even if the merge happened to put this object first.
+Its catch-all sits at index 0 and its header rule at index 1. The proxy walks the list from the top and **the first match wins**. A rule with no `match` becomes a prefix match on `/`, which is true for every request, so every rule below it is shadowed and never reached, even when the proxy uses this object.
 
 So there are two separate faults: three owners, and a shadowed rule inside one of them. Fixing either one alone leaves the behaviour undefined.
 
-## Step 4: Merge into one object
+## Step 4: Combine the rules into one object
 
-Delete the extra claimants:
+Delete the extra objects:
 
 ```sh
 kubectl -n routing-demo delete virtualservice notification-priority notification-experiment
@@ -154,14 +154,14 @@ notification-external   gateways: [public-gw]   → the ingress gateway's route 
 notification-internal   gateways: [mesh]        → every sidecar's route table
 ```
 
-For a planned combination within one scope, Istio has `spec.http[].delegate`, an explicit and ordered mechanism rather than an accidental merge.
+For a planned split within one scope, Istio has `spec.http[].delegate`: a root `VirtualService` hands named parts of its routing to other objects, in an explicit order.
 
 ## Common mistakes
 
-- Adding another `VirtualService` to "override" the existing ones. That makes the conflict worse instead of solving it.
+- Adding another `VirtualService` to "override" the existing ones. The proxy still uses only one object for the host, and you cannot say which.
 - Reading only the YAML you wrote. The proxy's route table is the only record of what is in force.
-- Putting the catch-all route first. Everything under it can never be reached, and nothing warns you when you apply it.
-- Assuming the merge order stays the same. It can change when an unrelated object is edited.
+- Putting the catch-all route first. Everything under it can never be reached. The apply still succeeds and only prints a `Warning` line that is easy to miss.
+- Assuming the winning object stays the same. It can change when any of the objects is deleted or recreated.
 - Checking one path out of three.
 
 ## Practice variations
