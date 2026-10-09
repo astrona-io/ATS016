@@ -1,79 +1,76 @@
-# Part 1 — How A VirtualService Becomes A Route Table
+# How A VirtualService Becomes A Route Table
 
-> Prerequisite: [the module landing page](./course.md). Next: [Part 2 — One Host, Two Owners](./course-02-host-ownership-and-merging.md).
-
-A `VirtualService` is not executed. It is **translated** — into a data structure Envoy evaluates per request, with fixed semantics that your YAML inherits whether you know them or not. This part follows that translation, then uses it to explain why a rule you wrote correctly can never run.
+Astronaut, a `VirtualService` (the flight plan for a beacon) is never run as it is. `istiod`, mission control, **translates** it into a data structure that the sidecar proxy, Envoy, checks for every signal. That structure has fixed rules, and your YAML follows them whether you know them or not. This part follows the translation, then uses it to explain why a rule you wrote correctly can never run.
 
 ## The symptom to keep in mind
 
-The intent behind this namespace is easy to state: a request carrying the header `testing: true` should reach `v2`; everything else should reach `v1`. Someone wrote exactly that, and it does not happen.
+The plan for this planet is easy to say: a request carrying the header `testing: true` should reach `v2`, and everything else should reach `v1`. Someone wrote exactly that, and it does not happen.
 
-> [!TIP]
-> **Try it — the route that was written and does not fire**
->
-> ```sh
-> kubectl -n conflict-demo exec deploy/tester -- sh -c \
->   'curl -s -X POST -H "testing: true" http://notification-service/notify; echo'
-> kubectl -n conflict-demo exec deploy/tester -- sh -c \
->   'curl -s -X POST http://notification-service/notify; echo'
-> ```
->
-> Expect something like:
->
-> ```text
-> ["EMAIL"]
-> ["EMAIL"]
-> ```
->
-> Both requests reached `v1`. The header made no difference at all — and that totality is itself a clue. A rule that *partly* works points at a matching bug: a wrong header name, a `prefix` where you wanted `exact`. A rule with no effect whatsoever points at a rule that was never consulted.
+<!-- astrona:playground:renew -->
+
+### See it in your playground
+
+Send one request with the header and one without, from your test ship:
+
+```sh
+kubectl -n conflict-demo exec deploy/tester -- sh -c \
+  'curl -s -X POST -H "testing: true" http://notification-service/notify; echo'
+kubectl -n conflict-demo exec deploy/tester -- sh -c \
+  'curl -s -X POST http://notification-service/notify; echo'
+```
+
+You should see something like:
+
+```text
+["EMAIL"]
+["EMAIL"]
+```
+
+Both requests reached `v1`. The header made no difference at all, and that is itself a clue. A rule that *partly* works points at a matching bug, such as a wrong header name or a `prefix` where you wanted `exact`. A rule with no effect at all points at a rule that was never checked.
 
 ## The translation
 
-Istio converts your object into Envoy's routing structures, which are nested three deep:
+`istiod` turns your object into Envoy's routing structures. They are nested three levels deep:
 
-```text
-   VirtualService (your object)
-        │  hosts: [notification-service]
-        │  http:  [rule, rule, ...]
-        ▼
-   RouteConfiguration            ← named after the port: "80"
-        │
-        ├── VirtualHost          ← one per destination host
-        │     domains: [notification-service,
-        │               notification-service.conflict-demo,
-        │               notification-service.conflict-demo.svc.cluster.local,
-        │               10.96.44.31]        ← the Service's ClusterIP, too
-        │     routes: [ ... ]    ← YOUR http RULES, IN ORDER
-        │
-        └── VirtualHost (other services this proxy knows about)
+```mermaid
+flowchart TB
+    VS["VirtualService: notification"] -->|"translated by istiod"| RC["RouteConfiguration: 80"]
+    RC -->|"one per host"| VH["VirtualHost: notification-service"]
+    RC -->|"other hosts"| VH2["VirtualHost: other services"]
+    VH -->|"your http rules, in order"| R["routes list"]
 ```
 
-Three things in that diagram matter later:
+The diagram shows that one route configuration per port holds one virtual host per destination host, and each virtual host holds your rules as an ordered list. The virtual host's `domains` list holds every name the beacon answers to: `notification-service`, `notification-service.conflict-demo`, `notification-service.conflict-demo.svc.cluster.local`, and the Service's cluster IP address (for example `10.96.44.31`).
 
-- **The route configuration is named after the port**, not the service. That is why `--name 80` is how you ask a proxy for it in [Part 3](./course-03-reading-the-route-table.md).
-- **The virtual host is selected by the request's `Host` header**, matched against `domains`. Not by the IP you connected to — by the header. That is why overriding `Host` can make a request miss every route.
-- **`routes` is an ordered array**, and its order is your `http:` list's order. Nothing re-sorts it by specificity.
+Three facts in that picture matter later:
 
-## Per-request evaluation
+- **The route configuration is named after the port,** not the service. That is why you ask a proxy for it with `--name 80`.
+- **The virtual host is picked by the request's `Host` header,** matched against `domains`. It is not picked by the address you connected to. That is why changing `Host` can make a request miss every route.
+- **`routes` is an ordered list,** and its order is the order of your `http:` list. Nothing sorts it by how specific a rule is.
 
-For each request the proxy walks the selected virtual host's `routes` from index 0:
+## How each request is checked
 
-```text
-   request ──▶ route[0].match?  ── yes ──▶ take route[0].route, STOP
-                     │ no
-                     ▼
-               route[1].match?  ── yes ──▶ take route[1].route, STOP
-                     │ no
-                     ▼
-                    ...
-                     │ no
-                     ▼
-               no route matched  ──▶  404, response flag NR
+For each request, the sending ship's proxy walks the chosen virtual host's routes from the first one down. This is the flight plan's checklist, read top to bottom.
+
+### First match wins
+
+The proxy stops at the first route whose `match` fits:
+
+```mermaid
+flowchart TB
+    Q["request"] --> R0["route 0"]
+    R0 -->|"match"| T0["use route 0, stop"]
+    R0 -->|"no match"| R1["route 1"]
+    R1 -->|"match"| T1["use route 1, stop"]
+    R1 -->|"no match"| RN["next routes"]
+    RN -->|"nothing matched"| NR["404, flag NR"]
 ```
 
-**First match wins, evaluation stops.** There is no "best match", no specificity scoring, no continuation. A routing table is an `if` / `else if` chain, not a set of rules considered together.
+The diagram shows that evaluation stops at the first match, and a request that matches nothing gets a `404` with the response flag `NR` (no route). There is no "best match", no scoring by how specific a rule is, and no going on after a match. A routing table is an `if` / `else if` chain, not a set of rules weighed together.
 
-The second half of the mechanism is what makes it bite: a rule with **no `match` block** compiles to a route with a prefix match on `/`, which is true for every HTTP request. It is not a fallback and it is not marked as a default — it is simply a condition that always holds.
+### A rule with no match is always true
+
+The second half of the mechanism is what makes it bite. A rule with **no `match` block** becomes a route with a prefix match on `/`, which is true for every HTTP request. It is not a fallback and it is not marked as a default. It is simply a condition that always holds:
 
 ```text
 http:
@@ -82,43 +79,44 @@ http:
     route: → v2
 ```
 
-Everything below an unconditional rule is unreachable. Envoy does not warn, `istioctl analyze` does not flag it as an error, and the object remains perfectly valid. In a programming language your compiler would call this dead code; here it is a silently accepted configuration.
+Everything below an unconditional rule can never be reached. Envoy does not warn you, `istioctl analyze` does not flag it as an error, and the object stays valid. In a programming language, your compiler would call this dead code. Here it is configuration that is accepted without a word.
 
-> [!TIP]
-> **Try it — reading the order the author wrote**
->
-> ```sh
-> kubectl -n conflict-demo get virtualservice notification -o yaml | sed -n '/^spec:/,$p'
-> ```
->
-> Expect something like:
->
-> ```text
-> spec:
->   hosts:
->   - notification-service
->   http:
->   - route:
->     - destination:
->         host: notification-service
->         subset: v1
->   - match:
->     - headers:
->         testing:
->           exact: "true"
->     route:
->     - destination:
->         host: notification-service
->         subset: v2
-> ```
->
-> The catch-all is at index 0 and the header rule at index 1. Both rules are individually correct — that is precisely why this survives review. The defect is not in either rule; it is in their relative position, which is a property of the list rather than of anything you could point at in isolation.
+### Read the order the author wrote
 
-## Match semantics, briefly
+Print the `spec` of the `notification` flight plan:
 
-Understanding what counts as "a match" prevents the neighbouring mistake, where a rule is reachable and still never fires.
+```sh
+kubectl -n conflict-demo get virtualservice notification -o yaml | sed -n '/^spec:/,$p'
+```
 
-Within one `match` entry, **all** conditions must hold — `uri` *and* `headers` *and* `method` are ANDed. Between entries in the `match` **list**, any one entry matching is enough — they are ORed:
+You should see something like:
+
+```text
+spec:
+  hosts:
+  - notification-service
+  http:
+  - route:
+    - destination:
+        host: notification-service
+        subset: v1
+  - match:
+    - headers:
+        testing:
+          exact: "true"
+    route:
+    - destination:
+        host: notification-service
+        subset: v2
+```
+
+The catch-all is at index 0 and the header rule at index 1. Each rule on its own is correct, which is exactly why this passes a review. The fault is not in either rule. It is in their order, which belongs to the list, not to anything you can point at alone.
+
+## What counts as a match
+
+Knowing what "a match" means prevents the neighbouring mistake, where a rule can be reached and still never fires.
+
+Inside one `match` entry, **all** conditions must hold: `uri` *and* `headers` *and* `method`. Between entries in the `match` **list**, any one entry is enough. Here is an example (for reading only, not to apply):
 
 ```yaml
 - match:
@@ -129,27 +127,24 @@ Within one `match` entry, **all** conditions must hold — `uri` *and* `headers`
   route: ...
 ```
 
-String conditions come in three forms — `exact`, `prefix`, `regex` — and header **values** are matched with them while header **names** are matched literally and case-insensitively. A common near-miss is writing `exact: true` (a YAML boolean) where the header value is the string `"true"`; quoting it is not optional.
+Text conditions come in three forms: `exact`, `prefix` and `regex`. Header **values** are matched with these forms. Header **names** are matched as written, without caring about upper or lower case. A common near-miss is writing `exact: true` (a YAML true/false value) when the header value is the text `"true"`. The quotes are not optional.
 
 ## The rule that follows
 
-Order your rules **most specific first, unconditional last**. That single sentence is the whole of this part applied, and it is the same discipline as writing an `if` / `else if` / `else` chain — which fails in exactly the same way when the `else` is moved to the top.
+Order your rules **most specific first, unconditional last**. That one sentence is this whole part, put to work. It is the same discipline as an `if` / `else if` / `else` chain, which fails in exactly the same way when the `else` moves to the top.
 
-If you find yourself wanting two unconditional rules, you have written one rule and one piece of dead configuration.
+If you want two unconditional rules, you have written one rule and one piece of dead configuration.
+
+> [!TIP]
+> When a routing rule has no effect at all, look for a rule above it with no `match` before you look at the match itself.
+
+## Common pitfalls
 
 > [!WARNING]
-> **Pitfalls in a single VirtualService**
->
-> - **Putting the default route first.** A rule with no `match` is unconditional, not a fallback. Everything below it is unreachable, and nothing reports it.
-> - **Expecting specificity to win.** Envoy does not rank routes. Index order decides, full stop.
-> - **Writing `exact: true` unquoted.** That is a boolean, not the string `"true"`, and the header will not match.
-> - **Assuming routing follows the address you dialled.** The virtual host is chosen by the `Host` header against `domains`; a rewritten or overridden `Host` lands you somewhere else, or nowhere.
-> - **Reading a partial failure and a total failure the same way.** Partial means the match is wrong; total usually means the rule is never reached.
+> - **Putting the default route first.** A rule with no `match` is unconditional, not a fallback. Everything below it can never be reached, and nothing reports it.
+> - **Expecting the most specific rule to win.** Envoy does not rank routes. The order in the list decides.
+> - **Writing `exact: true` without quotes.** That is a true/false value, not the text `"true"`, and the header will not match.
+> - **Assuming routing follows the address you dialled.** The virtual host is chosen by the `Host` header against `domains`. A changed `Host` lands you somewhere else, or nowhere.
+> - **Reading a partial failure and a total failure the same way.** Partial means the match is wrong. Total usually means the rule is never reached.
 
-> *A VirtualService compiles to an ordered array, and an unconditional rule is not a default — it is a wall.*
-
-## Reference
-
-- [Virtual service reference](https://istio.io/latest/docs/reference/config/networking/virtual-service/) — `HTTPMatchRequest` in particular, for the exact AND/OR semantics and every string match form.
-- [Envoy route configuration](https://www.envoyproxy.io/docs/envoy/latest/api-v3/config/route/v3/route.proto) — the `RouteConfiguration` / `VirtualHost` / `Route` structure your object is translated into.
-- [Route matching](https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/http/http_routing#route-matching) — Envoy's own statement of first-match-wins, from the side that implements it.
+> *A VirtualService compiles to an ordered list, and an unconditional rule is not a default: it is a wall.*

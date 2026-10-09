@@ -185,6 +185,9 @@ modules:
             url: https://istio.io/latest/docs/ops/common-problems/network-issues/
           - name: "Debugging Envoy and istiod"
             url: https://istio.io/latest/docs/ops/diagnostic-tools/proxy-cmd/
+      - type: reading
+        title: "Wrap-Up: Mission Debrief"
+        path: sections/section-020/module-01/course-04-wrap-up.md
 
       - type: reading
         title: Question
