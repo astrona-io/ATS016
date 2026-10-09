@@ -5,29 +5,35 @@ scripts) is for people learning a technical subject, often for a
 certification exam. Many of them are not native English speakers and have no
 university degree.
 
-## Plain English
+## Technical documentation in plain English
 
-Write the text in Plain English for a general adult audience (18+) without a
-university degree. The content must be highly accessible and easy to
-understand for non-technical readers, without feeling childish.
+This is technical documentation. Say exactly what the system does, with the
+real technical terms, in clear and simple English. Never hide a concept
+behind a metaphor, a made-up name or a vague word: the reader must learn the
+words they will meet in the product, the logs and the exam.
 
 Strict guidelines:
 
-1. Target a Flesch-Kincaid Grade Level of 8 or 9 (equivalent to a standard
-   newspaper article).
-2. Avoid all technical jargon, acronyms, and corporate buzzwords. If a
-   technical term is necessary, explain it immediately using an everyday
-   analogy.
-3. Keep sentences conversational and direct. Split long sentences into two.
-4. Use short paragraphs (max 3-4 sentences per paragraph) and clear
-   subheadings to make the text scannable.
-5. Use the active voice (e.g., "We did this" instead of "This was done by us").
+1. Use the correct technical term every time (request, response, pod,
+   namespace, Service, sidecar proxy, certificate, mTLS, JWT, listener). The
+   first time a term appears in a file, define it in one plain sentence that
+   says what it is and what it does. Spell out every acronym on first use.
+2. No metaphors or analogies in explanations. Not "the communications
+   officer", but "the sidecar proxy (Envoy)"; not "a signal", but "a
+   request"; not "the planet", but "the namespace".
+3. Simple sentences. Target a Flesch-Kincaid Grade Level of 8 or 9 for the
+   prose around the terms. Keep sentences direct; split long sentences into
+   two. No corporate buzzwords.
+4. Use short paragraphs (max 3-4 sentences per paragraph).
+5. Use the active voice ("istiod sends the configuration", not "the
+   configuration is sent").
 
 ## How this applies to course material
 
-- **Know which file you are in.** A module has a short landing page and a few
-  deep-dive parts. The landing page is a map: goals, what to know first, the
-  order of the parts, where it fits. The real teaching goes in the parts. A lab
+- **Know which file you are in.** A module has a short landing page, a few
+  deep-dive parts and a summary page. The landing page is a map: goals, what
+  to know first, the order of the parts. The real teaching goes in the parts.
+  The summary closes the module. A lab
   has a task, a step-by-step solution and a short intro. Keep each file to its
   job. Do not add "Prerequisite: ... Next: ..." navigation lines to pages;
   the landing page and the course outline already give the order.
@@ -36,7 +42,24 @@ Strict guidelines:
   the playground in one sitting of about 15 minutes. Split at a natural seam
   where each half ends with something the learner has seen work. Never split
   only to hit a number. When you split, renumber the files, fix every "Part N"
-  reference in the module, the wrap-up links and `astrona.yaml`.
+  reference in the module and `astrona.yaml`.
+- **Read like a book, not like a web page.** Each part reads as a chapter of
+  a technical book. Open with a short paragraph on the problem it solves and
+  why it matters. Link each paragraph to the next with a transition sentence.
+  Close with a paragraph that sums up what the reader now knows and the
+  question still open, before `## Common pitfalls` and the mission. Write
+  explanations as prose; keep bullets for real lists (fields, ordered steps,
+  options). Use `##` only when the topic changes and `###` only inside a long
+  section, never for a single command. Weave hands-on steps into the text:
+  one or two sentences on what to run and why, the command, the real output,
+  then a sentence or two on what it shows.
+- **The module ends with a summary.** The last page of every module is
+  `course-0N-summary.md` with the title `# Summary`: a few short prose
+  paragraphs on what the reader learned, organised by idea, optionally with
+  one short list of key facts. It names no parts, modules, sections or
+  chapters, and has no links, lab table, quiz or commands. Its last line is
+  `<!-- astrona:playground:destroy -->` on its own line; the platform turns it
+  into the step that removes the playground.
 - **Every heading gets an intro.** A `##` section that has `###`
   subsections starts with one to three sentences that say what the section
   is about and why it matters, before the first `###`. Never put a `###`
@@ -47,26 +70,28 @@ Strict guidelines:
   a fact from elsewhere, state the fact directly in one or two sentences.
   This also goes for parts of the same module: never write "Part 2 shows",
   "from Part 1" or "as in Part 3". Say the fact itself ("the commands below
-  need the `notification` `DestinationRule` applied"). The wrap-up page is the one
-  exception: it recaps each part and links to it.
+  need the `scout` `DestinationRule` applied"). This includes the summary.
   The landing page does not have a "Where this fits" section.
 - **Write words out in full.** Do not use informal short forms in prose:
   write "communications", "configuration", "repository", "administrator",
   "for example" and "that is", never "comms", "config", "repo", "admin",
   "e.g." or "i.e.". Names in code, commands and file paths stay as they are.
 - **Exam terms stay.** The product's own names are what the reader must learn
-  (for example a resource kind, a field, a command). Keep them, but explain
-  each one in plain words, with an everyday analogy, the first time it appears
-  in a file. Spell out acronyms on first use, with a short plain meaning.
-- **Analogies come from space, and the reader is an astronaut.** When a term
-  needs an everyday picture, use space: spaceships, planets, solar systems,
-  space stations, mission control, signals, docking, star charts, airlocks,
-  even the Death Star. Talk to the reader as an astronaut (for example "your
-  first mission", "astronaut, check your flight log"), but not in every
-  sentence. Requests are **signals** that ships send to each other. Use one
-  analogy per hard idea, keep it short, and keep it the same everywhere (if
-  the repository has an analogy glossary, use it). The analogy helps the reader; it
-  never replaces the real term, and it never changes code or output.
+  (for example a resource kind, a field, a command). Use them as they are and
+  define each one in plain technical words the first time it appears in a
+  file. Spell out acronyms on first use, with a short plain meaning.
+- **The space theme is only for examples.** Space appears in two places and
+  nowhere else: the names of the example workloads (the Starfleet: `bridge`,
+  `scout`, `shuttle`, `probe`, the `starfleet` and `outpost` namespaces) and
+  the short scenario that opens a lab task or a practice exercise (for
+  example "the `drifter` in `outpost` must keep reaching the probe"). The
+  explanation around an example is plain technical text: write "the
+  `shuttle` pod sends a request to the `probe` Service", never "the shuttle
+  sends a signal to the probe ship". Do not address the reader as an
+  astronaut, and do not use space metaphors (communications officer, mission
+  control, badge, airlock, guest list, star chart) for Istio or Kubernetes
+  concepts. Titles of pages and labs name the technical task ("Require mTLS
+  With PeerAuthentication"), not a space story.
 - **Show one real example before the rule.** Start with a concrete case the
   reader can run, then give the general rule.
 - **Say which part does the work.** Readers often mix up the parts of a system
@@ -79,10 +104,8 @@ Strict guidelines:
 - **Prose only.** The grade-level and sentence rules apply to explanations.
   They do not apply to code blocks, tables of field names or reference lists
   (those may stay short and dense).
-- **Keep the page furniture the same.** Hands-on steps are normal page
-  content, not boxes: a short `###` subsection (for example "See it in your
-  playground") with one sentence saying what to do, the command, the real
-  output, and one or two sentences saying what it shows. A `> [!TIP]` box is
+- **Keep the page furniture the same.** Hands-on steps are part of the prose
+  (see "Read like a book"), not boxes or headings of their own. A `> [!TIP]` box is
   only for a real tip: advice the reader can reuse beyond this one step (a
   habit, a shortcut, how to spot a problem, an exam habit). Everything else
   is a normal sentence: notes about the current step ("if the log line is
@@ -100,41 +123,70 @@ Strict guidelines:
   one sentence on what the reader can now do, one on what the mission asks,
   then pause the playground (`astrona stop <playground name>`), the
   `astrona run` and `astrona submit` commands, and finally
-  `astrona destroy <lab name>` plus `astrona start <playground name>`. The
-  wrap-up lists the missions and ends with cleaning up the playground
-  (`astrona list`, `astrona destroy <playground name>`).
+  `astrona destroy <lab name>` plus `astrona start <playground name>`.
 - **Renew the playground before hands-on work.** Every reading part that
   runs commands has `<!-- astrona:playground:renew -->` exactly once, on its
   own line, right before the first hands-on step (the first "Save this as"
   or the first command block), so the playground timer is reset before the
   learner needs the playground. Not on landing pages (they carry
-  `<!-- astrona:playground -->`), wrap-up pages or pages without commands.
+  `<!-- astrona:playground -->`), summary pages (they carry
+  `<!-- astrona:playground:destroy -->`) or pages without commands.
 - **Mermaid without HTML.** The platform renders Mermaid with HTML labels
   switched off, so `<br/>` and any other HTML tag break the drawing. Rules:
   - One line per box, no `<br/>`, no HTML. Keep the box to the thing's name
-    (`"notification-service-v2"`, `"istiod"`, `"Service: notification-service"`).
+    (`"scout-v2"`, `"istiod"`, `"Service: scout"`).
   - Put the logic on the arrows: `E -->|"version: v2"| P2`,
-    `I -->|"CDS"| C`, `A -->|"testing: true"| B`. Keep edge labels short.
+    `I -->|"CDS"| C`, `A -->|"end-user: jason"| B`. Keep edge labels short.
   - Quote every label. Prefer `flowchart TB`; use `LR` only for a short chain.
-  - Sequence diagrams: short participant aliases (`participant T as tester`)
+  - Sequence diagrams: short participant aliases (`participant S as shuttle`)
     and short message text.
   - Anything longer (cluster names, full hostnames) goes in the sentence under
     the diagram.
+- **Every course starts with an Introduction.** It lives in `sections/intro/`
+  and is the first entry in `astrona.yaml` (`id: module-intro`, title
+  "Introduction"). It has exactly these four pages, in this order:
+  - `README.md`, `# Introduction`: what the introduction covers and its three
+    pages, named in prose (no links), ending with the topic the course starts
+    with.
+  - `course-01-welcome.md`, `# Welcome To The Course`: who the course is for,
+    the exam domain and what the reader can do at the end, the words the
+    course uses, the example app, how the course is laid out and how to read
+    a page.
+  - `course-02-get-your-machine-ready.md`, `# Get Your Machine Ready`: the
+    tools to install, the `astrona` commands used every day, and what to do
+    when a start goes wrong.
+  - `course-03-how-this-course-is-made.md`, `# How This Course Is Made`: how
+    content is written and checked, the maintainers, how to report a mistake,
+    and the license.
+  The Introduction teaches no product content and has no playground, labs or
+  summary. Its only links are the repository's contributors page, issues
+  page and license.
+- **No links to other course files.** A course page (every reading listed in
+  `astrona.yaml`, the playground guide `docs/overview.md`, and a lab's
+  `question.md` and `solution.md`) never links to or points the reader at
+  another page or file of the repository: no links to parts, summaries,
+  labs, `question.md`, other modules, sections or the Introduction, and no
+  "see `practice.md`" or "open `config.yaml`". The platform shows the pages in
+  the order of `astrona.yaml`, so a link only adds a second, often wrong,
+  path. Name a thing in plain words when the reader needs it ("the task is on
+  the next page"), and state a fact on the page itself instead of sending the
+  reader somewhere else. Repository files for authors (the root `README.md`,
+  a lab's or playground's `README.md`) may link.
 - **No links to outside sources.** Course pages, labs and playground docs do
   not link to or point at outside websites (the one exception is the
   `resources` field of a lab entry in `astrona.yaml`) (official docs, GitHub, blogs,
   RFCs), and they have no "Reference" or "Official docs" lists. Everything the
   reader needs is explained on the page itself. Not affected: addresses the
   reader actually uses in a command or browser (`http://127.0.0.1:9080`,
-  `curl https://httpbin.org`), and the Mission Briefing's contributors and
+  `curl https://httpbin.org`), and the Introduction's contributors and
   "report a mistake" links.
 - **Configuration goes to a file first.** Whenever the reader should apply
   YAML (course parts, playground docs, labs), use three separate steps:
-  1. "Save this as `virtualservice-notification.yaml`:" followed by a plain
+  1. "Save this as `virtualservice-scout.yaml`:" followed by a plain
      ` ```yaml ` block with only the YAML. No `cat > file <<'EOF'`, no
      `kubectl apply -f - <<EOF`, no shell around it.
   2. "Apply it:" followed by a ` ```sh ` block with only
-     `kubectl apply -f virtualservice-notification.yaml`.
+     `kubectl apply -f virtualservice-scout.yaml`.
   3. "Then check the result:" followed by the check commands, if any.
   The file name says the kind and the object. If a value must come from the
   reader's cluster (an IP address), use a placeholder like `<PARTNER>` in the
@@ -156,22 +208,22 @@ section is only true for this one.
 
 - **The goal:** pass the **Troubleshooting** domain of the **Istio Certified
   Associate (ICA)** exam. It is 20% of the exam.
-- **What the exam really tests:** finding and fixing what is broken in a live
-  mesh, by hand, under time pressure, and proving the fix works. So the
+- **What the exam really tests:** finding and fixing a broken mesh by hand,
+  on a live cluster, under time pressure, and proving the fix works. So the
   student must *do* things (run `istioctl analyze`, read `proxy-status` and
-  `proxy-config`, read an access log line and its response flag, fix the one
-  object that is wrong), not just recognise words. Every explanation should
-  lead to something they can run, and every fix should be proved twice: once
-  with the tool that found the fault, once with a real request.
+  `proxy-config`, read an access log line and its response flag, check
+  sidecar injection, query a metric), not just recognise words. Every
+  explanation should lead to a command they can run, and every fix should be
+  proved with a real request that failed before and succeeds after.
 - **The three exam topics (curriculum items):** troubleshooting
   configuration, troubleshooting the mesh control plane, and troubleshooting
-  the mesh data plane. The course follows the order of an investigation,
-  outside in: is the configuration coherent, did it reach the proxy, is there
-  a proxy at all, what is the proxy doing, what did it do to this request, and
-  how much and since when.
-- **The sections:**
+  the mesh data plane. The README table maps each section to its curriculum
+  item.
+- **The sections:** the order is the order of an investigation, outside in:
+  is the configuration coherent, is the control plane healthy and did it push,
+  what does the proxy hold, what did it do to the request, and how much.
 
-  | Section | Title | Exam topic |
+  | Section | Title | Curriculum item |
   | --- | --- | --- |
   | 010 | Troubleshooting Configuration With istioctl | Troubleshooting Configuration |
   | 020 | Debugging Conflicting And Shadowed Routes | Troubleshooting Configuration |
@@ -182,181 +234,129 @@ section is only true for this one.
 
 - **The version:** everything is built and checked on **Istio 1.30.5** on a
   single-node `kind` cluster, installed with
-  `istioctl install --set profile=demo -y`. Do not teach fields or behaviour
-  from other versions without saying so.
+  `istioctl install --set profile=demo -y` (sidecar mode). There is no
+  ambient mode in this course. Do not teach fields, flags or output from other
+  versions without saying so.
 - **The main sources:** the Istio diagnostic tools pages,
   <https://istio.io/latest/docs/ops/diagnostic-tools/>, and the common
   problems pages, <https://istio.io/latest/docs/ops/common-problems/>. Check
-  every page against them and the API reference.
+  every page against them.
 
-### Space analogy glossary
+### Terms, not metaphors
 
-Use these pictures for these terms, in every course page, lab and playground.
-Keep them consistent so the astronaut builds one picture of the universe. This
-is the same universe as the other Istio courses (ATS014, ATS015): the first
-two tables are shared with them, the rest is for troubleshooting. Most pages
-written before these rules have no space analogies yet; add them when you
-rework a page, using this table.
+Explanations use Istio's, Envoy's and Kubernetes' own words. Define each one
+in plain technical language on first use in a file, for example:
 
-**The universe**
-
-| Term | Space picture |
+| Term | First-use definition (example wording) |
 | --- | --- |
-| The learner | An astronaut (a cadet on their first missions) |
-| Kubernetes cluster | A solar system |
-| Namespace | A planet in that solar system |
-| Pod | A spaceship |
-| Container | A module inside the ship (the app is the crew) |
-| Kubernetes Service | A beacon: one call sign that a whole group of ships answers to |
-| Service account | The ship's registration papers |
-| Request / response | A signal sent out, and the reply signal |
-| Port | A radio channel |
-| Service mesh | The fleet's shared signal network |
-| `kind` cluster on your laptop | A training solar system in the simulator |
-| Kubernetes API server | The registry office: every object must be filed there |
-| etcd | The registry office's archive |
+| Sidecar proxy (Envoy) | A proxy container Istio adds to each pod; all inbound and outbound traffic of the pod passes through it |
+| `istiod` | Istio's control plane; it turns Istio resources into proxy configuration and sends it, plus certificates, to every proxy |
+| xDS | The protocol `istiod` uses to push configuration to proxies while they run (LDS, RDS, CDS, EDS for listeners, routes, clusters, endpoints) |
+| Sidecar injection | The mutating admission webhook adds the `istio-proxy` container when a pod is created in a namespace or pod that opts in |
+| `istioctl analyze` | Checks Istio configuration for problems the API server accepts, for example a reference to a host or subset that does not exist (`IST0101`) |
+| `istioctl x describe pod` | Shows which Services, VirtualServices, DestinationRules and policies apply to one pod |
+| `istioctl proxy-status` | Shows, per proxy, whether it has the latest configuration from `istiod` (`SYNCED`, `NOT SENT`, `STALE`) |
+| `istioctl proxy-config` | Prints the listeners, routes, clusters, endpoints or secrets one proxy actually holds |
+| Listener / route / cluster / endpoint | Envoy's configuration objects: where it accepts traffic, how it picks a destination, the upstream group, and the pod IP addresses in that group |
+| Access log | One line per request written by Envoy, with the response code and the response flag |
+| Response flag | A short Envoy code in the access log that says why a request failed (`UF` upstream connection failure, `UH` no healthy upstream, `NR` no route, `UT` upstream timeout) |
+| Shadowed route | A route rule that can never match because an earlier rule in the same route table matches first |
+| Kiali | The Istio service graph console; it draws traffic and flags configuration problems from Prometheus data and the cluster |
+| Prometheus / Grafana | Prometheus stores the metrics the proxies emit (`istio_requests_total`); Grafana draws dashboards from them |
 
-**The mesh**
+Older pages still use space metaphors and mission language ("Wrap-Up:
+Mission Debrief", "mission control"). Replace them with the real terms when
+you touch a page.
 
-| Term | Space picture |
-| --- | --- |
-| Sidecar proxy (Envoy) | The ship's communications officer: every signal in or out goes through them |
-| Sidecar injection | Putting a communications officer on board when the ship launches (ships already flying do not get one) |
-| Injection webhook | The launch-pad crew that puts the communications officer on board, if the planet's and the ship's own orders allow it |
-| `sidecar.istio.io/inject: "false"` | The ship's own orders: "no officer on board", which beat the planet's rule |
-| Revision (`istio.io/rev`) | A named shift at mission control; a planet tied to a shift that does not exist gets no officers |
-| `istiod` (control plane) | Mission control: it sends every communications officer their orders and issues ID badges |
-| xDS push | Mission control radioing new orders to every ship in flight, no landing needed (no restart) |
-| ACK / NACK | The officer radioing back "orders received" / "orders rejected, keeping the old ones" |
-| mTLS | A secret handshake: both ships show their badges before they talk |
-| `PeerAuthentication` `STRICT` | The airlock rule: no handshake, no docking |
-| `DestinationRule` `tls.mode` | How the sending ship approaches the airlock: with the handshake, or without (`DISABLE`) |
-| `AuthorizationPolicy` | The guard's list at the airlock: who may come aboard and what they may do |
-| `RBAC: access denied` (403) | The guard turned the signal away at the airlock |
+### The example workloads
 
-**Steering signals**
+Every section uses the same small app, deployed into its own namespace per
+module (`analyze-demo`, `describe-demo`, `conflict-demo`, `cphealth-demo`,
+`proxysync-demo`, `noinject-demo`, `proxycfg-demo`, `fivezerothree-demo`,
+`accesslog-demo`, `mtlsfail-demo`, `kiali-demo`, `metrics-demo`; capstones
+use `*capstone-demo` namespaces). The Kubernetes names are plain service
+names, so describe them in technical terms and use them as they are.
 
-| Term | Space picture |
-| --- | --- |
-| `VirtualService` | The flight plan: which way a signal flies, based on what it carries |
-| Route rules, read top to bottom | The flight plan's checklist; the first line that fits is used |
-| Shadowed rule | A checklist line that can never be reached, because a line above it catches every signal first |
-| Two objects claiming one host | Two flight plans for one beacon; only one is followed and nobody tells you which |
-| `DestinationRule` subset (v1, v2) | Ship classes of the same model: same call sign, different build |
-| Missing subset | A flight plan that names a ship class nobody built |
-| Fault injection | A training drill: mission control makes signals fail on purpose |
-| Timeout / circuit breaker | Giving up on a late reply / closing the docking bay when too many ships queue |
-
-**Investigation tools**
-
-| Term | Space picture |
-| --- | --- |
-| Validating webhook | The registry clerk: checks each form on its own, never against the other forms |
-| `istioctl analyze` | The pre-flight inspector: reads every form together and finds the ones that point at nothing |
-| `IST0101` and other analyzer codes | The inspector's warning codes on the inspection report |
-| `istioctl x describe pod` | The ship's dossier: every rule that touches one ship, on one page |
-| `istioctl bug-report` | The black box: one archive of the whole solar system's state, to hand to someone else |
-| Envoy log level (`debug`) | Asking the communications officer to think out loud for a moment, then go quiet again |
-| `istioctl proxy-status` | Mission control's roll call: which ships answer, and whether they hold the latest orders |
-| `istioctl proxy-config` | Reading the orders book on one ship |
-| Listener / route / cluster / endpoint | The radio channel the officer listens on / the flight plan table / a destination squadron / one ship's actual address |
-| Access log | The ship's flight log: one line per signal |
-| Response flag (`UH`, `UF`, `UT`, `NR`, ...) | The short code the officer stamps on a failed signal in the flight log |
-| `Telemetry` resource | The flight log settings: which planets keep a log, and what goes in it |
-| Prometheus and its metrics | The telemetry recorder: counts every signal, by sender, receiver and reply code |
-| `reporter` label | Which ship filed the report: the sender (`source`) or the receiver (`destination`) |
-| Grafana | The dashboard screens in mission control |
-| Kiali | The tactical map: every ship and every signal path on one screen, with red where it hurts |
-
-### The sample apps the playgrounds and labs use
-
-This course does **not** run the Starfleet (the Bookinfo sample with space
-names). Every playground and lab runs its own small app, in its own planet
-(namespace), and the resource names in code stay exactly as they are. Use the
-space pictures in prose (for example "the `tester` ship sends a signal to the
-`notification-service` beacon"), never as new names.
-
-| Kubernetes name | What it is | Space picture in prose |
+| Kubernetes name | Image | What it is |
 | --- | --- | --- |
-| `notification-service` (Service, port `80`) | The beacon in front of the app | The beacon most signals are aimed at |
-| `notification-service-v1`, `notification-service-v2` (Deployments, `nginx:1.27-alpine`, labels `version: v1` / `v2`) | The app, in one or two versions; v2 answers differently so you can tell them apart | Two ship classes of one model |
-| `tester` (Deployment, `curlimages/curl`) | The client every test request is sent from | Your test ship |
-| `reporting-service` | A second app (`mccutchen/go-httpbin` in section 030, `nginx` in the section 040 capstone) | A second beacon |
-| `orders-service`, `payments-service`, `billing-service` | The three workloads of the section 030 capstone | Three ships, three different faults |
+| `notification-service` (Service) | | Service on port `80` (`http`), target port `8084` |
+| `notification-service-v1` / `-v2` | `nginx:1.27-alpine` | Backend Deployments, labels `app: notification-service` and `version: v1` / `v2`; nginx returns a fixed JSON body from a ConfigMap |
+| `tester` | `curlimages/curl` | Client pod in the mesh; every test request is sent from here with `kubectl exec deploy/tester -- curl ...` |
+| `reporting-service` | `mccutchen/go-httpbin:v2.15.0` | HTTP echo server on port `8080`, used where a second backend is needed (sidecar injection module and its capstone) |
+| `billing-service` (in `cpcapstone-legacy`) | | Workload in a namespace without sidecar injection, used in the control plane capstone |
 
-Each module has its own namespace: `analyze-demo`, `describe-demo`,
-`conflict-demo`, `cphealth-demo`, `proxysync-demo`, `noinject-demo`,
-`proxycfg-demo`, `fivezerothree-demo`, `accesslog-demo`, `mtlsfail-demo`,
-`kiali-demo` and `metrics-demo`. The capstones use `audit-demo`,
-`routing-demo`, `cpcapstone-demo` (plus `cpcapstone-legacy`, where
-`billing-service` runs), `dpcapstone-demo`, `logcapstone-demo` and
-`obscapstone-demo`. The app's answers come from its nginx configuration
-(`notification-service-v1-nginx-conf`, container port `8084`, Service port
-`80`): v1 answers `["EMAIL"]` on any path, so requests such as
-`POST /notify` are just a path the tester chooses. Never change them.
+The workloads use the `default` service account. The space-named Starfleet
+app (`bridge`, `scout`, `shuttle`, `probe`) from the general rules above is
+not deployed in this repository yet; do not refer to it in a page until a
+playground actually runs it.
 
 ### Environment facts the text must respect
 
-- **Istio is installed with `istioctl`,** not Helm:
-  `istioctl install --set profile=demo -y`, with `istioctl` 1.30.5 pinned by
-  the bootstrap script (`playground/bootstrap/prepare.sh`,
-  `labs/lab-01/bootstrap/01-install-istio.sh`). The `demo` profile turns
-  access logging on for the whole mesh.
-- **Many playgrounds start broken on purpose.** Their
-  `playground/manifests/broken-config.yaml` (or `policies.yaml`,
-  `fault.yaml`) is applied after the workloads. That is the material, not a
-  defect. Course pages tell the reader to diagnose it before reading the
-  file.
+- **Playgrounds and labs install Istio with `istioctl`**, pinned to 1.30.5
+  in each `prepare.sh` or `bootstrap/01-install-istio.sh`, with the `demo`
+  profile. The `demo` profile includes the ingress and egress gateways and
+  turns on Envoy access logs to stdout.
 - **Section 060 installs addons.** Prometheus, Kiali and Grafana come from
-  `https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons`;
-  the Kiali module installs Prometheus and Kiali, the metrics module
-  Prometheus and Grafana, the capstone all three. They take longer to start.
-  There are no `portForwards` in `config.yaml`: the reader opens the
-  dashboards with `istioctl dashboard` or `kubectl port-forward`.
-- **No load balancer on `kind`** and no ingress gateway in use: every test
-  request is sent from the `tester` pod with `kubectl exec ... curl`.
-- **Graders check behaviour and state.** Validation scripts send real
-  requests from `tester`, read `istioctl proxy-status`, `proxy-config`,
-  access logs and Prometheus, and several of them reject the
-  plausible-but-wrong fix (inventing a missing subset, relaxing mTLS,
-  deleting a policy instead of correcting it).
+  `https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons`,
+  so those environments need outbound internet and take longer to start.
+  Pages reach them with `kubectl -n istio-system port-forward svc/kiali 20001:20001`,
+  `svc/grafana 3000:3000` and `svc/prometheus 9090:9090`.
+- **Many environments start broken on purpose.** A playground or lab often
+  applies a `broken-config.yaml` (or similar) next to `lab-start.yaml`. The
+  fault is the material. Never "fix" it in the bootstrap.
+- **No load balancer on `kind`.** A gateway Service's `EXTERNAL-IP` stays
+  `<pending>`; use `kubectl port-forward` when a page needs the gateway.
+- **The proof is a request from `tester`.** A fix is proven with
+  `kubectl exec` from the `tester` pod to `http://notification-service`, plus
+  the matching diagnostic command (`istioctl analyze` clean,
+  `proxy-status` `SYNCED`, the route or cluster present in `proxy-config`, a
+  `200` in the access log).
 
 ### Where things are in this repo
 
 | What | Where |
 | --- | --- |
 | Course outline the platform reads: every reading page and lab, in order. Never list `solution.md` here | `astrona.yaml` |
-| Overview, sections table, the investigation method, how to run things | `README.md` |
+| Overview, sections and modules tables, the investigation order, how to run things | `README.md` |
+| Introduction (see "Every course starts with an Introduction") | `sections/intro/` (not created yet) |
 | Section overview and its modules | `sections/section-0N0/README.md` |
-| Module reading: landing page, deep-dive parts, wrap-up | `sections/section-0N0/module-0M/course.md`, `course-0N-*.md` |
-| Graded lab: task, walkthrough, setup, grader | `.../labs/lab-0N/` (`question.md`, `solution.md`, `prerequisites.md`, `bootstrap/`, `manifests/`, `solution/apply.sh`, `validation/`, `testing/`) |
-| Ungraded sandbox for a module | `.../playground/` (`config.yaml`, `bootstrap/prepare.sh`, `manifests/`, `docs/overview.md` says what is in the box) |
+| Module reading: landing page, deep-dive parts, closing page | `sections/section-0N0/module-0M/course.md`, `course-0N-*.md` |
+| Graded lab: task, walkthrough, setup, grader | `.../labs/lab-01/` (`question.md`, `solution.md`, `prerequisites.md`, `bootstrap/`, `manifests/`, `solution/`, `testing/`, `validation/`) |
+| Ungraded sandbox for a module | `.../playground/` (`config.yaml`, `bootstrap/prepare.sh`, `manifests/`, `docs/overview.md`, which is the only learner page) |
 | One graded integration lab per section | `sections/section-0N0/capstone/labs/lab-01/` |
+
+The repository does not yet follow every general rule above. Modules close
+with `course-0N-wrap-up.md` titled "Wrap-Up: Mission Debrief" instead of a
+`course-0N-summary.md` titled `# Summary`, and there is no `sections/intro/`.
+Bring a module in line when you rewrite it, and update `astrona.yaml` in the
+same change.
 
 A lab folder holds:
 
 | Path | Purpose |
 | --- | --- |
-| `config.yaml` | Lab definition; `metadata.docs` has `question: "question.md"` and `solution: "solution.md"` |
-| `README.md` | Short intro and the run, submit and destroy commands |
+| `config.yaml` | Lab definition; `metadata.docs` points at `question.md` and `solution.md` |
+| `README.md` | Short intro for authors (slug, namespaces) with the run, submit and destroy commands; no `estimated_duration` front matter yet, add it when you touch the lab |
+| `prerequisites.md` | What the learner needs before starting |
 | `question.md` | The exam-style task. Starts with `# Question` and `Solve this question on: \`terminal\`` |
 | `solution.md` | Step-by-step walkthrough with real output |
-| `prerequisites.md` | What the learner should know before starting |
-| `bootstrap/01-install-istio.sh`, `bootstrap/02-seed-workloads.sh`, `manifests/` | Istio install and the broken starting state, never the fix |
-| `testing/wait-for-istiod.sh` | Waits for the validating webhook before `astrona test` applies the fix |
+| `bootstrap/01-install-istio.sh`, `02-seed-workloads.sh` | Istio install and the broken starting state |
+| `manifests/` | `lab-start.yaml` (workloads) and the faulty configuration the learner must fix |
 | `solution/apply.sh`, `solution/solution.yaml` | Reference end state, applied only by `astrona test` |
-| `validation/validate-*.sh` | Grading: one script per check |
+| `testing/` | Helpers `astrona test` runs (for example `wait-for-istiod.sh`) |
+| `validation/validate-*.sh` | Behavioural grading, one script per check (for example `validate-analyze-clean.sh`, `validate-traffic-restored.sh`) |
 
 ### Lab metadata in `astrona.yaml`
 
-`astrona.yaml` has one entry per section under `modules:` (`module-010`,
-`module-020` and so on). Each section's `content` lists, in order: the
-section `README.md`, then for each module its landing page, its parts, and
-right after the part a lab tests, a `Question` reading
-(`labs/lab-0N/question.md`) followed by the `type: lab` entry; the module's
-wrap-up page comes last. The section capstone closes the section. Playgrounds
-are not listed: the landing page's `<!-- astrona:playground -->` marker shows
-them.
+`astrona.yaml` has a `training:` block (id `ATS016`, domain
+`Troubleshooting`, weight `20`) and one entry per section under `modules:`
+(`module-010`, `module-020` and so on). Each section's `content` lists, in
+order: the section `README.md`, then for each module its landing page, its
+parts, and right after the part a lab tests, a `Question` reading
+(`labs/lab-01/question.md`) followed by the `type: lab` entry; the module's
+closing page comes last. The section capstone closes the section.
+Playgrounds are not listed: the landing page's `<!-- astrona:playground -->`
+marker shows them.
 
 Every `type: lab` entry (module labs and capstones) carries these fields, in
 this order:
@@ -369,13 +369,14 @@ this order:
         title: "Find And Fix The Configuration Errors Lab"
         path: sections/section-010/module-01/labs/lab-01
         difficulty: beginner
-        estimated_duration: 20m
+        estimated_duration: 15m
         topic: configuration
         task_kind: troubleshooting
-        tags: [istioctl-analyze, ist0101, virtualservice, destinationrule, subsets]
+        tags: [istioctl-analyze, ist0101, virtualservice, destinationrule, subsets, gateway]
         learning_goals:
           - Find every reference that does not resolve with istioctl analyze
-          - Fix the VirtualService so it routes only to subsets that exist
+          - Fix the VirtualService so it routes only to subsets and gateways that exist
+          - Prove the fix with a clean analyze run and a 200 from the tester pod
         resources:
           - name: "Diagnose your configuration with istioctl analyze"
             url: https://istio.io/latest/docs/ops/diagnostic-tools/istioctl-analyze/
@@ -388,8 +389,9 @@ this order:
   `observability`.
 - `task_kind`: exactly one of `build` (write the configuration from
   scratch), `troubleshooting` (find and fix what is broken) or `migration`
-  (move a working setup to another mode or layout). The platform filters labs
-  by it, so it is a field of its own, never a tag.
+  (move a working setup to another mode or layout). Almost every lab here is
+  `troubleshooting`. The platform filters labs by it, so it is a field of its
+  own, never a tag.
 - `tags`: 4 to 8 ids, only from the tag list below. Add a new tag to the list
   first if nothing fits.
 - `learning_goals`: 2 or 3 plain sentences, each starting with a verb, saying
@@ -400,23 +402,20 @@ this order:
 
 **Tag list** (lower case, hyphens, never synonyms):
 
-- Istio and Kubernetes objects: `virtualservice`, `destinationrule`,
-  `peerauthentication`, `authorizationpolicy`, `telemetry`, `gateway`,
-  `network-policy`, `service-ports`
-- Configuration analysis: `istioctl-analyze`, `istioctl-validate`,
-  `istioctl-x-describe`, `bug-report`, `envoy-log-level`,
-  `validating-webhook`, `ist0101`, `ist0102`, `ist0103`
-- Routing: `rule-order`, `shadowed-route`, `host-conflict`,
-  `header-matching`, `uri-matching`, `subsets`, `catch-all`
-- Control plane: `istiod-health`, `istiod-logs`, `istiod-metrics`, `xds`,
-  `nack`, `revisions`, `sidecar-injection`, `injection-opt-out`
-- Data plane configuration: `proxy-config`, `proxy-status`, `listeners`,
-  `routes`, `clusters`, `endpoints`, `protocol-selection`
-- Request failures: `access-log`, `response-flags`, `timeouts`,
-  `circuit-breaking`, `fault-injection`, `mtls-strict`, `mtls-mismatch`,
-  `503-uh`, `503-uf`, `503-nc`, `504-ut`, `404-nr`, `rbac-403`
-- Observability: `kiali`, `prometheus`, `grafana`, `promql`,
-  `istio-metrics`, `reporter-label`
+- Istio objects: `virtualservice`, `destinationrule`, `gateway`,
+  `peerauthentication`, `authorizationpolicy`, `telemetry`, `subsets`,
+  `service-ports`, `protocol-selection`
+- Configuration: `istioctl-analyze`, `ist0101`, `istioctl-x-describe`,
+  `validating-webhook`, `host-conflict`, `shadowed-route`, `rule-order`,
+  `header-matching`, `uri-matching`, `fault-injection`, `timeouts`
+- Control plane: `istiod-health`, `istiod-logs`, `proxy-status`, `xds`,
+  `revisions`, `sidecar-injection`, `injection-opt-out`
+- Data plane: `proxy-config`, `routes`, `clusters`, `endpoints`,
+  `envoy-log-level`, `network-policy`, `mtls-strict`, `mtls-mismatch`
+- Failure signatures: `503-uf`, `503-nc`, `504-ut`, `rbac-403`,
+  `response-flags`
+- Observability: `access-log`, `istio-metrics`, `prometheus`, `promql`,
+  `grafana`, `kiali`, `reporter-label`
 
 ### Running things
 
@@ -436,53 +435,57 @@ astrona test -c sections/section-010/module-01/labs/lab-01
 ```
 
 Names: a playground is `ats-016-playground-<section>-<module>`, a module lab
-`ats-016-lab-<section>-<module>`, and a capstone `ats-016-capstone-<section>`
-(for example `ats-016-capstone-030`). Keep those names. A new lab takes
-`ats-016-lab-<section>-<module>-<lab>`, for example `ats-016-lab-040-01-02`,
-so two labs never share a name. Lab bootstrap scripts do not pin a kube
-context: astrona sets `KUBECONFIG` for the lab, and `astrona test` runs on a
-cluster with a different name. Every lab must pass `astrona validate` and
-`astrona test`.
+is `ats-016-lab-<section>-<module>` and a capstone is
+`ats-016-capstone-<section>`; keep those names. A second lab in a module
+takes `ats-016-lab-<section>-<module>-<lab>`, for example
+`ats-016-lab-040-02-02`, so two labs never share a name. Lab bootstrap
+scripts do not pin a kube context: astrona sets `KUBECONFIG` for the lab, and
+`astrona test` runs on a cluster with a different name. Every lab must pass
+`astrona validate` and `astrona test`.
 
-A lab's `question.md` and `solution.md` must match what its `validation/`
-scripts actually check.
+Graders check **behaviour**, not just that an object exists: send real
+traffic from `tester` and check that the broken request now succeeds. Many
+graders also reject the plausible but wrong fix (inventing a missing subset,
+relaxing mTLS to `PERMISSIVE` to hide an error, deleting a policy instead of
+correcting it). A lab's `question.md` and `solution.md` must match what its
+`validation/` scripts actually check.
 
 Test clusters on the maintainer's machine: one at a time. Podman has 10 GiB
 and also runs the platform stack; parallel clusters run it out of memory.
-Never touch clusters you did not create.
+The section 060 addons make those clusters the heaviest. Never touch clusters
+you did not create (for example `istio-doc`).
 
 ### Where to find trusted sources
 
 Check facts here before writing them down. Prefer these over memory.
 
 - **Diagnostic tools (the course spine):**
-  <https://istio.io/latest/docs/ops/diagnostic-tools/>, especially
   [istioctl analyze](https://istio.io/latest/docs/ops/diagnostic-tools/istioctl-analyze/),
-  [proxy-status and proxy-config](https://istio.io/latest/docs/ops/diagnostic-tools/proxy-cmd/),
   [istioctl describe](https://istio.io/latest/docs/ops/diagnostic-tools/istioctl-describe/),
-  [bug-report](https://istio.io/latest/docs/ops/diagnostic-tools/istioctl/)
-  and [component logging](https://istio.io/latest/docs/ops/diagnostic-tools/component-logging/)
-- **Analyzer messages:** <https://istio.io/latest/docs/reference/config/analysis/>
+  [proxy-config and proxy-status](https://istio.io/latest/docs/ops/diagnostic-tools/proxy-cmd/),
+  [component logging](https://istio.io/latest/docs/ops/diagnostic-tools/component-logging/),
+  [analysis messages](https://istio.io/latest/docs/reference/config/analysis/)
 - **Common problems:**
-  [traffic management](https://istio.io/latest/docs/ops/common-problems/network-issues/),
+  [network](https://istio.io/latest/docs/ops/common-problems/network-issues/),
   [security](https://istio.io/latest/docs/ops/common-problems/security-issues/),
   [sidecar injection](https://istio.io/latest/docs/ops/common-problems/injection/),
-  [configuration validation](https://istio.io/latest/docs/ops/common-problems/validation/)
-- **Access logs and telemetry:**
-  [Envoy access logs](https://istio.io/latest/docs/tasks/observability/logs/access-log/),
-  [Telemetry API](https://istio.io/latest/docs/reference/config/telemetry/),
-  [Istio standard metrics](https://istio.io/latest/docs/reference/config/metrics/),
-  and the Envoy access log page for response flags:
-  <https://www.envoyproxy.io/docs/envoy/latest/configuration/observability/access_log/usage>
-- **Observability addons:**
-  [Kiali](https://istio.io/latest/docs/ops/integrations/kiali/),
-  [Prometheus](https://istio.io/latest/docs/ops/integrations/prometheus/),
-  [Grafana](https://istio.io/latest/docs/ops/integrations/grafana/)
-- **API reference, one page per object:**
+  [configuration validation](https://istio.io/latest/docs/ops/common-problems/validation/),
+  [protocol selection](https://istio.io/latest/docs/ops/configuration/traffic-management/protocol-selection/),
+  [application requirements](https://istio.io/latest/docs/ops/deployment/application-requirements/)
+- **API reference:**
   [VirtualService](https://istio.io/latest/docs/reference/config/networking/virtual-service/),
   [DestinationRule](https://istio.io/latest/docs/reference/config/networking/destination-rule/),
   [PeerAuthentication](https://istio.io/latest/docs/reference/config/security/peer_authentication/),
-  [AuthorizationPolicy](https://istio.io/latest/docs/reference/config/security/authorization-policy/)
+  [AuthorizationPolicy](https://istio.io/latest/docs/reference/config/security/authorization-policy/),
+  [Telemetry](https://istio.io/latest/docs/reference/config/telemetry/),
+  [standard metrics](https://istio.io/latest/docs/reference/config/metrics/)
+- **Observability:**
+  [Envoy access logs](https://istio.io/latest/docs/tasks/observability/logs/access-log/),
+  [Envoy access log format and response flags](https://www.envoyproxy.io/docs/envoy/latest/configuration/observability/access_log/usage),
+  [querying metrics](https://istio.io/latest/docs/tasks/observability/metrics/querying-metrics/),
+  [Prometheus](https://istio.io/latest/docs/ops/integrations/prometheus/),
+  [Grafana](https://istio.io/latest/docs/ops/integrations/grafana/),
+  [Kiali](https://istio.io/latest/docs/ops/integrations/kiali/)
 - **The exam itself:** the ICA page on the Linux Foundation / CNCF training
   site lists the official curriculum. The domain weight (20%) and topic list
   above come from this repository's README and `astrona.yaml` and have not
