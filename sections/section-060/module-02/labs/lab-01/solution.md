@@ -1,16 +1,17 @@
 # Solution: Measure The Failure Before You Fix It
 
-Every query below uses the Prometheus HTTP API from inside the cluster, so no
-browser is needed. Define a helper first:
+The cause is a `VirtualService` named `notification` that injects faults: it aborts about 30% of requests and delays half of them. You measure that with PromQL first, then remove it, declare access logging, and prove the fix with the same query.
+
+Every query below uses Prometheus's HTTP interface from inside the cluster, so you need no browser. Define a helper first. `prom_query` sends its first argument to Prometheus from the `tester` pod:
 
 ```sh
-Q() { kubectl -n metrics-demo exec deploy/tester -- curl -s \
+prom_query() { kubectl -n metrics-demo exec deploy/tester -- curl -s \
   'http://prometheus.istio-system:9090/api/v1/query' --data-urlencode "query=$1"; echo; }
 ```
 
-## Step 1 — Generate load
+## Step 1: Generate load
 
-Metrics are rates over a window; a handful of manual requests measures nothing:
+Metrics are rates over a time window, so a handful of manual requests measures nothing. Start a background loop in the `tester` pod, about ten requests a second, and wait:
 
 ```sh
 kubectl -n metrics-demo exec deploy/tester -- sh -c \
@@ -18,28 +19,28 @@ kubectl -n metrics-demo exec deploy/tester -- sh -c \
 sleep 90
 ```
 
-Ninety seconds matters: a `[1m]` rate window still containing pre-load samples
-reports something diluted, and reading too early is the commonest way to
-disbelieve a correct query.
+The 90 seconds matter. A `[1m]` rate window that still holds samples from before the load gives a watered-down answer, and reading too early is the most common way to doubt a correct query.
 
-## Step 2 — Measure the error ratio
+## Step 2: Measure the error ratio
+
+Divide the rate of `5xx` responses by the rate of all responses, from the client's side:
 
 ```sh
-Q 'sum(rate(istio_requests_total{reporter="source",response_code=~"5.."}[1m])) / sum(rate(istio_requests_total{reporter="source"}[1m]))'
+prom_query 'sum(rate(istio_requests_total{reporter="source",response_code=~"5.."}[1m])) / sum(rate(istio_requests_total{reporter="source"}[1m]))'
 ```
 
 ```text
 {"metric":{},"value":[...,"0.29"]}
 ```
 
-About `0.3`. `=~` is a regex match, so `"5.."` is any three-character code
-starting with 5, and dividing two sums gives a ratio independent of traffic
-volume — which is what an SLO is written against.
+The answer is about `0.3`. `=~` is a regular-expression match, so `"5.."` is any three-character code starting with `5`. Dividing two sums gives a ratio that does not depend on traffic volume, which is what a service level objective is written against.
 
-## Step 3 — Find the asymmetry
+## Step 3: Find the asymmetry
+
+Every request is counted twice: once by the client's proxy (`reporter="source"`) and once by the server's (`reporter="destination"`). Group the rate by both labels:
 
 ```sh
-Q 'sum(rate(istio_requests_total{destination_workload="notification-service-v1"}[1m])) by (reporter, response_code)'
+prom_query 'sum(rate(istio_requests_total{destination_workload="notification-service-v1"}[1m])) by (reporter, response_code)'
 ```
 
 ```text
@@ -48,32 +49,28 @@ Q 'sum(rate(istio_requests_total{destination_workload="notification-service-v1"}
 {"reporter":"source","response_code":"500"}      2.9
 ```
 
-**The missing fourth series is the finding.** There is no `destination` line for
-`500`: the server never received those requests. Every request is counted twice
-— once by the client's proxy and once by the server's — and the difference
-between the two is a diagnostic in its own right:
+**The missing fourth series is the finding.** There is no `destination` line for `500`: the server never received those requests. The difference between the two views is a diagnosis in its own right:
 
 | Pattern | Conclusion |
 | --- | --- |
-| errors in `source` only | the request never arrived — client-side config, connectivity, or the client's own limits |
+| errors in `source` only | the request never arrived — client-side configuration, connectivity, or the client's own limits |
 | errors in both | it arrived and failed there — destination policy or the application |
 
-The arithmetic confirms it: `6.9 + 2.9 ≈ 9.8`, the full rate, with the failures
-subtracted from what reached the destination rather than added to it.
+The numbers confirm it: `6.9 + 2.9 ≈ 9.8`, the full rate. The failures were taken away from what reached the destination, not added to it. So the failure lives in the client's proxy, not in the service.
 
-Name the cause directly with the response-flag label:
+Name the cause with the response flag label, the short code the proxy writes next to each failed request:
 
 ```sh
-Q 'sum(rate(istio_requests_total{reporter="source",response_code=~"5.."}[1m])) by (response_flags)'
+prom_query 'sum(rate(istio_requests_total{reporter="source",response_code=~"5.."}[1m])) by (response_flags)'
 ```
 
-## Step 4 — Latency lives in a different metric
+## Step 4: See that latency lives in a different metric
 
-A delayed success is still a `200`, so the counters cannot see it:
+A delayed request that succeeds is still a `200`, so the counters cannot see it. Ask the duration histogram for the 99th and 50th percentiles:
 
 ```sh
-Q 'histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{destination_workload="notification-service-v1",reporter="source"}[1m])) by (le))'
-Q 'histogram_quantile(0.50, sum(rate(istio_request_duration_milliseconds_bucket{destination_workload="notification-service-v1",reporter="source"}[1m])) by (le))'
+prom_query 'histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{destination_workload="notification-service-v1",reporter="source"}[1m])) by (le))'
+prom_query 'histogram_quantile(0.50, sum(rate(istio_request_duration_milliseconds_bucket{destination_workload="notification-service-v1",reporter="source"}[1m])) by (le))'
 ```
 
 ```text
@@ -81,39 +78,38 @@ Q 'histogram_quantile(0.50, sum(rate(istio_request_duration_milliseconds_bucket{
 {"metric":{},"value":[...,"480"]}
 ```
 
-`le` — the bucket boundary label — **must survive the aggregation**. Drop it and
-`histogram_quantile` returns `NaN` or a nonsense figure with no error raised.
-Read these as "about half a second": a percentile is interpolated between bucket
-boundaries, not measured.
+`le`, the bucket edge label, **must survive the aggregation**. Drop it and `histogram_quantile` returns `NaN` or a nonsense figure, with no error. Read these as "about half a second": a percentile is an estimate between bucket edges, not a measurement.
 
-## Step 5 — Find and remove the cause
+## Step 5: Find and remove the cause
+
+Look for a fault in the namespace's `VirtualService` objects, delete the one that has it, wait for the window to slide past the fault, and measure again. Leave the load running, because a ratio needs traffic:
 
 ```sh
 kubectl -n metrics-demo get virtualservice -o yaml | grep -A8 'fault:'
 kubectl -n metrics-demo delete virtualservice notification
 sleep 70
-Q 'sum(rate(istio_requests_total{reporter="source",response_code=~"5.."}[1m])) / sum(rate(istio_requests_total{reporter="source"}[1m]))'
+prom_query 'sum(rate(istio_requests_total{reporter="source",response_code=~"5.."}[1m])) / sum(rate(istio_requests_total{reporter="source"}[1m]))'
 ```
 
 ```text
 {"metric":{},"value":[...,"0"]}
 ```
 
-Counters keep their totals and **rates forget** — the ratio falls back to zero
-as the window slides past the fault, rather than the historical values being
-erased. With no `VirtualService`, traffic falls back to Istio's default routing
-for the Service, which is a perfectly valid configuration.
+Counters keep their totals and **rates forget**. The ratio falls back to zero as the window slides past the fault; the old values are not erased. With no `VirtualService`, the proxies use Istio's default routing for the Service, which is a valid setup.
+
+Send it for grading to see where you stand:
 
 ```sh
 astrona submit
 ```
 
-## Step 6 — Declare access logging for the namespace
+## Step 6: Declare access logging for the namespace
 
-Write the manifest to a file and apply the file. It is the habit the exam rewards — you get something you can re-read, edit and re-apply, instead of a heredoc that is gone the moment it runs.
+A `Telemetry` object holds the flight log settings for one namespace. With the `envoy` provider, every sidecar in `metrics-demo` writes one access log line per request.
 
-```sh
-cat > telemetry-access-logs.yaml <<'EOF'
+Save this as `telemetry-access-logs.yaml`:
+
+```yaml
 apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
@@ -123,15 +119,19 @@ spec:
   accessLogging:
     - providers:
         - name: envoy
-EOF
+```
+
+Apply it:
+
+```sh
 kubectl apply -f telemetry-access-logs.yaml
 ```
 
-Metrics answer "how much, how bad, since when". Logs answer "what happened to
-*this* request". You want both, and the `Telemetry` object is the scoped,
-revertible way to ask for the second.
+Metrics answer "how much, how bad, since when". Logs answer "what happened to *this* request". You want both, and the `Telemetry` object is the scoped way to ask for the second without touching the install. You undo it by deleting the object.
 
-## Step 7 — Stop the load and confirm
+## Step 7: Stop the load and confirm
+
+Stop the loop, send one request, and check that Grafana is running:
 
 ```sh
 kubectl -n metrics-demo exec deploy/tester -- pkill -f 'while true' || true
@@ -140,14 +140,25 @@ kubectl -n metrics-demo exec deploy/tester -- \
 kubectl -n istio-system get pods -l app.kubernetes.io/name=grafana
 ```
 
+The request returns `200`, and the Grafana pod is `Running`.
+
+## Step 8: Submit
+
+The grader checks three things. The Prometheus and Grafana pods are `Running`. No `VirtualService` in `metrics-demo` has a `fault` block, and ten `POST` requests from `tester` all return `200`. A `Telemetry` object in `metrics-demo` enables the `envoy` provider, and Prometheus holds `istio_requests_total` with `response_code="200"` for `notification-service-v1`.
+
 ```sh
 astrona submit
 ```
 
 ## Grafana
 
-`kubectl -n istio-system port-forward svc/grafana 3000:3000`, then pick the
-dashboard by the question:
+If your browser can reach the cluster, forward Grafana's port:
+
+```sh
+kubectl -n istio-system port-forward svc/grafana 3000:3000
+```
+
+Then open `http://localhost:3000` and pick the dashboard by the question:
 
 | Dashboard | Open it for |
 | --- | --- |
@@ -156,33 +167,18 @@ dashboard by the question:
 | **Istio Workload** | inbound **and outbound** traffic for one workload |
 | **Istio Control Plane** | push errors, rejects, convergence time |
 
-Every panel is a query you could have written — open its Explore view to read
-the PromQL behind it.
+Every panel is a query you could have written. Open its Explore view to read the PromQL behind it.
 
 ## Common mistakes
 
-- Forgetting `rate()` on a counter. Raw counter values are meaningless for a
-  rate question.
-- Ignoring the `reporter` label and double counting every request.
-- Querying a window shorter than the scrape interval, which produces empty
-  results.
-- Assuming missing metrics mean no traffic. An uninjected workload exports
-  nothing at all.
+- Forgetting `rate()` on a counter. A raw counter value means nothing for a rate question.
+- Ignoring the `reporter` label and counting every request twice.
+- Querying a window shorter than the scrape interval, which gives empty results.
+- Assuming missing metrics mean no traffic. A workload without a sidecar exports nothing at all.
 - Dropping `by (le)` from a histogram query.
 
 ## Practice variations
 
 - Add a `Telemetry` resource with a custom dimension and query on it.
 - Find requests rejected by a circuit breaker using the `response_flags` label.
-- Use the Control Plane dashboard to correlate a config push with a latency
-  spike.
-
----
-
-## Reference
-
-The official documentation for everything this task touches — open these rather than trying to recall field names:
-
-- [Configuration analysis messages](https://istio.io/latest/docs/reference/config/analysis/) — every `IST####` code and what triggers it
-- [Envoy access logs](https://istio.io/latest/docs/tasks/observability/logs/access-log/) — turning logging on and reading the response flags
-- [Destination rule reference](https://istio.io/latest/docs/reference/config/networking/destination-rule/) — the traffic objects a broken route points at
+- Use the Control Plane dashboard to connect a configuration push with a latency spike.

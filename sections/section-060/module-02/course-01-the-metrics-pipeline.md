@@ -1,33 +1,33 @@
-# Part 1 — The Metrics Pipeline
+# The Metrics Pipeline
 
-> Prerequisite: [the module landing page](./course.md). Next: [Part 2 — The reporter Label And PromQL Patterns](./course-02-reporter-and-promql.md).
+Before you query anything, astronaut, learn exactly where the numbers come from. Every gap in a dashboard is a break somewhere along one four-step path. This part covers that path, the metrics that travel along it, and the two kinds of metric you must read differently.
 
-Before querying anything it is worth knowing exactly where the numbers come from, because every gap in a dashboard is a break somewhere along a four-stage path. This part is that path, the metrics that travel it, and the two metric types you must read differently.
+## Four steps, no application changes
 
-## Four stages, no application changes
+Each signal passes a communications officer (the sidecar proxy), and the officer keeps count. Prometheus, the telemetry recorder, collects those counts, and tools read them from Prometheus.
 
-```text
-   ① the proxy counts        every request through the sidecar increments
-      what it handles        istio_requests_total and observes the duration histogram
-
-   ② it exposes them         :15090/stats/prometheus   (plain text, Prometheus format)
-
-   ③ Prometheus scrapes      every ~15s, discovering pods by annotation or ServiceMonitor
-
-   ④ something queries       Grafana, Kiali, or you — over Prometheus's HTTP API
+```mermaid
+flowchart LR
+    P["Proxy counts each request"] -->|"exposes :15090/stats/prometheus"| E["Metrics page"]
+    E -->|"scraped every ~15s"| PR["Prometheus"]
+    PR -->|"HTTP queries"| Q["Grafana, Kiali or you"]
 ```
 
-The important property is where stage ① happens: **in the proxy**, not in your code. A workload gains full request metrics by gaining a sidecar, and loses them by losing one. No library, no instrumentation, no redeploy.
+The diagram shows the four steps. First, the proxy adds one to `istio_requests_total` for every request it handles, and records how long the request took. Second, it shows those numbers as plain text on port `15090`, in Prometheus format. Third, Prometheus collects them about every 15 seconds; this is called scraping. Fourth, Grafana, Kiali or you read them through Prometheus's HTTP interface.
 
-The consequences are the same ones [module 060-01](../../section-060/module-01/course-01-what-kiali-is-built-from.md) drew for Kiali, because Kiali is a consumer of this same pipeline:
+The key fact is where the first step happens: **in the proxy**, not in your code. A workload gets full request metrics by getting a sidecar, and loses them by losing it. No library, no code change, no redeploy.
 
-- A workload with **no sidecar** produces nothing at any stage ([module 030-03](../../section-030/module-03/course.md)).
-- Traffic that **bypasses the proxy** — an excluded port, a direct pod-IP call outside the mesh — is not counted.
-- A **scrape gap** leaves a hole in the series that looks like an outage in a graph and is not one.
+Three things follow from that:
 
-Diagnosing "no data" is a walk along those four stages, and stage ② is the one that splits the problem in half: if the proxy has the number and Prometheus does not, it is a monitoring problem, not a mesh one.
+- A workload with **no sidecar** (a ship with no communications officer) produces nothing at any step.
+- Traffic that **goes around the proxy**, such as an excluded port or a direct call from outside the mesh, is not counted.
+- A **missed scrape** leaves a hole in the data that looks like an outage on a graph, and is not one.
+
+To explain "no data", walk along the four steps. The second step splits the problem in half: if the proxy has the number and Prometheus does not, it is a monitoring problem, not a mesh problem.
 
 ## The metrics that matter
+
+Istio's sidecars export a small set of standard metrics. These are the ones you use for troubleshooting:
 
 | Metric | Type | Answers |
 | --- | --- | --- |
@@ -37,56 +37,67 @@ Diagnosing "no data" is a walk along those four stages, and stage ② is the one
 | `istio_tcp_connections_opened_total` / `_closed_total` | counter | Non-HTTP traffic, which the request metrics do not see |
 | `istio_tcp_sent_bytes_total` / `received_bytes_total` | counter | Volume on TCP connections |
 
-The TCP family matters more than it first appears. A database or a message broker in the mesh produces **no** `istio_requests_total` at all — those are HTTP-level metrics. Looking for a TCP service in the request metrics and concluding it has no traffic is a common and confident mistake.
+The TCP metrics matter more than they first seem. A database or a message broker in the mesh produces **no** `istio_requests_total` at all, because those are HTTP-level metrics. Looking for a TCP service in the request metrics and deciding it has no traffic is a common, confident mistake.
 
 ## The labels are the tool
 
-`istio_requests_total` carries the labels that make it a diagnostic rather than a number:
+The labels on `istio_requests_total` turn a plain number into a diagnosis:
 
 | Label | Values | Use |
 | --- | --- | --- |
-| `reporter` | `source`, `destination` | whose view of the request — [Part 2](./course-02-reporter-and-promql.md)'s subject |
+| `reporter` | `source`, `destination` | whose view of the request: the sending ship's or the receiving ship's |
 | `source_workload`, `source_workload_namespace` | | who called |
 | `destination_workload`, `destination_service_name` | | who was called |
 | `destination_version` | the `version` pod label | canary comparison |
 | `request_protocol` | `http`, `grpc`, `tcp` | protocol split |
 | `response_code` | `200`, `503`, … | success and error rates |
-| `response_flags` | `-`, `UH`, `UF`, `UO`, … | **the flag from [section 050](../../section-050/module-01/course-03-flags-and-which-proxy.md), as a label** |
-| `connection_security_policy` | `mutual_tls`, `none` | encryption ([module 050-02](../../section-050/module-02/course-03-fixing-and-proving-encryption.md)) |
+| `response_flags` | `-`, `UH`, `UF`, `UO`, … | **the response flag from the access log, as a label** |
+| `connection_security_policy` | `mutual_tls`, `none` | whether the connection used mutual TLS (the secret handshake) |
 
-`response_flags` is the one people overlook, and it is the bridge between this section and section 050. A query grouped by it turns "we had 400 errors last night" into "380 of them were `UO`" — a capacity problem — "and 20 were `UF`" — a connectivity problem. That distinction would otherwise require reading hundreds of log lines.
+`response_flags` is the label people overlook, and it links metrics to access logs. A response flag is the short code the communications officer stamps on a failed signal in the flight log. A query grouped by it turns "we had 400 errors last night" into "380 were `UO`", which is a capacity problem (a circuit breaker closed the docking bay), "and 20 were `UF`", which is a connection problem. Without it you would read hundreds of log lines to learn the same thing.
 
 ## Reading one line
 
-> [!TIP]
-> **Try it — one metric line, read label by label**
->
-> ```sh
-> kubectl -n metrics-demo exec deploy/tester -- \
->   curl -s -o /dev/null -X POST http://notification-service/notify
-> kubectl -n metrics-demo exec deploy/notification-service-v1 -c istio-proxy -- \
->   pilot-agent request GET stats/prometheus | grep '^istio_requests_total' | head -1
-> ```
->
-> Expect something like:
->
-> ```text
-> istio_requests_total{reporter="destination",source_workload="tester",source_workload_namespace="metrics-demo",destination_workload="notification-service-v1",destination_service_name="notification-service",request_protocol="http",response_code="200",response_flags="-",connection_security_policy="mutual_tls"} 1
-> ```
->
-> One line contains the caller, the callee, the protocol, the outcome, the response flag and whether the connection was encrypted. Everything Kiali draws and every Grafana panel is built from series like this one.
->
-> `pilot-agent request GET` reads the sidecar's admin interface from inside the container ([module 010-02 Part 2](../../section-010/module-02/course-02-envoy-log-scopes-at-runtime.md)), which is **stage ②** of the pipeline. It works with or without Prometheus installed, which makes it the right first check when a dashboard is empty.
+The fastest way to understand the labels is to read one real line from a proxy.
+
+<!-- astrona:playground:renew -->
+
+### Read one metric line, label by label
+
+Send one request from the `tester` pod, then read the first `istio_requests_total` line from the destination's proxy:
+
+```sh
+kubectl -n metrics-demo exec deploy/tester -- \
+  curl -s -o /dev/null -X POST http://notification-service/notify
+kubectl -n metrics-demo exec deploy/notification-service-v1 -c istio-proxy -- \
+  pilot-agent request GET stats/prometheus | grep '^istio_requests_total' | head -1
+```
+
+You should see something like:
+
+```text
+istio_requests_total{reporter="destination",source_workload="tester",source_workload_namespace="metrics-demo",destination_workload="notification-service-v1",destination_service_name="notification-service",request_protocol="http",response_code="200",response_flags="-",connection_security_policy="mutual_tls"} 1
+```
+
+One line holds the caller, the callee, the protocol, the result, the response flag and whether the connection was encrypted. Everything Kiali draws and every Grafana panel is built from lines like this one.
+
+`pilot-agent request GET` reads the sidecar's administration page from inside the container. That is the second step of the path. It works with or without Prometheus, which makes it the right first check when a dashboard is empty.
 
 ## Counters and histograms are read differently
 
-**Counters** — `istio_requests_total`, the TCP totals — only ever increase, for the lifetime of the process. Three rules follow:
+Istio's metrics come in two kinds, and you read each kind in its own way. Get this wrong and every number you read is wrong too.
 
-- **The absolute value means nothing.** `istio_requests_total ... 4213` is a statement about uptime.
-- **The useful reading is a difference over time**, which is what `rate()` computes.
-- **A pod restart resets them to zero.** Prometheus handles that in `rate()`; a human reading raw numbers must not be surprised by it.
+### Counters only go up
 
-**Histograms** are a set of `_bucket` series with an `le` ("less than or equal to") label, plus `_sum` and `_count`:
+**Counters**, such as `istio_requests_total` and the TCP totals, only ever go up for as long as the proxy runs. Three rules follow:
+
+- **The raw value means nothing.** `istio_requests_total ... 4213` only tells you how long the proxy has been up.
+- **The useful reading is the change over time.** That is what `rate()` calculates.
+- **A pod restart resets them to zero.** Prometheus handles that inside `rate()`. A person reading raw numbers must not be surprised by it.
+
+### Histograms count into buckets
+
+**Histograms** are a set of `_bucket` series with an `le` label ("less than or equal to"), plus a `_sum` and a `_count`:
 
 ```text
    istio_request_duration_milliseconds_bucket{le="0.5"}   120
@@ -95,33 +106,34 @@ The TCP family matters more than it first appears. A database or a message broke
    istio_request_duration_milliseconds_bucket{le="+Inf"}  245
 ```
 
-Each bucket is **cumulative**: `le="5"` counts every request that took 5ms *or less*. A percentile is computed by finding which bucket the target rank falls into and interpolating within it — which is why a percentile from a histogram is an estimate bounded by bucket width, not a measurement. "About 500ms" is the correct way to read one.
+Each bucket is **cumulative**: `le="5"` counts every request that took 5 milliseconds *or less*. To get a percentile, Prometheus finds the bucket the target rank falls into and estimates a value inside it. So a percentile from a histogram is an estimate, limited by the bucket size. "About 500ms" is the right way to read one.
 
-> [!TIP]
-> **Try it — a histogram's buckets, raw**
->
-> ```sh
-> kubectl -n metrics-demo exec deploy/notification-service-v1 -c istio-proxy -- \
->   pilot-agent request GET stats/prometheus \
->   | grep '^istio_request_duration_milliseconds_bucket' | grep 'destination_workload="notification-service-v1"' | head -6
-> ```
->
-> Expect something like:
->
-> ```text
-> istio_request_duration_milliseconds_bucket{...,le="0.5"} 0
-> istio_request_duration_milliseconds_bucket{...,le="1"} 1
-> istio_request_duration_milliseconds_bucket{...,le="5"} 1
-> istio_request_duration_milliseconds_bucket{...,le="10"} 1
-> istio_request_duration_milliseconds_bucket{...,le="25"} 1
-> istio_request_duration_milliseconds_bucket{...,le="50"} 1
-> ```
->
-> The counts stop changing after `le="1"` — every request so far completed in under a millisecond, so every larger bucket has the same cumulative count. Watch what [Part 3](./course-03-measuring-a-failure-and-grafana.md) does to this shape when it injects a 500ms delay: the low buckets stay put and the counts climb only from `le="500"` upwards.
+### Read a histogram's buckets in your playground
+
+Read the first six duration buckets for the app from its own proxy:
+
+```sh
+kubectl -n metrics-demo exec deploy/notification-service-v1 -c istio-proxy -- \
+  pilot-agent request GET stats/prometheus \
+  | grep '^istio_request_duration_milliseconds_bucket' | grep 'destination_workload="notification-service-v1"' | head -6
+```
+
+You should see something like:
+
+```text
+istio_request_duration_milliseconds_bucket{...,le="0.5"} 0
+istio_request_duration_milliseconds_bucket{...,le="1"} 1
+istio_request_duration_milliseconds_bucket{...,le="5"} 1
+istio_request_duration_milliseconds_bucket{...,le="10"} 1
+istio_request_duration_milliseconds_bucket{...,le="25"} 1
+istio_request_duration_milliseconds_bucket{...,le="50"} 1
+```
+
+The counts stop changing after `le="1"`. Every request so far finished in under a millisecond, so every larger bucket holds the same total. If you add a 500ms delay to some requests, the low buckets stay where they are and the counts only climb from `le="500"` upwards.
 
 ## Querying Prometheus without a browser
 
-Prometheus has an HTTP API, and any pod with `curl` can use it. That is what makes every checkpoint in this module work on a headless playground:
+Prometheus has an HTTP interface, and any pod with `curl` can use it. That is why every hands-on step in this module works on a playground with no browser. This is the general shape of the command; you replace `<PromQL>` with a real query:
 
 ```sh
 kubectl -n metrics-demo exec deploy/tester -- curl -s \
@@ -129,25 +141,18 @@ kubectl -n metrics-demo exec deploy/tester -- curl -s \
   --data-urlencode 'query=<PromQL>'
 ```
 
-`--data-urlencode` matters: PromQL contains characters (`{`, `}`, `=`, `"`, `[`, `]`) that must be encoded, and building the URL by hand is how you get a confusing `400`.
+`--data-urlencode` matters. PromQL contains characters (`{`, `}`, `=`, `"`, `[`, `]`) that must be encoded, and building the address by hand is how you get a confusing `400` error.
 
-The response is JSON with the shape `.data.result[]`, each element carrying a `metric` object of labels and a `value` pair of `[timestamp, "value"]`. Readable enough at a terminal; pipe to `jq` when there are more than a few series.
+The answer is JSON shaped like `.data.result[]`. Each item has a `metric` object with the labels and a `value` pair of `[timestamp, "value"]`. That is readable in a terminal; pipe it to `jq` when there are more than a few series.
+
+## Common pitfalls
 
 > [!WARNING]
-> **Pitfalls in the pipeline**
->
-> - **Expecting metrics from an unmeshed workload.** No sidecar, no `istio_requests_total`. A workload missing from a dashboard may be missing from the mesh.
+> - **Expecting metrics from a workload outside the mesh.** No sidecar, no `istio_requests_total`. A workload missing from a dashboard may be missing from the mesh.
 > - **Looking for TCP traffic in the request metrics.** Non-HTTP connections appear in `istio_tcp_*`, not in `istio_requests_total`.
-> - **Reading counters as absolute values.** A large number is uptime. Use `rate()`, or read twice and subtract.
-> - **Treating a percentile as exact.** It is interpolated between bucket boundaries.
-> - **Assuming the addon Prometheus is production monitoring.** The one shipped with Istio's samples has no persistent storage and is sized for demos.
-> - **Building the query URL by hand.** Use `--data-urlencode`; PromQL is full of characters that need encoding.
+> - **Reading counters as absolute values.** A large number only means a long uptime. Use `rate()`, or read twice and subtract.
+> - **Treating a percentile as exact.** It is an estimate between bucket edges.
+> - **Taking the add-on Prometheus for production monitoring.** The one in Istio's samples has no permanent storage and is sized for demos.
+> - **Building the query address by hand.** Use `--data-urlencode`; PromQL is full of characters that need encoding.
 
-> *A workload's metrics come from its proxy — so "no data" is first a question about the sidecar, and only then about monitoring.*
-
-## Reference
-
-- [Istio standard metrics](https://istio.io/latest/docs/reference/config/metrics/) — every metric and label this part names, authoritatively.
-- [Prometheus metric types](https://prometheus.io/docs/concepts/metric_types/) — counters, gauges, histograms and summaries.
-- [Querying Prometheus — HTTP API](https://prometheus.io/docs/prometheus/latest/querying/api/) — the endpoint and response shape used in every checkpoint here.
-- [Istio Prometheus integration](https://istio.io/latest/docs/ops/integrations/prometheus/) — scrape configuration, and how to point Istio at an existing Prometheus rather than the addon.
+> *A workload's metrics come from its proxy, so "no data" is first a question about the sidecar, and only then about monitoring.*

@@ -622,6 +622,9 @@ modules:
             url: https://istio.io/latest/docs/ops/integrations/prometheus/
           - name: "Visualizing your mesh"
             url: https://istio.io/latest/docs/tasks/observability/kiali/
+      - type: reading
+        title: "Wrap-Up: Mission Debrief"
+        path: sections/section-060/module-01/course-04-wrap-up.md
 
       - type: reading
         title: "Troubleshoot With Prometheus And Grafana"
@@ -633,8 +636,11 @@ modules:
         title: "The reporter Label And PromQL Patterns"
         path: sections/section-060/module-02/course-02-reporter-and-promql.md
       - type: reading
-        title: "Measuring A Known Failure, And Grafana"
-        path: sections/section-060/module-02/course-03-measuring-a-failure-and-grafana.md
+        title: "Measuring A Known Failure"
+        path: sections/section-060/module-02/course-03-measuring-a-known-failure.md
+      - type: reading
+        title: "Grafana, Flight Logs And Proving The Fix"
+        path: sections/section-060/module-02/course-04-grafana-and-proving-the-fix.md
       - type: reading
         title: Question
         path: sections/section-060/module-02/labs/lab-01/question.md
@@ -657,6 +663,9 @@ modules:
             url: https://istio.io/latest/docs/tasks/observability/metrics/querying-metrics/
           - name: "Grafana integration"
             url: https://istio.io/latest/docs/ops/integrations/grafana/
+      - type: reading
+        title: "Wrap-Up: Mission Debrief"
+        path: sections/section-060/module-02/course-05-wrap-up.md
 
       - type: reading
         title: Question

@@ -1,91 +1,104 @@
-# Part 3 — Validations, Badges And Cross-Checking
+# Validations, Badges And Cross-Checking
 
-> Prerequisite: [Part 2 — Reading The Graph](./course-02-reading-the-graph.md). Next: [the module landing page](./course.md), then [module 060-02](../module-02/course.md).
-
-The graph is only half of what Kiali does. The other half reads Istio objects rather than metrics: validating configuration, and reporting how connections were secured. This part covers both, verifies each against the command line underneath it, and ends with the method that keeps Kiali in its proper role.
+The graph is only half of what Kiali does. The other half reads Istio objects instead of metrics: it checks your configuration, and it reports how connections were secured. This part covers both, checks each one against the command line underneath it, and ends with a method that keeps Kiali in its proper role.
 
 ## Istio Config: the analyzers, with navigation
 
-Kiali's **Istio Config** view lists every Istio object in scope and validates it — using the same analyzers as `istioctl analyze`, reporting the same `IST####` codes ([module 010-01 Part 2](../../section-010/module-01/course-02-reading-analyzer-messages.md)).
+Kiali's **Istio Config** view lists every Istio object in scope and checks it. It uses the same analyzers as `istioctl analyze`, the pre-flight inspector that reads every object together and finds the ones that point at nothing. It reports the same `IST####` codes, the inspector's warning codes, such as `IST0101` for a reference that does not resolve.
 
-Since the findings are identical, the choice between them is about what you are doing:
+The findings are the same, so you choose by what you are doing:
 
 | Use | When |
 | --- | --- |
 | **Kiali Istio Config** | you do not know which namespace is at fault; you want to click from a finding to the object; you are showing someone else |
-| **`istioctl analyze`** | you already know the namespace; you are in a terminal; you want an exit code for CI |
+| **`istioctl analyze`** | you already know the namespace; you are in a terminal; you want an exit code for a build pipeline |
 
-Kiali's advantages are navigational: a red validation icon on an object, a click through to its YAML, and a mesh-wide view of which namespaces are unhealthy. Its disadvantage is that it is a UI, and a UI cannot fail your build.
+Kiali helps you move around: a red validation icon on an object, one click to its YAML, and a view across all namespaces of which ones are unhealthy. Its weakness is that it is a web page, and a web page cannot stop a broken build.
 
-> [!TIP]
-> **Try it — a broken object, from both directions**
->
-> ```sh
-> kubectl apply -f - <<'EOF'
-> apiVersion: networking.istio.io/v1
-> kind: VirtualService
-> metadata:
->   name: broken
->   namespace: kiali-demo
-> spec:
->   hosts:
->     - notification-service
->   gateways:
->     - does-not-exist
->   http:
->     - route:
->         - destination:
->             host: notification-service
->             subset: nonexistent
-> EOF
-> istioctl analyze -n kiali-demo
-> ```
->
-> Expect something like:
->
-> ```text
-> Error [IST0101] (VirtualService broken.kiali-demo) Referenced gateway not found: "does-not-exist"
-> Error [IST0101] (VirtualService broken.kiali-demo) Referenced host+subset in destinationrule not found: "notification-service+nonexistent"
-> Warning [IST0109] (VirtualService broken.kiali-demo) The VirtualServices broken.kiali-demo, notification.kiali-demo associated with mesh gateway define the same host notification-service which can lead to undefined behavior.
-> ```
->
-> Three findings, and in Kiali's Istio Config view the same three appear as a red validation badge on the `broken` object, each linking to the offending field.
->
-> Note the third one, which was not the point of the checkpoint: applying a second `VirtualService` for a host that already had one reproduced the host-ownership conflict from [section 020](../../section-020/module-01/course-02-host-ownership-and-merging.md). That is a fair demonstration of how easily it happens — two people, two objects, one host, and the only warning is a `Warning`.
+<!-- astrona:playground:renew -->
 
-The two tools agreeing is also a useful sanity check in its own right: it confirms Kiali is reading the cluster you think it is.
+### See a broken object from both sides
+
+This `VirtualService` points at a `Gateway` and a subset that do not exist. The API server accepts it anyway, because it checks each object on its own.
+
+Save this as `virtualservice-broken.yaml`:
+
+```yaml
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: broken
+  namespace: kiali-demo
+spec:
+  hosts:
+    - notification-service
+  gateways:
+    - does-not-exist
+  http:
+    - route:
+        - destination:
+            host: notification-service
+            subset: nonexistent
+```
+
+Apply it:
+
+```sh
+kubectl apply -f virtualservice-broken.yaml
+```
+
+Then check the result with the analyzer:
+
+```sh
+istioctl analyze -n kiali-demo
+```
+
+The output below was taken while a second `VirtualService` for the same host, named `notification` (a 30% fault drill), was also applied in `kiali-demo`. You should see something like:
+
+```text
+Error [IST0101] (VirtualService broken.kiali-demo) Referenced gateway not found: "does-not-exist"
+Error [IST0101] (VirtualService broken.kiali-demo) Referenced host+subset in destinationrule not found: "notification-service+nonexistent"
+Warning [IST0109] (VirtualService broken.kiali-demo) The VirtualServices broken.kiali-demo, notification.kiali-demo associated with mesh gateway define the same host notification-service which can lead to undefined behavior.
+```
+
+There are three findings. In Kiali's Istio Config view the same three appear as a red validation badge on the `broken` object, each linking to the field at fault.
+
+Look at the third one, the `IST0109` warning. Two `VirtualService` objects now claim the same host: two flight plans for one beacon, and only one is followed. That shows how easily it happens: two people, two objects, one host, and the only notice is a `Warning`. If you never applied the `notification` object, you see only the two `Error` lines.
+
+When Kiali and the analyzer agree, you also learn something useful: Kiali is reading the cluster you think it is reading.
 
 ## The security badge
 
-The padlock on an edge means Kiali found `connection_security_policy="mutual_tls"` on the metrics for that pair. It is the same label [module 050-02 Part 3](../../section-050/module-02/course-03-fixing-and-proving-encryption.md) used to prove a fix, rendered as an icon.
+The padlock on an edge means Kiali found `connection_security_policy="mutual_tls"` on the metrics for that pair. Mutual TLS (mTLS) is the secret handshake: both ships show their ID badges before they talk. The padlock is that metric label, drawn as an icon.
 
-Its value is at scale. During a migration to `STRICT` mTLS, the question "which parts of the mesh are already encrypted" is tedious to answer workload by workload and immediate on a graph with the Security display enabled.
+It helps most at scale. During a move to `STRICT` mTLS (the airlock rule "no handshake, no docking"), the question "which parts of the mesh are already encrypted" is slow to answer one workload at a time. On a graph with the Security option on, you see it at once.
 
-Two cautions, both following from the fact that it is computed from observed traffic:
+The badge comes from traffic that actually happened, so keep two limits in mind:
 
-- **It reports what happened, not what is required.** Under `PERMISSIVE`, some traffic on a path can be mTLS and some plaintext; the badge reflects the mix, not a policy.
-- **An edge with no traffic has no badge**, for the same reason it has no edge.
+- **It reports what happened, not what is required.** Under `PERMISSIVE`, some traffic on a path can use mTLS and some can be plain text. The badge shows the mix, not a policy.
+- **An edge with no traffic has no badge,** for the same reason it has no edge.
 
-> [!TIP]
-> **Try it — the label behind the padlock**
->
-> ```sh
-> kubectl -n kiali-demo exec deploy/notification-service-v1 -c istio-proxy -- \
->   pilot-agent request GET stats/prometheus | grep istio_requests_total \
->   | grep -o 'connection_security_policy="[^"]*"' | sort | uniq -c
-> ```
->
-> Expect something like:
->
-> ```text
->    2 connection_security_policy="mutual_tls"
-> ```
->
-> `mutual_tls` on the **destination's** own metrics, which is where the label is meaningful — the receiving proxy is the one that knows how the connection was secured. A padlock in the UI and this output are the same fact, one rendered and one raw.
+### Read the label behind the padlock
+
+Ask the destination's own proxy which security policy its counted requests used:
+
+```sh
+kubectl -n kiali-demo exec deploy/notification-service-v1 -c istio-proxy -- \
+  pilot-agent request GET stats/prometheus | grep istio_requests_total \
+  | grep -o 'connection_security_policy="[^"]*"' | sort | uniq -c
+```
+
+You should see something like:
+
+```text
+   2 connection_security_policy="mutual_tls"
+```
+
+The value is `mutual_tls`, on the **destination's** own metrics. That is where the label means the most: the receiving proxy is the one that knows how the connection was secured. The padlock in the Kiali page and this output are the same fact, one drawn and one raw.
 
 ## Cross-checking, as a habit
 
-Every visual element in Kiali has a command-line equivalent. Knowing the mapping is what lets you trust the UI in a hurry and verify it when the answer matters:
+Every picture in Kiali has a command-line version. Knowing the mapping lets you trust the page in a hurry and check it when the answer matters:
 
 | Kiali shows | Underneath it is | Check it with |
 | --- | --- | --- |
@@ -94,69 +107,94 @@ Every visual element in Kiali has a command-line equivalent. Knowing the mapping
 | a padlock | `connection_security_policy="mutual_tls"` | the destination proxy's metrics |
 | a red validation badge | an analyzer finding | `istioctl analyze -n <ns>` |
 | a workload's health | Kubernetes object state | `kubectl get pods`, `istioctl proxy-status` |
-| response time on an edge | `istio_request_duration_milliseconds_bucket` | a `histogram_quantile` query ([module 060-02](../module-02/course.md)) |
+| response time on an edge | `istio_request_duration_milliseconds_bucket` | a `histogram_quantile` query in Prometheus |
 
-The habit worth forming: when Kiali shows something surprising, check the row's right-hand column before acting on it. Not because Kiali is unreliable — it is a faithful renderer — but because the check tells you *which* of the underlying facts is surprising, which is usually the actual finding.
+Make this a habit: when Kiali shows something surprising, check the right-hand column before you act. Kiali is not unreliable. It draws faithfully. But the check tells you *which* underlying fact is surprising, and that is usually the real finding.
 
 ## Cleaning up
 
-> [!TIP]
-> **Try it — stopping the load and removing the faults**
->
-> ```sh
-> kubectl -n kiali-demo exec deploy/tester -- pkill -f 'while true' || true
-> kubectl -n kiali-demo delete virtualservice broken notification
-> sleep 5
-> kubectl -n kiali-demo exec deploy/tester -- \
->   curl -s -o /dev/null -w '%{http_code}\n' -X POST http://notification-service/notify
-> istioctl analyze -n kiali-demo
-> ```
->
-> Expect something like:
->
-> ```text
-> virtualservice.networking.istio.io "broken" deleted
-> virtualservice.networking.istio.io "notification" deleted
-> 200
-> ✔ No validation issues found when analyzing namespace: kiali-demo.
-> ```
->
-> Both `VirtualService` objects are gone, so traffic falls back to Istio's default routing for the Service and succeeds — a reminder that a Service with no Istio routing objects at all is a perfectly valid, working configuration.
->
-> Prometheus keeps its historical counter values; what changes is the **rate** over the sliding window, so the graph returns to green over the next minute or two rather than instantly. That lag is the same one from [Part 2](./course-02-reading-the-graph.md), now working in your favour.
+Stop the traffic loop, remove the two `VirtualService` objects, and confirm the beacon answers again.
+
+### Stop the load and remove the faults
+
+Run the clean-up, then send one test signal and run the analyzer:
+
+```sh
+kubectl -n kiali-demo exec deploy/tester -- pkill -f 'while true' || true
+kubectl -n kiali-demo delete virtualservice broken notification
+sleep 5
+kubectl -n kiali-demo exec deploy/tester -- \
+  curl -s -o /dev/null -w '%{http_code}\n' -X POST http://notification-service/notify
+istioctl analyze -n kiali-demo
+```
+
+You should see something like:
+
+```text
+virtualservice.networking.istio.io "broken" deleted
+virtualservice.networking.istio.io "notification" deleted
+200
+✔ No validation issues found when analyzing namespace: kiali-demo.
+```
+
+If you never applied the `notification` object, `kubectl` reports it as not found instead. That is fine.
+
+Both `VirtualService` objects are gone, so the proxies fall back to Istio's default routing for the Service, and the request succeeds. A Service with no Istio routing objects at all is a valid, working setup.
+
+Prometheus keeps its old counter totals. What changes is the **rate** over the sliding window. So the map turns green again over the next minute or two, not at once. The same delay that hid problems now works in your favour.
 
 ## The method
 
-```text
-   1. Kiali graph          which pair of workloads, how bad, since when
-        │                  (set graph type and time window deliberately)
-        ▼
-   2. Access log, caller   the response flag: which layer failed       (section 050)
-        │
-        ▼
-   3. proxy-config         what the proxy was configured to do         (section 040)
-        │
-        ▼
-   4. istioctl analyze     was the configuration coherent at all       (section 010)
+Kiali is the first step of an investigation, not the last. Here is the order that works on an unfamiliar problem:
+
+```mermaid
+flowchart TB
+    G["Kiali graph"] -->|"which pair, how bad"| L["Access log on the caller"]
+    L -->|"response flag: which layer"| C["istioctl proxy-config"]
+    C -->|"what the proxy was told"| A["istioctl analyze"]
 ```
 
-Kiali removes the hardest step, which is deciding where to point the other tools. It does not replace any of them, and the moment it is treated as an oracle — "the graph says the notification service is broken" — it starts costing time instead of saving it.
+The diagram shows four steps from top to bottom. The Kiali graph names the pair of workloads, how bad it is and since when (set the graph type and time window on purpose). The access log on the caller gives the response flag, which names the layer that failed. `istioctl proxy-config` shows what the proxy was configured to do. `istioctl analyze` tells you whether the configuration made sense in the first place.
+
+Kiali removes the hardest step, which is deciding where to point the other tools. It replaces none of them. The moment you treat it as the final answer ("the graph says the notification service is broken"), it starts costing you time instead of saving it.
+
+## Common pitfalls
 
 > [!WARNING]
-> **Pitfalls with validations and badges**
->
-> - **Using Kiali's validations instead of `istioctl analyze`, or the reverse.** They are the same analyzers; choose by what you are doing, not by which you trust.
-> - **Trusting the padlock as proof of a `STRICT` policy.** It reflects how observed connections were secured. Under `PERMISSIVE` a path can be partly encrypted.
+> - **Using Kiali's validations instead of `istioctl analyze`, or the other way round, out of trust.** They are the same analyzers. Choose by what you are doing.
+> - **Taking the padlock as proof of a `STRICT` policy.** It shows how observed connections were secured. Under `PERMISSIVE`, a path can be partly encrypted.
 > - **Expecting a badge on an edge with no traffic.** No traffic, no edge, no badge.
-> - **Acting on a surprising panel without checking the data underneath.** The check usually identifies which underlying fact is the real finding.
-> - **Leaving fault injection in place.** A `VirtualService` aborting 30% of requests keeps doing so after you stop looking at the graph.
-> - **Leaving a load generator running.** It is a background process inside a pod; `pkill` it, or destroy the playground.
+> - **Acting on a surprising panel without checking the data underneath.** The check usually shows which fact is the real finding.
+> - **Leaving fault injection in place.** A `VirtualService` that fails 30% of requests keeps doing it after you stop looking at the graph.
+> - **Leaving a load generator running.** It is a background process inside a pod. Stop it with `pkill`, or destroy the playground.
 
-> *Every pixel in Kiali has a command behind it — knowing which one is what turns a dashboard into evidence.*
+> *Every pixel in Kiali has a command behind it, and knowing which one turns a dashboard into evidence.*
 
-## Reference
+## Your mission: An Empty Graph And A Red Badge
 
-- [Kiali validations](https://kiali.io/docs/features/validations/) — the checks it runs and how they map to Istio's analyzer codes.
-- [Configuration analysis messages](https://istio.io/latest/docs/reference/config/analysis/) — the `IST####` catalogue both tools report against.
-- [Kiali security display](https://kiali.io/docs/features/security/) — what the padlock is computed from.
-- [Istio standard metrics](https://istio.io/latest/docs/reference/config/metrics/) — `connection_security_policy`, `response_code` and the duration histogram behind each display option.
+You can now explain an empty Kiali graph, find what a red validation badge is about, and fix it from the command line. Now prove it in a graded mission: a colleague saw an empty graph and a red badge in `kiali-demo` and reported "the mesh is down", and you have to show it is not, then make validation clean without removing the route.
+
+The mission runs in its own training solar system, so first pause your playground. Nothing in it is lost:
+
+```sh
+astrona stop ats-016-playground-060-01
+```
+
+Then start the mission:
+
+```sh
+astrona run --git ssh://git@github.com/astrona-io/ATS016.git -c sections/section-060/module-01/labs/lab-01
+```
+
+Read the task in [`question.md`](./labs/lab-01/question.md) and solve it on your own first. When you think you are done, send it for grading:
+
+```sh
+astrona submit -c sections/section-060/module-01/labs/lab-01
+```
+
+When the mission is done, remove it and wake your playground up again:
+
+```sh
+astrona destroy ats-016-lab-060-01
+astrona start ats-016-playground-060-01
+```
