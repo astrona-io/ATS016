@@ -1,3 +1,7 @@
+---
+estimated_duration: 15m
+---
+
 # Find Configuration Errors With istioctl analyze
 
 - **ID:** LAB

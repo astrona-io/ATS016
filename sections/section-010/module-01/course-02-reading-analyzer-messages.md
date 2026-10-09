@@ -1,62 +1,60 @@
 # Reading What The Analyzer Says
 
-Astronaut, `istioctl analyze` is the pre-flight inspector: it reads every Istio object together and writes an inspection report. On a real cluster that report is long. This part turns it into a work queue: how one message is built, what its severity really claims, which codes are worth knowing by heart, and how to let the command's exit code do the reading for you in a pipeline.
+`istioctl analyze` reads every Istio object together and prints one message for each problem it finds. On a real cluster that list is long, and reading it top to bottom wastes time. This part shows how one message is built, what its severity really says, which codes are worth knowing by heart, and how the exit code of the command can do the reading for you in a build pipeline.
 
-## One message, three fields and a payload
+## One message, four fields
 
-Every finding has the same shape. Reading it in order turns a wall of text into a list of tasks:
+Every analyzer message has the same shape. If you read it field by field, a wall of text becomes a list of tasks:
 
 ```text
 Error      [IST0101]   (VirtualService notification.analyze-demo)   Referenced host+subset ... not found: "notification-service+v3"
-└ severity └ code      └ the object being blamed                    └ what is wrong
+└ severity └ code      └ origin: the object it blames               └ message
 ```
 
 - **Severity**: `Error`, `Warning` or `Info`.
-- **Code**: a stable `IST####` identifier, the inspector's warning code.
-- **Origin**: the object, written as `<Kind> <name>.<namespace>`. When the analyzer read a file instead of the cluster, it adds the path and a line number.
-- **Message**: the readable text. It is the only part that changes between Istio releases.
+- **Code**: a fixed `IST####` identifier for the kind of problem.
+- **Origin**: the object, written as `<Kind> <name>.<namespace>`. When the analyzer reads a file instead of the cluster, it adds the file path and a line number.
+- **Message**: the readable text. It is the only field that changes between Istio releases.
 
-That last point is the practical reason to search by code, not by text. The wording of `IST0101` has changed more than once; the number has not. Your searches, tickets and runbooks should all use the code.
+That last point is the practical reason to search by code, not by text. The wording of `IST0101` has changed more than once, and the number has not. Use the code in your searches, tickets and runbooks.
 
-## Severity means valid, not important
+## Severity says what Istio will do, not how urgent it is
 
-The severities are easy to read as a priority order. They are not. They describe **what Istio will do with the object**, which is a different question from how much trouble you are in:
+The three severities are easy to read as a priority order, but they are not one. They describe **what Istio will do with the object**. How much trouble you are in is a different question:
 
 | Severity | Means | Does *not* mean |
 | --- | --- | --- |
 | `Error` | Istio cannot do what this object asks | that it is your most urgent problem |
 | `Warning` | Istio will do something, and it is probably not what you meant | that it is safe to ignore |
-| `Info` | A note about the configuration or the environment | that it is cosmetic |
+| `Info` | A note about the configuration or the environment | that it does not matter |
 
-Here is a real example of the difference. An `Error` on a `VirtualService` that no traffic uses costs you nothing today. A `Warning` that a namespace (a planet) carries mesh configuration without an injection label means **every policy on that planet applies to nothing**. No ship there has a communications officer (a sidecar proxy) to enforce it. That is a total, silent failure, reported one level below an `Error`.
+A real example shows the difference. An `Error` on a `VirtualService` that no traffic uses costs you nothing today. An `IST0102` message, which is only `Info`, says a namespace has no sidecar injection label. New pods in that namespace then start without a sidecar proxy, so no Istio policy can be enforced for them. That is a complete failure with no error anywhere, reported at the lowest severity.
 
-So the rule is: read the Errors to find what is broken, and read the Warnings to find what is pretending to work.
+So read the `Error` messages to find what is broken, and read the rest to find what only looks like it works.
 
 ## The codes worth knowing by heart
 
-There are dozens of codes. These five carry most of the weight in troubleshooting, and each one has a typical symptom:
+There are dozens of codes. These five come up most often in troubleshooting, and each one has a typical symptom:
 
-| Code | Severity (typical) | Meaning | Symptom you would otherwise chase |
+| Code | Severity | Meaning | Symptom you would otherwise chase |
 | --- | --- | --- | --- |
-| `IST0101` | `Error` | A referenced resource does not exist: host, subset, gateway or secret | `503` with no obvious cause; a route to nowhere |
-| `IST0102` | `Warning` | A namespace has mesh configuration but no injection label | "my policy does nothing at all" |
-| `IST0103` | `Info` | A pod has no sidecar | one workload ignoring every mesh rule |
-| `IST0109` | `Warning` | Two `VirtualService` objects define the same host | routing that changes when an unrelated object is edited |
-| `IST0106` | `Warning` | A deprecated field or API version is in use | works now, breaks at the next upgrade |
+| `IST0101` | `Error` | A referenced resource does not exist: host, subset, gateway or secret | `503` with no clear cause; a route to nothing |
+| `IST0102` | `Info` | A namespace has no sidecar injection label | "my policy does nothing at all" |
+| `IST0103` | `Warning` | A pod is missing the sidecar proxy | one workload ignores every Istio rule |
+| `IST0109` | `Error` | Two `VirtualService` objects for the mesh define the same host | routing that changes when an unrelated object is edited |
+| `IST0002` | `Warning` | The configuration uses a deprecated feature | works now, breaks at the next upgrade |
 
-Three of those five are not Errors, and three describe configuration that is entirely valid. That is the shape of the whole tool: the interesting findings are usually the ones Istio is happy to serve.
-
-### Sort a namespace's findings by severity
+Two of the five are not `Error`s, and their configuration is entirely valid. That is typical of the whole tool: the most useful messages are often about configuration Istio accepts without complaint.
 
 <!-- astrona:playground:renew -->
 
-Run the analyzer on your playground's planet:
+Run the analyzer on the playground namespace and look at the severity and code of each message:
 
 ```sh
 istioctl analyze -n analyze-demo
 ```
 
-You should see something like:
+You should see something like this (the last line, a link to the documentation, is left out):
 
 ```text
 Error [IST0101] (VirtualService notification.analyze-demo) Referenced host+subset in destinationrule not found: "notification-service+v3"
@@ -64,13 +62,11 @@ Error [IST0101] (VirtualService notification.analyze-demo) Referenced gateway no
 Error: Analyzers found issues when analyzing namespace: analyze-demo.
 ```
 
-Two findings, one code, one object, two different references that point at nothing. Notice what is missing: no `IST0102`, because this namespace *is* labelled for injection, and no `IST0103`, because both pods have sidecars. When the analyzer stays quiet about something, it is telling you it checked.
+There are two messages, with one code, on one object, about two different references that point at nothing. Notice what is missing as well. There is no `IST0102`, because this namespace has the injection label. There is no `IST0103`, because both pods have a sidecar proxy. When the analyzer says nothing about a problem, it has checked for it and found none.
 
 ## Machine-readable output
 
-The text format is for people at a terminal. `-o json` gives you the same findings as structured data. It also carries one field the text form does not print: the documentation address for the code.
-
-### See the same findings as JSON
+The text format is for people at a terminal. The `-o json` flag prints the same messages as structured data. It also adds one field the text form does not print: the documentation address for each code.
 
 Ask for JSON output:
 
@@ -78,7 +74,7 @@ Ask for JSON output:
 istioctl analyze -n analyze-demo -o json
 ```
 
-You should see something like:
+You should see something like this (shortened to one message):
 
 ```text
 [
@@ -92,19 +88,13 @@ You should see something like:
 ]
 ```
 
-The output is shortened to one finding. It has the same three fields, `level`, `code` and `origin`, plus a documentation address built from the code and pinned to your Istio version. That is the fastest way to an explanation you did not have to remember, and another reason the code is the thing to carry around.
+The fields are the same: `level` is the severity, then `code`, `origin` and `message`. The `documentationUrl` is built from the code and pinned to your Istio version, so it always explains the message you actually got. JSON output also makes the analyzer easy to script. For example, one `jq` command can count messages by code across every namespace, which shows whether a cluster has one repeated mistake or twenty different ones.
 
-The JSON form also makes the analyzer scriptable. For example, counting findings by code across every namespace takes one `jq` command. It quickly shows whether a cluster's problems are one repeated mistake or twenty different ones.
+## Exit codes and the failure threshold
 
-## Exit codes, and turning this into a gate
+`istioctl analyze` exits with a non-zero code when it finds a message at or above a threshold. The default threshold is `Error`, so **`Warning` and `Info` messages do not fail the command**. In a build pipeline, an automated set of checks that runs before a change is merged or deployed, this means every `Warning` gets through.
 
-`istioctl analyze` exits with a non-zero code when it finds something at or above a threshold. The default threshold is `Error`, so **Warnings do not fail the command**. That is the same gap as above, now with consequences for automation.
-
-`--failure-threshold` moves the line. Set it to `Warning`, and a namespace with an injection-label problem starts failing your pipeline. Set it to `Info`, and a pod without a sidecar does too.
-
-### Compare two thresholds on one namespace
-
-Run the analyzer twice and print each exit code:
+The `--failure-threshold` flag moves that line. Set it to `Warning`, and a pod without a sidecar proxy fails your pipeline. Set it to `Info`, and a namespace without an injection label does too. Run the analyzer twice and print the exit code each time:
 
 ```sh
 istioctl analyze -n analyze-demo >/dev/null 2>&1; echo "default threshold exit: $?"
@@ -118,29 +108,26 @@ default threshold exit: 1
 Info threshold exit: 1
 ```
 
-Both are non-zero here, because this namespace has real `Error`s. The interesting run comes after you fix them: with the Errors gone, the default threshold returns `0` and a lower threshold may not. That difference is the whole decision in a build pipeline policy: how much "valid but probably wrong" you are willing to merge.
+Both exit codes are `1` here, because this namespace has real `Error`s. The useful comparison comes after you fix them. With the `Error`s gone, the default threshold returns `0`, and a lower threshold may still return `1`. Choosing the threshold means deciding how much "valid but probably wrong" configuration you allow into the cluster.
 
 > [!TIP]
-> Choose the threshold on purpose instead of keeping the default. Most teams want `Warning` in a build pipeline and `Error` in a quick check before a deploy.
+> Choose the threshold on purpose instead of keeping the default. A common choice is `Warning` in a build pipeline and `Error` for a quick check by hand before a deploy.
 
-A threshold is a blunt tool. You cannot switch it off for a single code, so a finding you have consciously accepted keeps failing the build until the configuration changes.
+The threshold applies to all codes at once. You cannot switch it off for a single code, so a message you have decided to accept keeps failing the pipeline until the configuration changes.
 
-## Scope: the finding you do not see
+## Scope: the message you do not see
 
-Analyzers check the objects in scope, and the default scope is one namespace: your current context's namespace, unless you pass `-n`. That leads to two failures worth naming:
+Analyzers check the objects in scope, and the default scope is one namespace. Without `-n`, that is the namespace of your current `kubectl` context. This leads to two problems. The first is a clean report on the wrong namespace: the command succeeded, but it answered a question you did not ask. The second is a misleading message about a relationship between namespaces. A `VirtualService` in the namespace `app` that binds to a `Gateway` in `istio-system` has one end out of scope, so analysing `app` alone can report the gateway as missing when it exists.
 
-- **A clean report on the wrong namespace.** The command succeeded. It just answered a question you did not ask.
-- **A misleading finding on a relationship between namespaces.** A `VirtualService` in `app` that binds to a `Gateway` in `istio-system` is one relationship with one object out of scope. Analysing `app` alone can report the gateway as missing when it exists.
+The `--all-namespaces` flag removes both problems, at the cost of a longer report. Use it when you are investigating, not when you are checking one change.
 
-`--all-namespaces` removes both problems at the cost of a longer report. It is the right choice when you are investigating, not checking one thing.
+You can now read any analyzer message: its severity says what Istio will do, its code says what kind of problem it is, and its origin names the object. You also know that the default threshold and the default scope both hide messages unless you change them. What is still open is the input itself. So far the analyzer has only read the cluster, but it can also read files that were never applied.
 
 ## Common pitfalls
 
 > [!WARNING]
-> - **Reading only the Errors.** `IST0102` (a Warning) and `IST0103` (an Info) explain most "my policy has no effect" reports. Nothing is invalid; the policy is simply applied to workloads that are not in the mesh.
-> - **Searching by message text.** The wording changes between releases; the `IST####` code does not. Key your runbooks and searches on the code.
-> - **Running analyze in the wrong namespace.** It looks at one namespace and silently uses your current context. Pass `-n`, or `--all-namespaces`.
-> - **Assuming a one-namespace run sees both ends of a relationship between namespaces.** It does not, and the "missing gateway" finding that results comes from the scope, not from a fault.
-> - **Keeping the default failure threshold in a pipeline.** `Error` lets every Warning through, including the ones that mean a whole namespace is outside the mesh.
-
-> *Errors tell you what Istio refused to do; Warnings tell you what it did instead of what you meant.*
+> - **Reading only the `Error`s.** `IST0103` (a `Warning`) and `IST0102` (an `Info`) explain most "my policy has no effect" reports. Nothing is invalid; the policy applies to pods that have no sidecar proxy.
+> - **Searching by message text.** The wording changes between releases, and the `IST####` code does not.
+> - **Running analyze in the wrong namespace.** Without `-n`, it uses the namespace of your current context. Pass `-n`, or `--all-namespaces`.
+> - **Trusting a one-namespace run on a relationship between namespaces.** A "missing gateway" message can come from the scope, not from a real fault.
+> - **Keeping the default failure threshold in a pipeline.** `Error` lets every `Warning` and `Info` through, including a pod with no sidecar proxy.

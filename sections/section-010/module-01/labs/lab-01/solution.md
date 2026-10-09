@@ -1,12 +1,12 @@
 # Solution: Find And Fix The Configuration Errors
 
-Work the task yourself first, astronaut. Running `astrona submit -c sections/section-010/module-01/labs/lab-01` after a step tells you which checks pass, without telling you what is left.
+Work the task yourself first. Running `astrona submit -c sections/section-010/module-01/labs/lab-01` after a step tells you which checks pass, without telling you what is left.
 
 The grader checks three things: `istioctl analyze` is clean, ten `POST` requests return `200`, and every routed subset exists and selects a running pod.
 
 ## Step 1: Reproduce the failure, and rule out the workload
 
-Check the pods and send one request from your test ship:
+Check the pods and send one request from the `tester` pod:
 
 ```sh
 kubectl -n analyze-demo get pods
@@ -14,11 +14,11 @@ kubectl -n analyze-demo exec deploy/tester -- \
   curl -s -o /dev/null -w '%{http_code}\n' -X POST http://notification-service/notify
 ```
 
-Both pods are `2/2 Running`, and the request returns `503`. A healthy destination with a `503` points at the routing, not at the application. So nothing in the Deployment needs touching.
+Both pods are `2/2 Running`, and the request returns `503`. The `2/2` means each pod runs its application container and its sidecar proxy (Envoy). A healthy destination with a `503` points at the routing, not at the application, so nothing in the Deployment needs to change.
 
 ## Step 2: Ask the analyzer
 
-Run the pre-flight inspector on the namespace:
+Run the analyzer on the namespace:
 
 ```sh
 istioctl analyze -n analyze-demo
@@ -47,7 +47,7 @@ kubectl -n analyze-demo get destinationrule notification -o jsonpath='{.spec.sub
 
 Only `version=v1` pods exist, and the `DestinationRule` defines only `v1`. So:
 
-- **The subset reference:** change the route to `v1`. Adding a `v3` subset would satisfy the analyzer but leave a cluster with no endpoints, a ship class nobody built. The task forbids it, and the grader checks for it.
+- **The subset reference:** change the route to `v1`. Adding a `v3` subset would satisfy the analyzer but leave an Envoy cluster with no endpoints, because no pod has the label `version=v3`. The task forbids it, and the grader checks for it.
 - **The gateway reference:** remove it. Nothing here is exposed outside the mesh, so the `VirtualService` should apply inside the mesh only. That is the default when `gateways:` is left out.
 
 ## Step 4: Apply the corrected VirtualService
@@ -108,7 +108,7 @@ The route now points at the `v1` subset cluster, which has running pods behind i
 
 ## Step 6: Submit
 
-Send the mission for grading:
+Send the lab for grading:
 
 ```sh
 astrona submit -c sections/section-010/module-01/labs/lab-01
@@ -126,7 +126,7 @@ astrona submit -c sections/section-010/module-01/labs/lab-01
 ## Common mistakes
 
 - Treating a clean `kubectl apply` as proof the configuration is correct. It only proves the schema matched.
-- Ignoring Warnings. `IST0102` and `IST0103` explain most "my policy does nothing" reports, and they are not Errors.
+- Ignoring messages below `Error`. `IST0103` (a `Warning`) and `IST0102` (an `Info`) explain most "my policy does nothing" reports.
 - Running analyze in the wrong namespace. It looks at one namespace unless you pass `--all-namespaces`.
 - Fixing several things at once, then not knowing which change mattered.
 

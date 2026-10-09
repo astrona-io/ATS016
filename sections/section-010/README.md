@@ -24,12 +24,12 @@ Work through the modules in order. Each module has a landing page, a few short p
 
 ### 1. Find Configuration Errors With istioctl analyze
 
-Start at the **[module landing page](./module-01/course.md)**. The playground holds the namespace `analyze-demo` with configuration that is broken in two ways the API server accepted without complaint.
+The module starts at its landing page, which also launches the playground. The playground holds the namespace `analyze-demo` with configuration that is broken in two ways the API server accepted without an error.
 
-1. [What The API Server Checks, And What It Cannot](./module-01/course-01-admission-and-the-analysis-gap.md)
-2. [Reading What The Analyzer Says](./module-01/course-02-reading-analyzer-messages.md)
-3. [Choosing The Right Analysis Source](./module-01/course-03-analysis-sources-and-the-fix-loop.md), followed by the mission **[Find And Fix The Configuration Errors](./module-01/labs/lab-01/question.md)**
-4. [Wrap-Up: Mission Debrief](./module-01/course-04-wrap-up.md)
+1. What The API Server Checks, And What It Cannot
+2. Reading What The Analyzer Says
+3. Choosing The Right Analysis Source, followed by the lab **Find And Fix The Configuration Errors**
+4. Summary
 
 ### 2. Summarise A Workload With describe, Capture A Cluster With bug-report
 

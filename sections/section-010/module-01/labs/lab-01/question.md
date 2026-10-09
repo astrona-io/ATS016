@@ -6,9 +6,9 @@ Solve this question on: `terminal`
 
 ## Scenario
 
-Astronaut, a colleague deployed `notification-service` on the planet (namespace) `analyze-demo` and applied some Istio routing alongside it. Every `kubectl apply` succeeded. `kubectl get` lists all the objects. Nothing reports an error.
+A colleague deployed `notification-service` in the namespace `analyze-demo` and applied some Istio routing for it. Every `kubectl apply` succeeded. `kubectl get` lists all the objects. Nothing reports an error.
 
-Yet requests to the service return `503`:
+Yet requests from the `tester` pod to the service return `503`:
 
 ```sh
 kubectl -n analyze-demo exec deploy/tester -- \

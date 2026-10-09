@@ -1,61 +1,39 @@
 # Find Configuration Errors With istioctl analyze
 
-Astronaut, imagine filing a flight plan at the registry office. The clerk checks that every box on the form is filled in correctly, stamps it, and files it. Nobody checks whether the ship class named on the form was ever built. Your flight plan is "valid", and your signals still go nowhere.
+A `VirtualService` that routes to a subset no `DestinationRule` defines applies without an error. `kubectl get` lists it, and `kubectl describe` shows nothing wrong. The only symptom is that requests fail with `503`, several steps away from the object that caused it.
 
-That is exactly what happens in Istio. A `VirtualService` (the flight plan for signals) that routes to a subset nobody defined applies cleanly. `kubectl get` lists it, and `kubectl describe` shows nothing worth reading. The only visible symptom is that requests fail with `503`, several layers away from the object that caused it.
+A `VirtualService` is the Istio resource that tells the sidecar proxies how to route requests for a host. A `DestinationRule` defines what happens to traffic for a host after routing, including named **subsets**: groups of pods selected by labels, such as `version: v1`. When a route names a subset that no `DestinationRule` defines, the route points at nothing.
 
-This module is about that gap, and about the tool that closes it. Keep one sentence in mind: **`kubectl apply` checks one document at a time, and `istioctl analyze` checks a whole configuration set.** The analyzer is the pre-flight inspector: it reads every form together, the way `istiod` (mission control) does, and finds the ones that point at nothing.
+This module is about that gap and the tool that closes it. Keep one sentence in mind: **`kubectl apply` checks one document at a time, and `istioctl analyze` checks the whole configuration set.** The analyzer reads every Istio object together, the same way `istiod` (Istio's control plane) does, and reports the references that do not resolve.
+
+The module has three parts. **What The API Server Checks, And What It Cannot** follows one `kubectl apply` through every stage and shows why a missing subset passes all of them. **Reading What The Analyzer Says** takes one analyzer message apart: its severity, its `IST####` code and the object it blames, and how the exit code turns analysis into a check in a build pipeline. **Choosing The Right Analysis Source** compares analysing the cluster, a file on top of the cluster and a file alone, and ends with fixing a broken reference and proving the fix. A graded lab follows the third part.
 
 ## Learning objectives
 
 After this module you can:
 
 - Describe the stages a `kubectl apply` of an Istio resource passes through, and name which stage rejects what.
-- Explain why a reference from one object to another cannot be checked when the object is applied, and what that means for your own manifests.
+- Explain why a reference from one object to another cannot be checked when the object is applied.
 - Run `istioctl analyze` against a namespace, the whole mesh, and a file that has not been applied yet.
-- Read an analyzer message and name its severity, its `IST####` code, and the object it blames.
+- Read an analyzer message and name its severity, its `IST####` code and the object it blames.
 - Explain why a `Warning` is often the real cause of a "my configuration does nothing" report.
-- Use `--failure-threshold` and the command's exit code to make analysis a build gate.
-- Choose between `istioctl validate` and `istioctl analyze` for a given situation, and state what each cannot see.
-- Fix an analyzer `Error` and prove the fix with both a clean analyze run and real traffic.
+- Use `--failure-threshold` and the exit code of the command to fail a build pipeline.
+- Choose between `istioctl validate` and `istioctl analyze`, and state what each one cannot see.
+- Fix an analyzer `Error` and prove the fix with a clean analyze run and real requests.
 
 ## Before you start
 
-Every mission starts with a pre-flight check, astronaut. Make sure you have the knowledge this module expects, and know what is waiting in your playground.
+You need Kubernetes basics: namespaces, Deployments, Services, pod labels, and the commands `kubectl get`, `kubectl apply` and `kubectl exec`. You also need to know what a `VirtualService` and a `DestinationRule` are for. This module does not teach routing; it teaches how to find out that routing is broken.
 
-### What you should already know
+Your playground is a single-node `kind` cluster with **Istio 1.30.5** installed with the `demo` profile, and `istioctl` on your PATH. Every pod in the mesh gets a sidecar proxy (Envoy): a proxy container that Istio adds to the pod, so that all inbound and outbound traffic of the pod passes through it. The namespace **`analyze-demo`** has sidecar injection switched on and runs these workloads:
 
-- **Kubernetes basics.** Namespaces, Deployments, Services, pod labels, `kubectl get`, `kubectl apply` and `kubectl exec`.
-- **What a `VirtualService` and a `DestinationRule` are for.** This module does not teach routing. It teaches how to find out that your routing is broken.
-
-### What is in your playground
-
-Your playground is a small training solar system: a single-node `kind` cluster with **Istio 1.30.5** already installed (the `demo` profile) and `istioctl` ready to use. It has one planet, the namespace **`analyze-demo`**, with sidecar injection switched on. On it you find:
-
-| Ship | Its role |
+| Workload | What it is |
 | --- | --- |
-| `notification-service-v1` | A Deployment labelled `version: v1`, behind the Service `notification-service` on port `80`. It answers `["EMAIL"]` |
-| `tester` | Your test ship: a client pod with `curl`. Every test request is sent from here |
+| `notification-service-v1` | A Deployment with the label `version: v1`, behind the Service `notification-service` on port `80`. It answers `["EMAIL"]` |
+| `tester` | A client pod with `curl`. Every test request in this module is sent from here |
 
-There is also a `DestinationRule` and a `VirtualService` that **are already broken on purpose**. Finding out how is the subject of this module, so do not read the playground's manifest files until you have run the analyzer yourself.
-
-Every command in every part runs against the playground cluster. `kubectl` is already pointed at it.
+The namespace also holds a `DestinationRule` and a `VirtualService` that are **broken on purpose**. Finding out how is the subject of this module, so run the analyzer before you read their YAML. Every command in the parts runs against the playground cluster, and `kubectl` already points at it.
 
 Launch your playground now, and keep it running next to you while you read the parts:
 
 <!-- astrona:playground -->
-
-## The parts of this module
-
-Read the parts in this order:
-
-1. [What The API Server Checks, And What It Cannot](./course-01-admission-and-the-analysis-gap.md): the stages a `kubectl apply` passes through, why the validating webhook cannot catch a missing subset, and what an analyzer is.
-2. [Reading What The Analyzer Says](./course-02-reading-analyzer-messages.md): severity, `IST####` code and blamed object, the codes worth knowing by heart, JSON output, and the exit code that turns analysis into a build gate.
-3. [Choosing The Right Analysis Source](./course-03-analysis-sources-and-the-fix-loop.md): the cluster, a file on top of the cluster, or a file alone; `validate` against `analyze`; and fixing one thing at a time, then proving it twice. Your graded mission follows this part.
-4. [Wrap-Up: Mission Debrief](./course-04-wrap-up.md): what you learned, a self-check, and cleaning up.
-
-## Why this matters
-
-`istioctl analyze` is the cheapest question you can ask about a broken mesh. It takes two seconds and names the object, the field and the value that do not resolve. Ask it first, and you will not spend an hour reading thousands of lines of proxy configuration to find a typo.
-
-It also keeps you honest in the other direction. A clean analyze run proves the configuration is coherent. It does not prove that the configuration reached the proxies, or that requests succeed. A clean report moves the investigation on; it does not end it.
