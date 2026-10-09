@@ -33,11 +33,6 @@ spec:
           volumeMounts:
             - name: nginx-conf
               mountPath: /etc/nginx/conf.d
-        # A slow dependency for the timeout example: nginx forwards /slow to
-        # this httpbin, which waits five seconds before it answers.
-        - name: slow-backend
-          image: mccutchen/go-httpbin:v2.15.0
-          command: ["/bin/go-httpbin", "-port", "8080"]
       volumes:
         - name: nginx-conf
           configMap:
@@ -89,11 +84,6 @@ data:
   default.conf: |
     server {
       listen 8084;
-      location /slow {
-        rewrite ^ /delay/5 break;
-        proxy_pass http://127.0.0.1:8080;
-        proxy_http_version 1.1;
-      }
       location / {
         default_type application/json;
         return 200 '["EMAIL"]';

@@ -2,18 +2,18 @@
 
 Solve this question on: `terminal`
 
-**Time:** about 20 minutes · **Weight:** Troubleshooting the Mesh Data Plane
+**Time:** about 20 minutes · **Exam topic:** Troubleshooting the Mesh Data Plane
 
 ## Scenario
 
-Astronaut, every request between the two workloads in the namespace `mtlsfail-demo` returns `503`. Both pods are `2/2 Running`. The destination's application log is empty, and so, the on-call engineer reports, is its **proxy** log.
+Every request between the two workloads in the namespace `mtlsfail-demo` returns `503`. Both pods are `2/2 Running`. The destination's application log is empty, and so, the on-call engineer reports, is its **proxy** log.
 
 ```sh
 kubectl -n mtlsfail-demo exec deploy/tester -- \
   curl -s -o /dev/null -w '%{http_code}\n' -X POST http://notification-service/notify
 ```
 
-The security team tightened this namespace to `STRICT` mutual TLS (mTLS, the secret handshake both ships must do before they talk) last week, and will not accept a rollback.
+The security team set this namespace to `STRICT` mutual TLS (mTLS) last week, and will not accept a rollback. With mTLS, both sidecar proxies present a certificate, so the connection is encrypted and both identities are checked.
 
 ## Your task
 

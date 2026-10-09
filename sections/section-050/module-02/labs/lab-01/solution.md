@@ -4,7 +4,7 @@ The grader checks three things: a `POST` returns `200`; the `PeerAuthentication`
 
 ## Step 1: Read the pair of logs
 
-Read the newest flight log lines (access log) on the client's proxy and on the destination's proxy:
+Read the newest access log lines on the client's proxy and on the destination's proxy:
 
 ```sh
 kubectl -n mtlsfail-demo logs deploy/tester -c istio-proxy --tail=3
@@ -37,7 +37,7 @@ kubectl -n mtlsfail-demo get pods
 istioctl proxy-status | grep mtlsfail-demo
 ```
 
-Both pods are `2/2` and both appear in `proxy-status`, mission control's roll call. The caller is in the mesh, so this is a configuration mismatch, not a missing sidecar.
+Both pods are `2/2` and both appear in `istioctl proxy-status`, which lists every proxy connected to `istiod`. The caller is in the mesh, so this is a configuration mismatch, not a missing sidecar.
 
 ## Step 3: Read both ends
 
@@ -49,13 +49,15 @@ istioctl x describe pod $POD -n mtlsfail-demo | grep -i -A2 'Effective PeerAuthe
 kubectl -n mtlsfail-demo get destinationrule -o yaml | grep -A3 'tls:'
 ```
 
+The output looks something like this (shortened to the lines that matter):
+
 ```text
    Workload mTLS mode: STRICT
       tls:
         mode: DISABLE
 ```
 
-The server requires the handshake; the client is told to send plain text. Each object is valid and neither mentions the other, which is why this survived review.
+The server requires mTLS; the client is told to send plain text. Each object is valid and neither mentions the other, which is why this survived review.
 
 Use `istioctl x describe pod` instead of reading the `PeerAuthentication` directly. Mesh, namespace and workload policies merge, narrowest first and per port, and only the effective value accounts for that.
 

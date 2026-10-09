@@ -2,11 +2,11 @@
 
 Solve this question on: `terminal`
 
-**Time:** about 35 minutes · **Weight:** Troubleshooting the Mesh Data Plane
+**Time:** about 35 minutes · **Exam topic:** Troubleshooting the Mesh Data Plane
 
 ## Scenario
 
-Astronaut, nothing in the namespace `logcapstone-demo` works. According to the team's documentation, the intent is:
+Nothing in the namespace `logcapstone-demo` works. According to the team's documentation, the intent is:
 
 - all traffic between workloads is **encrypted** with mutual TLS (mTLS);
 - `notification-service` accepts `POST` and refuses every other method.

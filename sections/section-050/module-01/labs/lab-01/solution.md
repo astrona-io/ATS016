@@ -4,7 +4,7 @@ The grader checks three things: a `Telemetry` object in `accesslog-demo` switche
 
 ## Step 1: See the current behaviour
 
-Time one request from the `tester` ship to the `notification-service` beacon:
+Time one request from the `tester` pod to the `notification-service` Service:
 
 ```sh
 time kubectl -n accesslog-demo exec deploy/tester -- \
@@ -16,9 +16,9 @@ time kubectl -n accesslog-demo exec deploy/tester -- \
 real    0m5.2s
 ```
 
-A `200` after about five seconds. Nothing is failing, and that is the point: a wait with no limit is the caller's problem, not the server's.
+A `200` after several seconds. Nothing is failing, and that is the point: a wait with no limit is the caller's problem, not the server's.
 
-Look at the flight plan (the `VirtualService`) that already exists for the beacon:
+Look at the `VirtualService` that already exists for the Service. A `VirtualService` tells the sidecar proxies how to route requests for a host:
 
 ```sh
 kubectl -n accesslog-demo get virtualservice
@@ -28,7 +28,7 @@ There is one, called `notification`. It has no `timeout`.
 
 ## Step 2: Declare logging for this namespace
 
-Switching logging on for the whole mesh is an install setting. A `Telemetry` object is the flight log settings for one planet: a Kubernetes object in the namespace that you can apply, scope and delete without touching the install.
+Switching logging on for the whole mesh is an install setting. A `Telemetry` object configures access logs, metrics and tracing for the proxies it covers. It is a Kubernetes object in the namespace that you can apply, scope and delete without touching the install.
 
 Save this as `telemetry-access-logs.yaml`:
 
@@ -68,7 +68,7 @@ astrona submit -c sections/section-050/module-01/labs/lab-01
 
 Put `timeout: 2s` on the route. The dependency itself is slow, so the wait happens upstream, where the tester's proxy can cut it short with a route timeout.
 
-The starting `notification` `VirtualService` also carries a 5-second `fault.delay`. Do not keep it next to the timeout: in Envoy, the fault filter runs before the router, and the router is what enforces the route timeout. A delay injected on the same rule happens before the timeout clock starts. The fixed flight plan has only the route and the timeout.
+The starting `notification` `VirtualService` also carries a 5-second `fault.delay`. Do not keep it next to the timeout: in Envoy, the fault filter runs before the router, and the router is what enforces the route timeout. A delay injected on the same rule happens before the timeout clock starts. The corrected `VirtualService` has only the route and the timeout.
 
 Save this as `virtualservice-notification.yaml`:
 
@@ -104,7 +104,7 @@ The output should show `timeout: 2s`.
 
 ## Step 4: Produce the flag and read it
 
-Send one request and read the tester's newest flight log line:
+Send one request and read the newest access log line of the `tester` pod's proxy:
 
 ```sh
 kubectl -n accesslog-demo exec deploy/tester -- \
@@ -125,13 +125,13 @@ Three things to read on that line:
 - **`UT`**: upstream request timeout, the route timeout firing. The details field says `response_timeout`.
 - **Duration about `2000`**: the *timeout*, not the five-second wait. The proxy gave up after two seconds.
 
-Which proxy wrote it? The upstream cluster starts with `outbound|80||`, so this line comes from the tester's own sidecar, the sending side. The tester's proxy enforces the route timeout, so it is the one that stamped `UT` on the signal. Read the destination's side too:
+Which proxy wrote it? The upstream cluster starts with `outbound|80||`, so this line comes from the tester's own sidecar, the sending side. The tester's proxy enforces the route timeout, so it is the one that wrote `UT` into the line. Read the destination's side too:
 
 ```sh
 kubectl -n accesslog-demo logs deploy/notification-service-v1 -c istio-proxy --tail=3
 ```
 
-The destination's proxy does not decide the timeout. Whatever it logged, the `504` and the `UT` flag came from the sending ship.
+The destination's proxy does not decide the timeout. Whatever it logged, the `504` and the `UT` flag came from the client's proxy.
 
 Submit again. All three checks should now pass:
 
@@ -145,15 +145,10 @@ Count the flags in the tester's last 60 log lines:
 
 ```sh
 kubectl -n accesslog-demo logs deploy/tester -c istio-proxy --tail=60 \
-  | awk '{print $5}' | sort | uniq -c | sort -rn
+  | awk '{print $6}' | sort | uniq -c | sort -rn
 ```
 
-```text
-  6 UT
- 14 -
-```
-
-One line is a case; a count is a pattern. On a real incident this is the fastest way to see which failure is most common.
+Field `$6` is the response flag in the default format. The output has one count per flag: `UT` for every request since the timeout was applied, and `DI` (delay injected) for the requests you sent while the starting `VirtualService` still injected its delay. One line is a case; a count is a pattern. On a real incident this is the fastest way to see which failure is most common.
 
 ## Common mistakes
 

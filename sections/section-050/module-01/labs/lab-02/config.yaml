@@ -1,0 +1,51 @@
+# Find Which Proxy Refused The Request
+# Astrona graded lab. Schema: internal/config.LabConfig.
+
+metadata:
+  name: "ats-016-lab-050-01-02"
+  docs:
+    guide: "solution.md"
+    solution: "solution.md"
+    question: "question.md"
+    examQuestion: "question.md"
+    prerequisites: "prerequisites.md"
+
+bootstrap:
+  init:
+    - name: "install-istio"
+      description: "Installs istioctl 1.30.5 and a demo-profile control plane"
+      type: "file"
+      source: "bootstrap/01-install-istio.sh"
+    - name: "ats-016-lab-050-01-02-setup"
+      description: "Creates the starting state in `accesslog-demo`: a DENY policy on the wrong method and a connection pool of one"
+      type: "file"
+      source: "bootstrap/02-seed-workloads.sh"
+
+testing:
+  init:
+    - name: "wait-for-istiod"
+      description: "Waits for the validating webhook to answer before applying Istio objects"
+      type: "file"
+      source: "testing/wait-for-istiod.sh"
+    - name: "reference-solution"
+      description: "The remediation a correct learner performs; used by `astrona test`"
+      type: "file"
+      source: "solution/apply.sh"
+
+validation:
+  scripts:
+    - name: "validate-post-allowed"
+      description: "Confirms ten POSTs in a row from the tester pod return 200"
+      type: "file"
+      source: "validation/validate-post-allowed.sh"
+    - name: "validate-delete-denied"
+      description: "Confirms block-delete is still a DENY policy and DELETE returns 403"
+      type: "file"
+      source: "validation/validate-delete-denied.sh"
+    - name: "validate-burst-no-overflow"
+      description: "Confirms the connection pool is kept and a burst of 20 POSTs all return 200"
+      type: "file"
+      source: "validation/validate-burst-no-overflow.sh"
+
+teardown:
+  keepCluster: false

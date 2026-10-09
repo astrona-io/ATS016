@@ -1,3 +1,7 @@
+---
+estimated_duration: 25m
+---
+
 # Read Envoy Access Logs And Response Flags
 
 - **ID:** LAB

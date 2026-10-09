@@ -1,3 +1,7 @@
+---
+estimated_duration: 35m
+---
+
 # Capstone: Diagnose Two Failures From The Logs Alone
 
 - **ID:** CAPSTONE

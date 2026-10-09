@@ -592,14 +592,38 @@ modules:
             url: https://istio.io/latest/docs/tasks/observability/logs/access-log/
           - name: "Telemetry API reference"
             url: https://istio.io/latest/docs/reference/config/telemetry/
-          - name: "Envoy access log format and response flags"
-            url: https://www.envoyproxy.io/docs/envoy/latest/configuration/observability/access_log/usage
+          - name: "Envoy response flags (command operators)"
+            url: https://www.envoyproxy.io/docs/envoy/latest/configuration/advanced/substitution_formatter
       - type: reading
         title: "A Denial On The Other Proxy"
         path: sections/section-050/module-01/course-05-a-denial-on-the-other-proxy.md
       - type: reading
-        title: "Wrap-Up: Mission Debrief"
-        path: sections/section-050/module-01/course-06-wrap-up.md
+        title: Question
+        path: sections/section-050/module-01/labs/lab-02/question.md
+      - type: lab
+        title: "Find Which Proxy Refused The Request Lab"
+        path: sections/section-050/module-01/labs/lab-02
+        difficulty: intermediate
+        estimated_duration: 25m
+        topic: request-failures
+        task_kind: troubleshooting
+        tags: [access-log, response-flags, rbac-403, authorizationpolicy, destinationrule]
+        learning_goals:
+          - Tell a denial decided by the destination's proxy from a rejection decided by the client's proxy using the access logs
+          - Correct a DENY AuthorizationPolicy so it refuses only the intended method
+          - Raise a DestinationRule connection pool so a burst of requests no longer gets 503 UO
+        resources:
+          - name: "Envoy access logs"
+            url: https://istio.io/latest/docs/tasks/observability/logs/access-log/
+          - name: "Envoy response flags (command operators)"
+            url: https://www.envoyproxy.io/docs/envoy/latest/configuration/advanced/substitution_formatter
+          - name: "AuthorizationPolicy reference"
+            url: https://istio.io/latest/docs/reference/config/security/authorization-policy/
+          - name: "DestinationRule reference"
+            url: https://istio.io/latest/docs/reference/config/networking/destination-rule/
+      - type: reading
+        title: Summary
+        path: sections/section-050/module-01/course-06-summary.md
 
       - type: reading
         title: "Debug A 503 Caused By An mTLS Mismatch"
@@ -636,8 +660,8 @@ modules:
           - name: "DestinationRule reference"
             url: https://istio.io/latest/docs/reference/config/networking/destination-rule/
       - type: reading
-        title: "Wrap-Up: Mission Debrief"
-        path: sections/section-050/module-02/course-04-wrap-up.md
+        title: Summary
+        path: sections/section-050/module-02/course-04-summary.md
 
       - type: reading
         title: Question

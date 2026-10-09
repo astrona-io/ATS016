@@ -1,3 +1,7 @@
+# A 1s route timeout in front of the /slow path, which takes five seconds.
+# The wait happens in the upstream, after the router has started the timeout,
+# so the client's proxy gives up with 504 UT. A fault-injection delay on the
+# same rule would not do this: the fault filter runs before the router.
 apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
@@ -7,12 +11,7 @@ spec:
   hosts:
     - notification-service
   http:
-    - fault:
-        delay:
-          fixedDelay: 5s
-          percentage:
-            value: 100
-      timeout: 1s
+    - timeout: 1s
       route:
         - destination:
             host: notification-service

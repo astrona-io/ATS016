@@ -1,14 +1,5 @@
-# Reference solution for ats-016-lab-050-01.
-apiVersion: telemetry.istio.io/v1
-kind: Telemetry
-metadata:
-  name: access-logs
-  namespace: accesslog-demo
-spec:
-  accessLogging:
-    - providers:
-        - name: envoy
----
+# A route that matches only /reports, so a request to /notify finds the
+# virtual host but no route: 404 NR on the client's proxy.
 apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
@@ -18,7 +9,9 @@ spec:
   hosts:
     - notification-service
   http:
-    - timeout: 2s
+    - match:
+        - uri:
+            prefix: /reports
       route:
         - destination:
             host: notification-service

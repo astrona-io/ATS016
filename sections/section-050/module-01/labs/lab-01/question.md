@@ -2,18 +2,18 @@
 
 Solve this question on: `terminal`
 
-**Time:** about 20 minutes · **Weight:** Troubleshooting the Mesh Data Plane
+**Time:** about 20 minutes · **Exam topic:** Troubleshooting the Mesh Data Plane
 
 ## Scenario
 
-Astronaut, callers of `notification-service` in the namespace `accesslog-demo` report that their signals "hang for about five seconds and then come back". A dependency is slow, and the team wants callers to fail fast instead of waiting:
+Callers of `notification-service` in the namespace `accesslog-demo` report that their requests "hang for several seconds and then come back". A dependency is slow, and the team wants callers to fail fast instead of waiting:
 
 ```sh
 time kubectl -n accesslog-demo exec deploy/tester -- \
   curl -s -o /dev/null -w '%{http_code}\n' -X POST http://notification-service/notify
 ```
 
-The cluster also has access logging (the flight log every sidecar proxy writes) switched on for the whole mesh. The platform team wants to reduce that: they would like this namespace's logging declared explicitly, as an object in the namespace, instead of inherited from the install.
+The cluster also has access logging switched on for the whole mesh: every sidecar proxy writes one line per request to its access log. The platform team wants to reduce that: they would like this namespace's logging declared explicitly, as an object in the namespace, instead of inherited from the install.
 
 ## Your task
 
@@ -25,7 +25,7 @@ In the namespace `accesslog-demo`:
 
 ## Constraints
 
-- **Do not touch the dependency.** `notification-service` really does take about five seconds to answer. Bound the wait from the caller's side; do not make the dependency faster.
+- **Do not touch the dependency.** `notification-service` really is slow to answer. Bound the wait from the caller's side; do not make the dependency faster.
 - The timeout must be on the `VirtualService` route, not a `curl` option.
 - Do not change the mesh-wide install configuration.
 

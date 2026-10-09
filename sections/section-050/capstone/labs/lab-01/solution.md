@@ -6,7 +6,7 @@ The grader checks four things: the server is still `STRICT` and the client no lo
 
 ## Step 1: The first signature
 
-Send one request, then read the newest flight log lines (access log) on both proxies:
+Send one request, then read the newest access log lines on both proxies:
 
 ```sh
 kubectl -n logcapstone-demo exec deploy/tester -- \
@@ -60,7 +60,7 @@ kubectl -n logcapstone-demo get destinationrule -o yaml | grep -A3 'tls:'
         mode: DISABLE
 ```
 
-The server requires the secret handshake; the client is told to send plain text. `STRICT` is the documented intent and the task forbids relaxing it, so the client is what is wrong. Remove **only** the TLS override. The connection pool in the same `trafficPolicy` stays, and Istio's default for traffic between sidecars is already mesh mTLS:
+The server requires mutual TLS (mTLS); the client is told to send plain text. `STRICT` is the documented intent and the task forbids relaxing it, so the client is what is wrong. Remove **only** the TLS override. The connection pool in the same `trafficPolicy` stays, and Istio's default for traffic between sidecars is already mesh mTLS:
 
 ```sh
 kubectl -n logcapstone-demo patch destinationrule notification --type json \
@@ -99,15 +99,15 @@ kubectl -n logcapstone-demo logs deploy/notification-service-v1 -c istio-proxy -
 
 Everything has changed:
 
-- **Both** proxies logged, so the request crossed the network: the handshake now succeeds.
+- **Both** proxies logged, so the request crossed the network: the TLS handshake now succeeds.
 - Both show the flag `-`: at the connection level nothing went wrong.
-- Only the destination's response code details explain the refusal, naming the namespace, the policy and the rule number. The guard at the airlock turned the signal away.
+- Only the destination's response code details explain the refusal, naming the namespace, the policy and the rule number. The destination's proxy refused the request after it arrived.
 
 A flag of `-` on both sides with a `403` in the middle is a failure the flag table cannot explain. The details field on the **right** proxy can.
 
 ## Step 5: Fix the policy without widening it
 
-Read the rules of the `AuthorizationPolicy`, the guard's list at the airlock:
+Read the rules of the `AuthorizationPolicy`, the resource that allows or denies requests to the workload:
 
 ```sh
 kubectl -n logcapstone-demo get authorizationpolicy notification-allow \
