@@ -2,12 +2,12 @@
 
 > Declared in [`../config.yaml`](../config.yaml) under `metadata.docs.guide`.
 
-This is a **playground**, not a lab. The environment starts clean, runs
+Astronaut, this is your training solar system for reading one ship's dossier (`istioctl x describe pod`), its communications officer's log levels, and the black box (`istioctl bug-report`). This is a **playground**, not a lab. The environment starts clean, runs
 `bootstrap/prepare.sh`, applies the starting workloads, and then waits. There is
 no task, no `astrona submit`, and no pass/fail. Explore, break things,
 `astrona destroy`, start over.
 
-## What's in the box
+## What is in the box
 
 - A single-node `kind` Kubernetes cluster with `kubectl` already pointed at it.
 - **Istio 1.30.5**, installed with the `demo` profile, plus `istioctl` on your

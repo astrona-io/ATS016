@@ -80,6 +80,9 @@ modules:
             url: https://istio.io/latest/docs/reference/config/analysis/
           - name: "IST0101 ReferencedResourceNotFound"
             url: https://istio.io/latest/docs/reference/config/analysis/ist0101/
+      - type: reading
+        title: "Wrap-Up: Mission Debrief"
+        path: sections/section-010/module-01/course-04-wrap-up.md
 
       - type: reading
         title: "Summarise A Workload With describe, Capture A Cluster With bug-report"
@@ -90,9 +93,6 @@ modules:
       - type: reading
         title: "Making A Proxy Narrate One Decision"
         path: sections/section-010/module-02/course-02-envoy-log-scopes-at-runtime.md
-      - type: reading
-        title: "Capturing A Cluster With bug-report"
-        path: sections/section-010/module-02/course-03-bug-report-and-handover.md
       - type: reading
         title: Question
         path: sections/section-010/module-02/labs/lab-01/question.md
@@ -115,6 +115,12 @@ modules:
             url: https://istio.io/latest/docs/ops/diagnostic-tools/proxy-cmd/
           - name: "AuthorizationPolicy reference"
             url: https://istio.io/latest/docs/reference/config/security/authorization-policy/
+      - type: reading
+        title: "Capturing A Cluster With bug-report"
+        path: sections/section-010/module-02/course-03-bug-report-and-handover.md
+      - type: reading
+        title: "Wrap-Up: Mission Debrief"
+        path: sections/section-010/module-02/course-04-wrap-up.md
 
       - type: reading
         title: Question

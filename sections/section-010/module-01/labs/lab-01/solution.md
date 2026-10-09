@@ -1,9 +1,12 @@
-# Solution: Find And Fix The Configuration Errors In `analyze-demo`
+# Solution: Find And Fix The Configuration Errors
 
-A walkthrough. Work the task yourself first — `astrona submit` after each step
-tells you which checks are passing without revealing what is left.
+Work the task yourself first, astronaut. Running `astrona submit -c sections/section-010/module-01/labs/lab-01` after a step tells you which checks pass, without telling you what is left.
 
-## Step 1 — Reproduce, and confirm it is not the workload
+The grader checks three things: `istioctl analyze` is clean, ten `POST` requests return `200`, and every routed subset exists and selects a running pod.
+
+## Step 1: Reproduce the failure, and rule out the workload
+
+Check the pods and send one request from your test ship:
 
 ```sh
 kubectl -n analyze-demo get pods
@@ -11,11 +14,11 @@ kubectl -n analyze-demo exec deploy/tester -- \
   curl -s -o /dev/null -w '%{http_code}\n' -X POST http://notification-service/notify
 ```
 
-Both pods are `2/2 Running`, and the request returns `503`. A healthy
-destination and a `503` is the signature of a routing fault, not an application
-fault — so nothing in the Deployment needs touching.
+Both pods are `2/2 Running`, and the request returns `503`. A healthy destination with a `503` points at the routing, not at the application. So nothing in the Deployment needs touching.
 
-## Step 2 — Ask the analyzer
+## Step 2: Ask the analyzer
+
+Run the pre-flight inspector on the namespace:
 
 ```sh
 istioctl analyze -n analyze-demo
@@ -26,18 +29,16 @@ Error [IST0101] (VirtualService notification.analyze-demo) Referenced host+subse
 Error [IST0101] (VirtualService notification.analyze-demo) Referenced gateway not found: "missing-gateway"
 ```
 
-Two `IST0101` findings, both on the same object, both dangling references:
+There are two `IST0101` findings, both on the same object, and both are references that point at nothing:
 
 - the route names subset `v3`, which no `DestinationRule` defines;
 - the object binds to a `Gateway` named `missing-gateway`, which does not exist.
 
-Both are **cross-object** mistakes, which is why the API server accepted them:
-an admission webhook only ever sees the single document being submitted.
+Both are mistakes **between objects**. That is why the API server accepted them: its validating webhook only ever sees the one document being filed.
 
-## Step 3 — Decide which end of each reference to fix
+## Step 3: Decide which end of each reference to fix
 
-Each dangling reference can be resolved from either end. Check reality before
-choosing:
+Each broken reference can be fixed from either end. Check what is really deployed before you choose:
 
 ```sh
 kubectl -n analyze-demo get pods --show-labels | grep notification
@@ -46,20 +47,14 @@ kubectl -n analyze-demo get destinationrule notification -o jsonpath='{.spec.sub
 
 Only `version=v1` pods exist, and the `DestinationRule` defines only `v1`. So:
 
-- **the subset reference** → change the route to `v1`. Adding a `v3` subset
-  would satisfy the analyzer and leave the cluster with no endpoints, turning a
-  loud `NC` failure into a quieter `UH` one. The task forbids it, and it is the
-  wrong instinct in production too.
-- **the gateway reference** → remove it. Nothing here is exposed outside the
-  mesh, so the `VirtualService` should apply to the mesh only, which is the
-  default when `gateways:` is omitted.
+- **The subset reference:** change the route to `v1`. Adding a `v3` subset would satisfy the analyzer but leave a cluster with no endpoints, a ship class nobody built. The task forbids it, and the grader checks for it.
+- **The gateway reference:** remove it. Nothing here is exposed outside the mesh, so the `VirtualService` should apply inside the mesh only. That is the default when `gateways:` is left out.
 
-## Step 4 — Apply the corrected VirtualService
+## Step 4: Apply the corrected VirtualService
 
-Write the manifest to a file and apply the file. It is the habit the exam rewards — you get something you can re-read, edit and re-apply, instead of a heredoc that is gone the moment it runs.
+Save this as `virtualservice-notification.yaml`:
 
-```sh
-cat > virtualservice-notification.yaml <<'EOF'
+```yaml
 apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
@@ -73,20 +68,19 @@ spec:
         - destination:
             host: notification-service
             subset: v1
-EOF
+```
+
+Apply it:
+
+```sh
 kubectl apply -f virtualservice-notification.yaml
 ```
 
-The `DestinationRule` is left exactly as it was — it was never the problem.
+The `DestinationRule` stays exactly as it was. It was never the problem.
 
-```sh
-astrona submit
-```
+## Step 5: Prove the fix from both ends
 
-## Step 5 — Verify from both ends
-
-A clean analyze run and a real request answer different questions, and either
-alone can mislead you. Check both:
+A clean analyze run and a real request answer different questions, and either one alone can mislead you. Check both, and send ten requests instead of one:
 
 ```sh
 istioctl analyze -n analyze-demo
@@ -99,10 +93,7 @@ kubectl -n analyze-demo exec deploy/tester -- sh -c \
 200 200 200 200 200 200 200 200 200 200
 ```
 
-Ten requests rather than one: with a single subset behind the Service a lone
-`200` could be luck, and the habit matters more on a task with two subsets.
-
-Optionally confirm the proxy agrees with your YAML:
+If you want, confirm that the proxy on the `tester` pod holds the same route as your YAML:
 
 ```sh
 istioctl proxy-config routes deploy/tester -n analyze-demo -o json \
@@ -113,46 +104,34 @@ istioctl proxy-config routes deploy/tester -n analyze-demo -o json \
 "cluster": "outbound|80|v1|notification-service.analyze-demo.svc.cluster.local",
 ```
 
+The route now points at the `v1` subset cluster, which has running pods behind it.
+
+## Step 6: Submit
+
+Send the mission for grading:
+
 ```sh
-astrona submit
+astrona submit -c sections/section-010/module-01/labs/lab-01
 ```
 
 ## Why the obvious shortcuts are wrong
 
 | Shortcut | What happens |
 | --- | --- |
-| Add a `v3` subset to the `DestinationRule` | analyze goes quiet, traffic still fails with `UH` — no pod carries `version=v3` |
+| Add a `v3` subset to the `DestinationRule` | analyze goes quiet, traffic still fails with `UH`, because no pod carries `version=v3` |
 | Create a `Gateway` called `missing-gateway` | analyze goes quiet, and you have added an unused ingress object to satisfy a typo |
-| Delete the `DestinationRule` | the subset reference now fails differently, and you lose the object the next lab builds on |
+| Delete the `DestinationRule` | the subset reference fails in a different way, and the grader requires the `DestinationRule` |
 | Restart the Deployment | nothing changes; the workload was never broken |
 
 ## Common mistakes
 
-- Treating a clean `kubectl apply` as proof the configuration is correct. It
-  only proves the schema matched.
-- Ignoring Warnings. `IST0102` and `IST0103` explain most "my policy does
-  nothing" reports, and they are not Errors.
-- Running analyze in the wrong namespace — it is namespace-scoped unless you
-  pass `--all-namespaces`.
+- Treating a clean `kubectl apply` as proof the configuration is correct. It only proves the schema matched.
+- Ignoring Warnings. `IST0102` and `IST0103` explain most "my policy does nothing" reports, and they are not Errors.
+- Running analyze in the wrong namespace. It looks at one namespace unless you pass `--all-namespaces`.
 - Fixing several things at once, then not knowing which change mattered.
 
-## Practice variations
+## Practice on your own
 
-- Break a `Gateway` reference on purpose and predict the message code before
-  running analyze.
-- Run `istioctl analyze --failure-threshold Warning` and compare the exit code
-  with the default threshold.
-- Compare `istioctl validate -f` and `istioctl analyze --use-kube=false` on the
-  same broken file, and explain why only one of them finds the subset error.
-
----
-
-## Reference
-
-The official documentation for everything this task touches — open these rather than trying to recall field names:
-
-- [Configuration analysis messages](https://istio.io/latest/docs/reference/config/analysis/) — every `IST####` code and what triggers it
-- [Debugging Envoy and istiod](https://istio.io/latest/docs/ops/diagnostic-tools/proxy-cmd/) — `proxy-status`, `proxy-config` and the workflow around them
-- [Envoy access logs](https://istio.io/latest/docs/tasks/observability/logs/access-log/) — turning logging on and reading the response flags
-- [Common problems: network issues](https://istio.io/latest/docs/ops/common-problems/) — the catalogue of 503 causes and how to tell them apart
-- [Destination rule reference](https://istio.io/latest/docs/reference/config/networking/destination-rule/) — the traffic objects a broken route points at
+- Break a `Gateway` reference on purpose and predict the message code before you run analyze.
+- Run `istioctl analyze --failure-threshold Warning` and compare the exit code with the default threshold.
+- Compare `istioctl validate -f` and `istioctl analyze --use-kube=false` on the same broken file, and explain why only one of them finds the subset error.

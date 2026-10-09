@@ -1,10 +1,12 @@
 # Solution: Repair A Namespace Nothing Validates
 
-Three faults, and only one of them is reported as an `Error`. That is the point
-of the capstone: severity describes what Istio *will do*, not how much trouble
-you are in.
+Astronaut, this planet has three faults, and the analyzer reports only one of them as an `Error`. That is the point of the capstone: severity describes what Istio *will do*, not how much trouble you are in.
 
-## Step 1 — Enumerate every finding
+The grader checks four things: no `Error` or `Warning` from `istioctl analyze`, an injection label plus a sidecar in every running pod, a policy that selects running pods and allows exactly `POST`, and real traffic (`POST` gets `200`, `GET` gets `403`).
+
+## Step 1: List every finding
+
+Run the pre-flight inspector on the namespace:
 
 ```sh
 istioctl analyze -n audit-demo
@@ -17,11 +19,11 @@ Warning [IST0102] (Namespace audit-demo) The namespace is not enabled for Istio 
 Info    [IST0103] (Pod notification-service-v1-...) The pod is missing the Istio proxy.
 ```
 
-Read all the way to the bottom. The `Warning` and the `Info` are the expensive
-ones here: a namespace carrying mesh configuration that is not injected means
-**every policy in it applies to nothing**.
+Read all the way to the bottom. The `Warning` and the `Info` are the expensive ones here. A namespace carrying mesh configuration without injection means no ship has a communications officer, so **every policy on the planet applies to nothing**.
 
-## Step 2 — Find the fault the analyzer does not report
+## Step 2: Find the fault the analyzer does not report
+
+Compare the policy's selector with the labels the pods really carry:
 
 ```sh
 kubectl -n audit-demo get pods \
@@ -37,14 +39,11 @@ notification-service-v1-...   notification-service
 notification-service-v1-...   app=notification-service,version=v1
 ```
 
-The policy selects `app=notifications`; the pods carry `app=notification-service`.
-The selector matches nothing, so the policy is inert — valid, applied, and
-enforcing on zero workloads. No analyzer reports this, which is why the task
-asks you to read the effective state rather than the intent.
+The policy selects `app=notifications`, but the pods carry `app=notification-service`. The selector matches nothing, so the guard's list is posted at no airlock: the policy is valid, applied, and enforced on zero workloads. No analyzer reports this, which is why the task asks you to read the effective state instead of the intent.
 
-## Step 3 — Label the namespace and recreate the pods
+## Step 3: Label the namespace and recreate the pods
 
-Injection happens at **pod creation only**, so the label alone changes nothing:
+The injection webhook (the launch-pad crew) only puts a communications officer on board when a pod is **created**. So the label alone changes nothing for pods that already run. Label the planet, then restart both Deployments:
 
 ```sh
 kubectl label namespace audit-demo istio-injection=enabled
@@ -54,25 +53,22 @@ kubectl -n audit-demo rollout status deployment/tester --timeout=180s
 kubectl -n audit-demo get pods -o custom-columns='POD:.metadata.name,CONTAINERS:.spec.containers[*].name'
 ```
 
-Both pods now report two containers. Without this step every later fix is
-theatre: a policy on a pod with no proxy enforces nothing.
+Both new pods now carry an `istio-proxy` sidecar. On Kubernetes 1.28 and later the sidecar can be listed under `initContainers` with `restartPolicy: Always` instead of under `containers`, so the custom columns above may not show it. `kubectl -n audit-demo get pods` then shows `2/2` in the `READY` column. Without this step every later fix is for show: a policy on a pod with no proxy enforces nothing.
 
-## Step 4 — Fix the two dangling references
+## Step 4: Fix the two references that point at nothing
 
-Check reality before choosing which end to change:
+Check what is really deployed before you choose which end to change:
 
 ```sh
 kubectl -n audit-demo get pods --show-labels | grep notification
 kubectl -n audit-demo get destinationrule notification -o jsonpath='{.spec.subsets}{"\n"}'
 ```
 
-Only `version=v1` exists, and the `DestinationRule` defines only `v1`. Nothing
-is exposed outside the mesh, so the gateway binding is simply wrong:
+Only `version=v1` exists, and the `DestinationRule` defines only `v1`. Nothing is exposed outside the mesh, so the gateway binding is simply wrong. Route to `v1` and drop the `gateways:` list.
 
-Write the manifest to a file and apply the file. It is the habit the exam rewards — you get something you can re-read, edit and re-apply, instead of a heredoc that is gone the moment it runs.
+Save this as `virtualservice-notification.yaml`:
 
-```sh
-cat > virtualservice-notification.yaml <<'EOF'
+```yaml
 apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
@@ -86,29 +82,30 @@ spec:
         - destination:
             host: notification-service
             subset: v1
-EOF
+```
+
+Apply it:
+
+```sh
 kubectl apply -f virtualservice-notification.yaml
 ```
 
-Creating an `audit-gateway` or a `v3` subset would silence the analyzer and
-leave the namespace broken — a `Gateway` nobody routes through, and a cluster
-with no endpoints.
+Creating an `audit-gateway` or a `v3` subset would quiet the analyzer and leave the namespace broken: a `Gateway` nobody routes through, and a cluster with no endpoints.
 
-## Step 5 — Make the policy effective
+## Step 5: Make the policy effective
+
+Point the policy's selector at the label the pods really carry:
 
 ```sh
 kubectl -n audit-demo patch authorizationpolicy notification-post-only --type json \
   -p '[{"op":"replace","path":"/spec/selector/matchLabels/app","value":"notification-service"}]'
 ```
 
-The method list is left alone — the intent was `POST` only, and the task is to
-make that intent real rather than to change it.
+The method list stays as it is. The intent was `POST` only, and the task is to make that intent real, not to change it.
 
-```sh
-astrona submit
-```
+## Step 6: Prove the effective state
 
-## Step 6 — Prove the effective state
+Run the analyzer, read the ship's dossier, and send both methods:
 
 ```sh
 istioctl analyze -n audit-demo
@@ -128,12 +125,14 @@ POST 200
 GET 403
 ```
 
-The `RBAC policies` line is the proof the reviewer wanted: the policy now names
-this workload. `GET 403` is the proof it is enforcing rather than merely
-present.
+The `RBAC policies` line is the proof the reviewer wanted: the policy now names this workload. `GET 403` proves it is enforcing, not just present.
+
+## Step 7: Submit
+
+Send the capstone for grading:
 
 ```sh
-astrona submit
+astrona submit -c sections/section-010/capstone/labs/lab-01
 ```
 
 ## What each fault would have cost in production
@@ -142,8 +141,8 @@ astrona submit
 | --- | --- | --- |
 | Namespace not injected | `Warning` | every mesh policy in the namespace applies to nothing |
 | Pod without a proxy | `Info` | that workload is outside the mesh entirely |
-| Dangling subset reference | `Error` | `503` on every request |
-| Dangling gateway reference | `Error` | the object binds to nothing |
+| Subset reference that points at nothing | `Error` | `503` on every request |
+| Gateway reference that points at nothing | `Error` | the object binds to nothing |
 | Selector matching no pod | **not reported** | an authorization control that exists on paper only |
 
 ## Common mistakes
@@ -151,19 +150,5 @@ astrona submit
 - Reading only the Errors and declaring the namespace fixed.
 - Labelling the namespace and not recreating the pods.
 - Creating the missing `Gateway` or subset to make findings disappear.
-- Deleting the `AuthorizationPolicy` because `GET` was failing — here it was not
-  even the thing refusing.
-- Testing only `POST`. A policy that permits everything also passes that test.
-
----
-
-## Reference
-
-The official documentation for everything this task touches — open these rather than trying to recall field names:
-
-- [Configuration analysis messages](https://istio.io/latest/docs/reference/config/analysis/) — every `IST####` code and what triggers it
-- [Describing pod configuration](https://istio.io/latest/docs/ops/diagnostic-tools/istioctl-describe/) — what the mesh is applying to one workload
-- [Common problems: network issues](https://istio.io/latest/docs/ops/common-problems/) — the catalogue of 503 causes and how to tell them apart
-- [Authorization policy](https://istio.io/latest/docs/reference/config/security/authorization-policy/) — the object whose deny you may be debugging
-- [Destination rule reference](https://istio.io/latest/docs/reference/config/networking/destination-rule/) — the traffic objects a broken route points at
-- [Sidecar injection](https://istio.io/latest/docs/setup/additional-setup/sidecar-injection/) — why a pod came up without a proxy
+- Deleting the `AuthorizationPolicy` because `GET` was failing. Here it was not even the thing refusing.
+- Testing only `POST`. A policy that allows everything also passes that test.
