@@ -1,40 +1,47 @@
 # Overview: Troubleshoot With Prometheus And Grafana (Playground)
 
-> Declared in [`../config.yaml`](../config.yaml) under `metadata.docs.guide`.
+This is a **playground**, not a lab. It starts a fresh cluster, installs Istio, the Prometheus and Grafana add-ons and the starting workloads, and then waits. There is no task, no `astrona submit` and no pass or fail. Explore, break things, `astrona destroy`, start over.
 
-This is a **playground**, not a lab. The environment starts clean, runs `bootstrap/prepare.sh`, applies the starting workloads, and then waits. There is no task, no `astrona submit`, and no pass or fail. Explore, break things, `astrona destroy`, start over.
+## What's in the box
 
-## What is in the box
+- A single-node `kind` Kubernetes cluster. `kubectl` is already pointed at it.
+- **Istio 1.30.5**, installed with the `demo` profile, and `istioctl` on your PATH.
+- The **Prometheus** and **Grafana** add-ons from the Istio 1.30 release, in `istio-system`. Prometheus scrapes the metrics every sidecar proxy exposes on port `15090` and answers PromQL queries at `http://prometheus.istio-system:9090`. Grafana draws those metrics in Istio's bundled dashboards.
+- Namespace **`metrics-demo`**, labelled `istio-injection=enabled`. Every pod shows `2/2`: the application container plus its `istio-proxy` sidecar proxy (Envoy).
 
-- A single-node `kind` Kubernetes cluster (your training solar system) with `kubectl` already pointed at it.
-- **Istio 1.30.5**, installed with the `demo` profile, plus `istioctl` on your PATH.
-- The **Prometheus and Grafana add-ons** from the Istio 1.30 release, in `istio-system`, with Istio's four bundled dashboards. Prometheus is the telemetry recorder; Grafana is the dashboard screens.
-- The injected namespace **`metrics-demo`**, containing `notification-service-v1` behind the Service `notification-service` on port `80`, and a `tester` client pod with `curl`.
+  | Workload | What it is |
+  | --- | --- |
+  | `notification-service-v1` | Deployment behind the Service `notification-service` on port `80`; it answers `["EMAIL"]` |
+  | `tester` | Client pod with `curl`; send test requests and Prometheus queries from here |
 
-No traffic flows at startup, so every dashboard starts empty.
+- **No traffic and no Istio routing objects at startup.** Every dashboard starts empty.
 
-The course pages give you the YAML for the fault drill used in this module: a `VirtualService` that aborts 30% of requests with a `500` and delays 50% of them by 500ms, so both the counter and the histogram have something to show. Save it to a file and apply it with `kubectl apply -f`.
+To open the web pages, forward their ports with `kubectl -n istio-system port-forward svc/grafana 3000:3000` or `kubectl -n istio-system port-forward svc/prometheus 9090:9090`, then open `http://localhost:3000` or `http://localhost:9090`. Whether that works depends on how you are connected to the playground. The helpers below query Prometheus from inside the cluster, which always works.
 
-## Reaching the dashboards
+## Helpers
 
-```sh
-kubectl -n istio-system port-forward svc/grafana 3000:3000
-kubectl -n istio-system port-forward svc/prometheus 9090:9090
-```
-
-Then open `http://localhost:3000` or `http://localhost:9090` in a browser that can reach this machine. Whether that works depends on how you are connected to the playground. Every exercise in the module also queries Prometheus over its HTTP interface from inside the cluster, which always works:
+Paste these once in each new terminal. `prom_query` sends a PromQL query to Prometheus from the `tester` pod. `start_load` starts a background loop in the `tester` pod that sends about ten `POST` requests a second to `notification-service`. `stop_load` stops it.
 
 ```sh
-kubectl -n metrics-demo exec deploy/tester -- curl -s \
-  'http://prometheus.istio-system:9090/api/v1/query' \
-  --data-urlencode 'query=sum(rate(istio_requests_total[1m])) by (reporter)'
+prom_query() { kubectl -n metrics-demo exec deploy/tester -- curl -s \
+  'http://prometheus.istio-system:9090/api/v1/query' --data-urlencode "query=$1"; echo; }
+start_load() {
+  kubectl -n metrics-demo exec deploy/tester -- sh -c \
+    'nohup sh -c "while true; do curl -s -o /dev/null -X POST http://notification-service/notify; sleep 0.1; done" >/dev/null 2>&1 &'
+}
+stop_load() {
+  kubectl -n metrics-demo exec deploy/tester -- pkill -f 'while true' || true
+}
 ```
 
-## Things to try
+Use them like this: `start_load`, `prom_query 'sum(rate(istio_requests_total[1m])) by (reporter)'`, `stop_load`.
 
-- Generate load, apply the fault drill, and check the injected percentages with PromQL instead of counting `curl` output.
-- Query the same thing with `reporter="source"` and `reporter="destination"`, and explain every difference you find.
-- Drop `by (le)` from the `histogram_quantile` query and see how confidently wrong the answer is.
-- Scale the Deployment to three replicas and group a rate `by (destination_workload, pod)` to see uneven load per pod.
-- Open the Istio Control Plane dashboard, then scale `istiod` and watch the push metrics react.
-- Use Grafana's Explore view on any panel to read the PromQL behind it.
+## Practice tasks
+
+- Run `start_load`, write a `VirtualService` for `notification-service` that aborts 30% of requests with a `500` and delays 50% by 500ms, and check both percentages with PromQL instead of counting `curl` output.
+- Query the error ratio with `reporter="source"` and with `reporter="destination"`, and explain every difference you find.
+- Group the client-side errors `by (response_flags)` and name the flag for an injected abort.
+- Remove `by (le)` from a `histogram_quantile` query and read the `warnings` field in the response.
+- Scale `notification-service-v1` to three replicas and group a rate `by (pod)` to see how the load spreads across pods.
+- Open the Istio Control Plane dashboard, then restart `istiod` and watch the push metrics react.
+- Open any Grafana panel in the Explore view and read the PromQL behind it.

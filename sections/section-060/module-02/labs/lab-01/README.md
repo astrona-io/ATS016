@@ -1,3 +1,7 @@
+---
+estimated_duration: 25m
+---
+
 # Troubleshoot With Prometheus And Grafana
 
 - **ID:** LAB

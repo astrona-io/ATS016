@@ -1,25 +1,23 @@
-# Grafana, Flight Logs And Proving The Fix
+# Grafana, Access Logs And Proving The Fix
 
-Measuring a failure is half the job, astronaut. The other half is finding the right screen fast, leaving evidence for the next person, and proving the fix worked with the same query that measured the problem. This part covers Grafana's bundled dashboards, access logs for one namespace, and the clean-up that proves the fault is gone.
+Measuring a failure is half the job. The other half is finding the right screen fast, leaving evidence for the next person, and proving the fix worked with the same query that measured the problem. This part covers Grafana's bundled Istio dashboards, access logs for one namespace with a `Telemetry` object, and the clean-up that proves the fault is gone.
 
 ## Grafana
 
-Grafana is the set of dashboard screens in mission control. Its bundled Istio dashboards are the same PromQL queries you can write by hand, already written and laid out. Four come with the add-on, and knowing which one to open is most of the value:
+Grafana is a dashboard tool that runs PromQL queries against Prometheus and draws the answers as panels. Its bundled Istio dashboards are the same queries you can write by hand, already written and laid out. The add-on loads seven Istio dashboards. Four of them answer troubleshooting questions, and knowing which one to open is most of the value:
 
 | Dashboard | Scope | Open it for |
 | --- | --- | --- |
-| **Istio Mesh** | everything | the whole mesh at a glance: rate, success rate and latency per service. Where to start when you do not know which service is involved. |
-| **Istio Service** | one Service | client and server views side by side, broken down by source workload — the `reporter` comparison, as panels. |
-| **Istio Workload** | one workload | inbound **and outbound** traffic, so you can see what it calls as well as who calls it. |
-| **Istio Control Plane** | `istiod` | push errors, rejected configuration, convergence time and memory of `istiod`, mission control itself. |
+| **Istio Mesh** | everything | the whole mesh at a glance: request rate, success rate and latency per service. Where to start when you do not know which service is involved |
+| **Istio Service** | one Service | client and server views side by side, broken down by source workload: the `reporter` comparison, as panels |
+| **Istio Workload** | one workload | inbound **and outbound** traffic, so you can see what it calls as well as who calls it |
+| **Istio Control Plane** | `istiod` | push errors, rejected configuration, convergence time and memory of `istiod`, Istio's control plane |
 
-People forget the outbound half of the Workload dashboard. When a service is slow, its *outbound* panels answer "is it slow because something it calls is slow", without opening a second dashboard.
+The other three, Istio Performance, Istio Wasm Extension and Istio Ztunnel, cover the resource use of Istio itself, WebAssembly extensions and ambient mode. People forget the outbound half of the Workload dashboard. When a service is slow, its *outbound* panels answer "is it slow because something it calls is slow", without opening a second dashboard.
+
+To open Grafana, forward its port from the cluster to your machine:
 
 <!-- astrona:playground:renew -->
-
-### Open Grafana
-
-Forward Grafana's port from the cluster to your machine:
 
 ```sh
 kubectl -n istio-system port-forward svc/grafana 3000:3000
@@ -30,11 +28,11 @@ Then open `http://localhost:3000` in a browser that can reach this machine. `ist
 > [!TIP]
 > When a Grafana panel shows something surprising, open its **Explore** view to see the PromQL behind it. Every panel is a query you could have written, and reading them is the fastest way to learn new `by (...)` groupings.
 
-## Ask for the flight logs as well
+## Ask for access logs as well
 
-Metrics answer "how much, how bad, since when". Access logs answer "what happened to *this* request". The access log is the ship's flight log: one line per signal, with the response flag in it. You want both.
+Metrics answer "how much, how bad, since when". Access logs answer "what happened to *this* request": the sidecar proxy writes one line per request, with the response code and the response flag in it. You want both.
 
-A `Telemetry` object holds the flight log settings for one planet (namespace): which proxies keep a log, and with which provider. Istio's built-in provider for plain access logs is called `envoy`. Declaring it in a `Telemetry` object turns logging on for that namespace only, and you can take it back by deleting the object. You never touch the mesh-wide install.
+A `Telemetry` object is the Istio resource that configures metrics, access logs and tracing for the workloads in its namespace. Istio's built-in provider for plain access logs is called `envoy`. Declaring it in a `Telemetry` object turns logging on for that namespace only, and you can take it back by deleting the object. You never touch the mesh-wide install.
 
 Save this as `telemetry-access-logs.yaml`:
 
@@ -56,15 +54,11 @@ Apply it:
 kubectl apply -f telemetry-access-logs.yaml
 ```
 
-From now on, every sidecar in `metrics-demo` writes a line for each request to its `istio-proxy` container log, which you read with `kubectl logs ... -c istio-proxy`.
+From now on, every sidecar proxy in `metrics-demo` writes a line for each request to its `istio-proxy` container log, which you read with `kubectl logs ... -c istio-proxy`.
 
 ## Removing the fault and proving it
 
-The steps below assume the fault drill is still applied: a `VirtualService` named `notification` in `metrics-demo` that aborts 30% of requests with a `500`. They also assume the background load loop is still running in the `tester` pod.
-
-### Remove the fault
-
-Leave the load loop running: a ratio needs traffic to measure. Delete the `VirtualService`:
+The steps below assume the fault from the measurement is still applied: a `VirtualService` named `notification` in `metrics-demo` that aborts 30% of requests with a `500`. They also assume the background load loop is still running in the `tester` pod. Leave the load loop running, because a ratio needs traffic to measure, and delete the `VirtualService`:
 
 ```sh
 kubectl -n metrics-demo delete virtualservice notification
@@ -76,9 +70,7 @@ You should see:
 virtualservice.networking.istio.io "notification" deleted
 ```
 
-With no `VirtualService` left, the proxies use Istio's default routing for the Service, which is a valid, working setup.
-
-### Prove it with the same query
+With no `VirtualService` left, the sidecar proxies use Istio's default routing for the Service, which is a valid, working setup.
 
 Prove the fix with the query that measured the failure. Define the `prom_query` helper again if this is a new shell, wait for the one-minute window to slide past the fault, then measure the error ratio:
 
@@ -97,9 +89,7 @@ You should see something like:
 
 The error ratio falls back to zero as the window slides past the fault. **Counters keep their totals, and rates forget.** That one sentence is the whole difference between reading a raw metric and reading a query over it.
 
-### Stop the load and send one last request
-
-Stop the background loop, then send one request by hand:
+Finally, stop the background loop and send one request by hand:
 
 ```sh
 kubectl -n metrics-demo exec deploy/tester -- pkill -f 'while true' || true
@@ -127,10 +117,10 @@ Every question below uses the same `sum(rate(...)) by (...)` shape with a differ
 | Why is it failing? | `by (response_flags)` |
 | Is it slow, or failing? | duration histogram against the code counter |
 | Is the canary worse? | `by (destination_version)` |
-| Is it encrypted? | `by (connection_security_policy)` |
+| Is it encrypted? | `by (connection_security_policy)`, on the destination |
 | Which side sees the failure? | `by (reporter)` |
 
-That is the practical takeaway: learn one query shape and a list of labels, not a list of queries.
+You now know which Grafana dashboard answers which question, how to turn on access logs for one namespace with a `Telemetry` object, and how to prove a fix with the same query that measured the failure, once the window has slid past it. The practical takeaway is to learn one query shape and a list of labels, not a list of queries.
 
 ## Common pitfalls
 
@@ -141,31 +131,29 @@ That is the practical takeaway: learn one query shape and a list of labels, not 
 > - **Opening the wrong dashboard.** Start with Istio Mesh when you do not know the service, and use Istio Workload's outbound panels when a service is slow.
 > - **Taking the add-on stack for production monitoring.** The sample Prometheus has no permanent storage; the history you rely on may not survive its pod.
 
-> *Counters keep their totals and rates forget, which is why every question here is a query over time, not a number.*
-
 ## Your mission: Measure The Failure Before You Fix It
 
-You can now measure a failure with PromQL, read which side records it, remove the cause and prove the fix with the same query. Now prove it in a graded mission: `notification-service` in `metrics-demo` fails some of the time, and you have to measure it, remove the cause, and declare access logging for the namespace with a `Telemetry` object.
+You can now measure a failure with PromQL, read which side records it, remove the cause and prove the fix with the same query. The graded lab gives you a `notification-service` that fails some of the time; you measure the failure, remove its cause, and turn on access logging for the namespace with a `Telemetry` object.
 
-The mission runs in its own training solar system, so first pause your playground. Nothing in it is lost:
+The lab runs in its own cluster, so first pause your playground. Nothing in it is lost:
 
 ```sh
 astrona stop ats-016-playground-060-02
 ```
 
-Then start the mission:
+Then start the lab:
 
 ```sh
 astrona run --git ssh://git@github.com/astrona-io/ATS016.git -c sections/section-060/module-02/labs/lab-01
 ```
 
-Read the task in [`question.md`](./labs/lab-01/question.md) and solve it on your own first. When you think you are done, send it for grading:
+The task is on the next page. Solve it on your own first. When you think you are done, send it for grading:
 
 ```sh
 astrona submit -c sections/section-060/module-02/labs/lab-01
 ```
 
-When the mission is done, remove it and wake your playground up again:
+When the lab is done, remove it and start your playground again:
 
 ```sh
 astrona destroy ats-016-lab-060-02

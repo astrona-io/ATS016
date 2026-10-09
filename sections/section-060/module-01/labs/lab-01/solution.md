@@ -1,6 +1,6 @@
 # Solution: An Empty Graph And A Red Badge
 
-The graph is empty because nothing has sent any traffic, and the red badge is a `VirtualService` that points at things that do not exist. You fix the second one and prove both with the command line, which reads the same data Kiali draws from.
+The graph is empty because nothing has sent any traffic, and the red validation icon is on a `VirtualService` that points at things that do not exist. You fix the second one and prove both with the command line, which reads the same data Kiali draws from.
 
 ## Step 1: Check both data sources first
 
@@ -41,9 +41,9 @@ That one series **is** one edge of the graph: a source workload, a destination w
 
 Allow for the delay along the way: the proxy, then a Prometheus scrape about every 15 seconds, then the Kiali query. A new edge takes tens of seconds to appear even when everything works.
 
-## Step 3: Find what the validation badge is about
+## Step 3: Find what the validation icon is about
 
-Kiali's Istio Config view runs the same analyzers as `istioctl analyze` and reports the same codes. Confirm it from the terminal:
+Kiali's Istio Config view runs the same analyzers as `istioctl analyze` and reports the same `IST####` codes. Confirm it from the terminal:
 
 ```sh
 istioctl analyze -n kiali-demo
@@ -52,10 +52,9 @@ istioctl analyze -n kiali-demo
 ```text
 Error [IST0101] (VirtualService broken.kiali-demo) Referenced gateway not found: "does-not-exist"
 Error [IST0101] (VirtualService broken.kiali-demo) Referenced host+subset in destinationrule not found: "notification-service+nonexistent"
-Warning [IST0109] (VirtualService broken.kiali-demo) ... define the same host notification-service which can lead to undefined behavior.
 ```
 
-The two `Error` lines are the badge: the `VirtualService` named `broken` names a `Gateway` called `does-not-exist` and a subset called `nonexistent`, and neither exists. The `IST0109` warning appears only when a second `VirtualService` claims the same host `notification-service`. It means two flight plans for one beacon, and only one is followed. In the lab's starting state `broken` may be the only `VirtualService`, so you may see only the two `Error` lines.
+The output is shortened to the two messages. They are the red icon: the `VirtualService` named `broken` names a `Gateway` called `does-not-exist` and a subset called `nonexistent`, and neither exists. Both are references between objects, which is why the API server accepted the object: its validating webhook only ever sees one object at a time.
 
 ## Step 4: Fix them
 
@@ -116,7 +115,7 @@ kubectl -n istio-system port-forward svc/kiali 20001:20001
 
 Then open `http://localhost:20001`. Set the graph type and time range on purpose, and turn on **Traffic rate**, **Security** and **Idle nodes**.
 
-A red edge says one thing exactly: *between this caller and this callee, in this window, a large share of requests failed.* It does **not** say the callee is at fault. The failure may be a `503` the caller's own proxy created without ever contacting it. The graph tells you **where** to look. The access log tells you **why**.
+A red edge says one thing exactly: *between this caller and this callee, in this window, a large share of requests failed.* It does **not** say the callee is at fault. The failure may be a `503` the caller's own sidecar proxy created without ever contacting it. The graph tells you **where** to look. The access log tells you **why**.
 
 Everything Kiali shows has a command behind it:
 
@@ -125,7 +124,7 @@ Everything Kiali shows has a command behind it:
 | an edge and its rate | `pilot-agent request GET stats/prometheus` |
 | edge colour | the same metric grouped by `response_code` |
 | a padlock | `connection_security_policy` on the destination |
-| a red validation badge | `istioctl analyze -n <ns>` |
+| a red validation icon | `istioctl analyze -n <ns>` |
 
 ## Step 6: Submit
 

@@ -2,13 +2,13 @@
 
 Solve this question on: `terminal`
 
-**Time:** about 20 minutes · **Weight:** Troubleshooting Configuration
+**Time:** about 25 minutes · **Exam topic:** Troubleshooting Configuration
 
 ## Scenario
 
-Astronaut, Kiali (the tactical map in mission control) and Prometheus (the telemetry recorder it reads from) are installed in `istio-system`. A colleague opened the Kiali graph for the namespace `kiali-demo`, saw nothing at all, and filed a ticket saying "the mesh is down".
+Kiali (the Istio console that draws the mesh as a graph) and Prometheus (the monitoring system it reads metrics from) are installed in `istio-system`. A colleague opened the Kiali graph for the namespace `kiali-demo`, saw nothing at all, and filed a ticket saying "the mesh is down".
 
-Separately, Kiali's **Istio Config** view shows a red validation badge on one of the namespace's objects.
+Separately, Kiali's **Istio Config** view shows a red validation icon on one of the namespace's objects.
 
 The namespace runs `notification-service-v1` behind the Service `notification-service` on port `80`, and a `tester` client pod with `curl`.
 
@@ -17,7 +17,7 @@ The namespace runs `notification-service-v1` behind the Service `notification-se
 In the namespace `kiali-demo`:
 
 1. Explain why the graph is empty, and make it non-empty. The mesh is not down.
-2. Find the object Kiali's validation view flags, and confirm the same findings from the command line. Then fix them so validation is clean.
+2. Find the object Kiali's validation view marks, and confirm the same messages from the command line. Then fix them so validation is clean.
 3. Confirm both of Kiali's data sources are healthy, and be able to say what each one contributes.
 
 ## Constraints
@@ -29,5 +29,5 @@ In the namespace `kiali-demo`:
 ## Done when
 
 - The Prometheus and Kiali pods are `Running`.
-- `istioctl analyze -n kiali-demo` reports no findings, and a `VirtualService` for `notification-service` still exists.
-- Request metrics exist for the `tester` → `notification-service` edge, so the graph has something to draw.
+- `istioctl analyze -n kiali-demo` reports no `Error` or `Warning` messages, and a `VirtualService` for `notification-service` still exists.
+- The `tester` pod's sidecar proxy holds `istio_requests_total` series for requests from `tester` to `notification-service`, so the graph has an edge to draw.

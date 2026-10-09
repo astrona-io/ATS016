@@ -1,3 +1,7 @@
+---
+estimated_duration: 40m
+---
+
 # Capstone: Measure A Failure, Fix It, Prove It
 
 - **ID:** CAPSTONE

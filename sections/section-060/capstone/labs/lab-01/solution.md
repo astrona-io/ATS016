@@ -1,6 +1,6 @@
 # Solution: Measure A Failure, Fix It, Prove It
 
-The graph is empty because no traffic flows. Once traffic flows, about 40% of requests fail, and three configuration faults sit behind it: a fault drill, a route to a subset nobody built, and two flight plans for one beacon. You measure first, fix all three with one consolidation, declare access logging, and prove the fix with the same query.
+The graph is empty because no traffic flows. Once traffic flows, about 40% of requests fail, and three configuration faults sit behind it: fault injection, a route to a subset that no `DestinationRule` defines, and two `VirtualService` objects for one host. You measure first, fix all three with one consolidation, declare access logging, and prove the fix with the same query.
 
 Every measurement below uses Prometheus's HTTP interface from inside the cluster, so you need no browser. Define the query helper first. `prom_query` sends its first argument to Prometheus from the `tester` pod:
 
@@ -67,7 +67,7 @@ prom_query 'sum(rate(istio_requests_total{reporter="source",response_code=~"5.."
 | errors in `source` only | never arrived — client-side configuration, connectivity, or the client's own limits |
 | errors in both | arrived and failed there — destination policy or the application |
 
-So the fault is in the client's proxy configuration, not in the service everyone blames.
+The output above shows only the first query. The second query groups the same errors by `response_flags` and names `FI`, the Envoy flag for a request aborted by fault injection. So the fault is in the client's proxy configuration, not in the service everyone blames.
 
 ## Step 4: Find every configuration fault
 
@@ -80,19 +80,21 @@ kubectl -n obscapstone-demo get virtualservice \
 ```
 
 ```text
-Error   [IST0101] (VirtualService notification-canary.obscapstone-demo) Referenced host+subset in destinationrule not found: "notification-service+canary"
-Warning [IST0109] ... define the same host notification-service which can lead to undefined behavior.
+Error [IST0101] (VirtualService notification-canary.obscapstone-demo) Referenced host+subset in destinationrule not found: "notification-service+canary"
+Error [IST0109] (VirtualService notification.obscapstone-demo) The VirtualServices ... associated with mesh gateway define the same host notification-service which can lead to undefined behavior. ...
 
 NAME                    HOSTS                     GATEWAYS
 notification            [notification-service]    <none>
 notification-canary     [notification-service]    <none>
 ```
 
+The analyzer output is shortened. `IST0109` is an `Error`, and the analyzer reports it once for each `VirtualService` in the conflict, so you see it on both `notification` and `notification-canary`.
+
 There are three faults, not one:
 
 1. `notification` injects a fault that aborts 40% of requests with a `503`. You can see it with `kubectl -n obscapstone-demo get virtualservice notification -o yaml`.
 2. `notification-canary` routes to a subset called `canary` that nothing defines.
-3. Both objects claim the same host on the mesh gateway (an empty `GATEWAYS` column means the mesh), so which one wins is undefined.
+3. Both objects claim the same host on the mesh gateway (an empty `GATEWAYS` column means the mesh gateway, that is, all sidecar proxies), so which one wins is undefined.
 
 ## Step 5: Fix all three with one consolidation
 
@@ -135,7 +137,7 @@ astrona submit
 
 ## Step 6: Declare access logging
 
-A `Telemetry` object holds the flight log settings for one namespace. With the `envoy` provider, every sidecar in `obscapstone-demo` writes one access log line per request.
+A `Telemetry` object configures metrics, access logs and tracing for the workloads in its namespace. With the `envoy` provider, every sidecar in `obscapstone-demo` writes one access log line per request.
 
 Save this as `telemetry-access-logs.yaml`:
 
@@ -197,7 +199,7 @@ Every element in the Kiali page has a command behind it. Knowing the mapping let
 | an edge and its rate | `pilot-agent request GET stats/prometheus`, or a Prometheus query |
 | edge colour | the same metric grouped by `response_code` |
 | a padlock | `connection_security_policy` on the destination |
-| a red validation badge | `istioctl analyze -n <ns>` |
+| a red validation icon | `istioctl analyze -n <ns>` |
 
 Remember what a red edge says: *between this caller and this callee, a share of requests failed*. It does not say the callee is at fault. Here the failures were created entirely inside the caller's own proxy, and the `reporter` asymmetry in step 3 proved it from the data.
 
@@ -209,7 +211,7 @@ If your browser can reach the cluster, forward Grafana's port:
 kubectl -n istio-system port-forward svc/grafana 3000:3000
 ```
 
-Then open `http://localhost:3000` and choose by the question: **Istio Mesh** when you do not know the service, **Istio Service** for client and server views side by side, **Istio Workload** for inbound *and* outbound traffic, **Istio Control Plane** for push errors and rejects.
+Then open `http://localhost:3000` and choose a dashboard by the question: **Istio Mesh** when you do not know the service, **Istio Service** for client and server views side by side, **Istio Workload** for inbound *and* outbound traffic, **Istio Control Plane** for push errors and rejects.
 
 ## Common mistakes
 

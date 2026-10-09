@@ -1,3 +1,7 @@
+---
+estimated_duration: 25m
+---
+
 # Troubleshoot With Kiali
 
 - **ID:** LAB

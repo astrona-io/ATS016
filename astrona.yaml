@@ -722,7 +722,7 @@ modules:
         task_kind: troubleshooting
         tags: [kiali, prometheus, istio-metrics, istioctl-analyze, virtualservice]
         learning_goals:
-          - Get the Prometheus and Kiali addons running so the graph can fill
+          - Show that both Kiali data sources run and that the empty graph comes from missing traffic
           - Fix the configuration Kiali marks as invalid and confirm with istioctl analyze
           - Prove request metrics exist for the tester to notification-service edge
         resources:
@@ -733,8 +733,8 @@ modules:
           - name: "Visualizing your mesh"
             url: https://istio.io/latest/docs/tasks/observability/kiali/
       - type: reading
-        title: "Wrap-Up: Mission Debrief"
-        path: sections/section-060/module-01/course-04-wrap-up.md
+        title: Summary
+        path: sections/section-060/module-01/course-04-summary.md
 
       - type: reading
         title: "Troubleshoot With Prometheus And Grafana"
@@ -749,7 +749,29 @@ modules:
         title: "Measuring A Known Failure"
         path: sections/section-060/module-02/course-03-measuring-a-known-failure.md
       - type: reading
-        title: "Grafana, Flight Logs And Proving The Fix"
+        title: Question
+        path: sections/section-060/module-02/labs/lab-02/question.md
+      - type: lab
+        title: "Find Which Caller Is Failing With PromQL Lab"
+        path: sections/section-060/module-02/labs/lab-02
+        difficulty: intermediate
+        estimated_duration: 25m
+        topic: observability
+        task_kind: troubleshooting
+        tags: [prometheus, promql, istio-metrics, reporter-label, response-flags, fault-injection, virtualservice]
+        learning_goals:
+          - Find the one caller that gets errors with a PromQL rate grouped by source_workload
+          - Show with the reporter and response_flags labels that the client proxy injects the failure
+          - Remove the fault from the VirtualService while keeping the route
+        resources:
+          - name: "Istio standard metrics"
+            url: https://istio.io/latest/docs/reference/config/metrics/
+          - name: "Querying metrics from Prometheus"
+            url: https://istio.io/latest/docs/tasks/observability/metrics/querying-metrics/
+          - name: "Envoy access log response flags"
+            url: https://www.envoyproxy.io/docs/envoy/latest/configuration/observability/access_log/usage
+      - type: reading
+        title: "Grafana, Access Logs And Proving The Fix"
         path: sections/section-060/module-02/course-04-grafana-and-proving-the-fix.md
       - type: reading
         title: Question
@@ -774,8 +796,8 @@ modules:
           - name: "Grafana integration"
             url: https://istio.io/latest/docs/ops/integrations/grafana/
       - type: reading
-        title: "Wrap-Up: Mission Debrief"
-        path: sections/section-060/module-02/course-05-wrap-up.md
+        title: Summary
+        path: sections/section-060/module-02/course-05-summary.md
 
       - type: reading
         title: Question

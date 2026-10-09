@@ -58,7 +58,7 @@ prom_query 'sum(rate(istio_requests_total{destination_workload="notification-ser
 
 The numbers confirm it: `6.9 + 2.9 ≈ 9.8`, the full rate. The failures were taken away from what reached the destination, not added to it. So the failure lives in the client's proxy, not in the service.
 
-Name the cause with the response flag label, the short code the proxy writes next to each failed request:
+Name the cause with the response flag label, the short Envoy code the proxy writes next to each failed request. For an abort from fault injection the flag is `FI`, or `DI,FI` when the same request was also delayed:
 
 ```sh
 prom_query 'sum(rate(istio_requests_total{reporter="source",response_code=~"5.."}[1m])) by (response_flags)'
@@ -78,7 +78,7 @@ prom_query 'histogram_quantile(0.50, sum(rate(istio_request_duration_millisecond
 {"metric":{},"value":[...,"480"]}
 ```
 
-`le`, the bucket edge label, **must survive the aggregation**. Drop it and `histogram_quantile` returns `NaN` or a nonsense figure, with no error. Read these as "about half a second": a percentile is an estimate between bucket edges, not a measurement.
+`le`, the bucket edge label, **must survive the aggregation**. Drop it and `histogram_quantile` returns an empty result with only a warning that the bucket label `le` is missing, and no error. Read these as "about half a second": a percentile is an estimate between bucket edges, not a measurement.
 
 ## Step 5: Find and remove the cause
 
@@ -105,7 +105,7 @@ astrona submit
 
 ## Step 6: Declare access logging for the namespace
 
-A `Telemetry` object holds the flight log settings for one namespace. With the `envoy` provider, every sidecar in `metrics-demo` writes one access log line per request.
+A `Telemetry` object configures metrics, access logs and tracing for the workloads in its namespace. With the `envoy` provider, every sidecar in `metrics-demo` writes one access log line per request.
 
 Save this as `telemetry-access-logs.yaml`:
 
@@ -174,8 +174,8 @@ Every panel is a query you could have written. Open its Explore view to read the
 - Forgetting `rate()` on a counter. A raw counter value means nothing for a rate question.
 - Ignoring the `reporter` label and counting every request twice.
 - Querying a window shorter than the scrape interval, which gives empty results.
+- Dropping `by (le)` from a histogram query, which gives an empty result.
 - Assuming missing metrics mean no traffic. A workload without a sidecar exports nothing at all.
-- Dropping `by (le)` from a histogram query.
 
 ## Practice variations
 

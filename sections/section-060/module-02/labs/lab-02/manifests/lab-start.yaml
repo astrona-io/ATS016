@@ -1,0 +1,137 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: callers-demo
+  labels:
+    istio-injection: enabled
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: notification-service-v1
+  namespace: callers-demo
+  labels:
+    app: notification-service
+    version: v1
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: notification-service
+      version: v1
+  template:
+    metadata:
+      labels:
+        app: notification-service
+        version: v1
+    spec:
+      containers:
+        - name: notification-service
+          image: nginx:1.27-alpine
+          ports:
+            - containerPort: 8084
+          volumeMounts:
+            - name: nginx-conf
+              mountPath: /etc/nginx/conf.d
+      volumes:
+        - name: nginx-conf
+          configMap:
+            name: notification-service-v1-nginx-conf
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: notification-service
+  namespace: callers-demo
+  labels:
+    app: notification-service
+spec:
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8084
+  selector:
+    app: notification-service
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tester
+  namespace: callers-demo
+  labels:
+    app: tester
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tester
+  template:
+    metadata:
+      labels:
+        app: tester
+    spec:
+      containers:
+        - name: tester
+          image: curlimages/curl
+          command: ["sh", "-c", "while true; do sleep 30; done"]
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: notification-service-v1-nginx-conf
+  namespace: callers-demo
+data:
+  default.conf: |
+    server {
+      listen 8084;
+      location / {
+        default_type application/json;
+        return 200 '["EMAIL"]';
+      }
+    }
+---
+# Two client workloads that call notification-service all the time. Only one
+# of them is hit by the fault in fault.yaml; the learner finds which one.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: orders-client
+  namespace: callers-demo
+  labels:
+    app: orders-client
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: orders-client
+  template:
+    metadata:
+      labels:
+        app: orders-client
+    spec:
+      containers:
+        - name: orders-client
+          image: curlimages/curl
+          command: ["sh", "-c", "while true; do curl -s -o /dev/null -X POST http://notification-service/notify; sleep 0.2; done"]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: reports-client
+  namespace: callers-demo
+  labels:
+    app: reports-client
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: reports-client
+  template:
+    metadata:
+      labels:
+        app: reports-client
+    spec:
+      containers:
+        - name: reports-client
+          image: curlimages/curl
+          command: ["sh", "-c", "while true; do curl -s -o /dev/null -X POST http://notification-service/notify; sleep 0.2; done"]

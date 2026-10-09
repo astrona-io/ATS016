@@ -1,0 +1,25 @@
+# Aborts 25% of the requests that reports-client sends, in reports-client's own
+# sidecar proxy. Requests from every other caller take the second, plain route.
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: notification
+  namespace: callers-demo
+spec:
+  hosts:
+    - notification-service
+  http:
+    - match:
+        - sourceLabels:
+            app: reports-client
+      fault:
+        abort:
+          httpStatus: 503
+          percentage:
+            value: 25
+      route:
+        - destination:
+            host: notification-service
+    - route:
+        - destination:
+            host: notification-service
