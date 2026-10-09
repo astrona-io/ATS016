@@ -1,57 +1,61 @@
 # Read Envoy Access Logs And Response Flags
 
-<!-- astrona:playground -->
-> [!NOTE]
-> 🧪 **Hands-on playground for this module** — a clean, throwaway machine to explore on. No task, no grading. Folder: [`playground/`](https://github.com/astrona-io/ATS016/tree/main/sections/section-050/module-01/playground)
->
-> ```sh
-> astrona run --git ssh://git@github.com/astrona-io/ATS016.git -c sections/section-050/module-01/playground
-> astrona destroy ats-016-playground-050-01
-> ```
+Astronaut, every signal in the mesh passes at least two communications officers: the sidecar proxy on the sending ship and the one on the receiving ship. Each officer keeps a flight log, the **access log**, and writes one line per signal. That line records what the proxy did, what the destination did, how long it took and, in a short code near the front, *why the signal ended the way it did*.
 
-Every request through the mesh passes through at least two proxies, and each one writes a line about it. That line records what the proxy did, what the upstream did, how long it took, and — in a short code near the front — *why the request ended the way it did*.
-
-The contrast with [section 040](../../section-040/module-01/course.md) is the whole reason both exist: **`proxy-config` shows what a proxy is configured to do; the access log shows what it actually did.** Configuration explains intent, the log records outcome, and a great many incidents are a disagreement between the two. Learning to read that short code is the highest-value skill in this course: it turns "the service is returning errors" into "the circuit breaker rejected it" or "the route timeout fired" or "the request never left the client pod", before you have opened a single YAML file.
-
-> The response flag names the failure: UH, UF, UC, UO, UT, NR and DC each mean something specific.
-
-## How this module is organised
-
-1. **[Part 1 — Turning Logging On, And Scoping It](./course-01-enabling-and-scoping-logs.md)** — the mesh-wide setting, the `Telemetry` resource, providers, filtering by request, and why volume is the thing that decides your design.
-2. **[Part 2 — The Anatomy Of A Line](./course-02-anatomy-of-a-log-line.md)** — every field in the default format, the six that answer most questions, and `RESPONSE_CODE_DETAILS`.
-3. **[Part 3 — Flags, And Which Proxy Wrote The Line](./course-03-flags-and-which-proxy.md)** — the full flag taxonomy as a model rather than a list, and reading a pair of logs to establish whether a request crossed the network.
-4. **[Part 4 — Producing Each Failure On Demand](./course-04-producing-each-failure.md)** — a timeout, a circuit breaker rejection, a routing miss and an authorization denial, each created deliberately and identified from its log alone.
+That short code is the **response flag**. `istioctl proxy-config` shows what a proxy is configured to do; the access log shows what it actually did. Learning to read the flag turns "the service is returning errors" into "the circuit breaker rejected it", "the route timeout fired" or "the request never left the client pod", before you open a single YAML file.
 
 ## Learning objectives
 
 After this module you can:
 
-- Enable access logging mesh-wide or for one namespace, and say which mechanism to use when.
-- Scope logging with a `Telemetry` resource, including filtering to failed requests only.
-- Name the fields of the default access log format and locate the response flag.
-- Read `RESPONSE_CODE_DETAILS` and say when it matters more than the flag.
+- Switch on access logging for the whole mesh or for one namespace, and say which way to use when.
+- Scope logging with a `Telemetry` object, including keeping only failed requests.
+- Name the fields of the default access log format and find the response flag.
+- Read the response code details and say when they matter more than the flag.
 - Map the common flags to their causes, and recognise what a bare `-` means.
-- Determine from a pair of logs whether a request ever reached its destination.
-- Reproduce a timeout, a circuit breaker rejection, a routing miss and an authorization denial.
+- Tell from a pair of logs whether a request ever reached its destination.
+- Produce a timeout, a circuit breaker rejection, a routing miss and an authorization denial on purpose.
 - Explain why an authorization denial is only explained on the destination proxy.
-- Summarise a window of traffic by flag to see which failure dominates.
+- Count the flags in a window of traffic to see which failure is most common.
 
 ## Before you start
 
-You need [section 040](../../section-040/module-01/course.md): the four stages and the `istioctl proxy-config` subcommands. Several flags in this module name a stage directly, and the cluster naming convention appears in every log line.
+Every mission starts with a pre-flight check, astronaut. Make sure you have the knowledge this module expects, and know what is waiting in your playground.
 
-The playground gives you a single-node `kind` cluster with **Istio 1.30.5 already installed** (the `demo` profile), `istioctl` on your PATH, and the injected namespace **`accesslog-demo`** containing `notification-service-v1` behind a Service on port 80, a `tester` client pod with `curl`, and a `Telemetry` object scoping access logs to the namespace.
+### What you should already know
 
-Part 4 applies configuration that deliberately breaks traffic — a fault injection, a tight circuit breaker, a deny-all policy. Each is removed or replaced by a later step, and all of it is confined to this namespace.
+- **Kubernetes basics.** Namespaces, Deployments, Services, `kubectl logs` and `kubectl exec`.
+- **What a sidecar proxy is.** Every pod in the mesh has an `istio-proxy` container next to the app, and every request in or out goes through it.
+- **The four stages of a proxy's configuration.** A request meets a listener, then a route, then a cluster (a named destination such as `outbound|80||notification-service.accesslog-demo.svc.cluster.local`), then an endpoint (one pod address). Several flags name one of these stages directly.
 
-Every command in every part runs against the playground cluster; `kubectl` is already pointed at it.
+### What is in your playground
 
-## Where this fits
+Your playground is a small training solar system: one `kind` cluster with **Istio 1.30.5** installed with the `demo` profile, and `istioctl` ready to use. The `demo` profile already switches on access logging for the whole mesh.
 
-The access log is the fastest first move in a live incident, ahead of everything else in this course, because it partitions the problem in one command:
+It has one planet, the namespace **`accesslog-demo`**, with sidecar injection switched on:
 
-1. **Flag `-` with an error status** → the application answered. Leave Istio alone.
-2. **A `U*` flag on the client** → the request did not get where it was going. Follow the chain in [section 040](../../section-040/module-01/course.md).
-3. **Both proxies logged** → it arrived. Look at destination-side policy and `RESPONSE_CODE_DETAILS`.
+| Kubernetes name | What it is |
+| --- | --- |
+| `notification-service` | The beacon (Service) on port `80`, in front of `notification-service-v1` |
+| `notification-service-v1` | The app: nginx answering `["EMAIL"]` on any path |
+| `tester` | Your test ship: a pod with `curl`. Every test signal is sent from here |
+| `access-logs` | A `Telemetry` object that scopes access logging to this namespace |
 
-[Module 050-02](../module-02/course.md) then takes one signature from this module — `UF` on the client with nothing on the server — and works it end to end as an mTLS mismatch.
+Traffic starts healthy. Some parts apply configuration that breaks traffic on purpose: a fault injection, a tight circuit breaker and a deny-all policy. Each one is removed again by a later step, and all of it stays inside this namespace.
+
+Launch your playground now, and keep it running next to you while you read the parts:
+
+<!-- astrona:playground -->
+
+## The parts, in order
+
+1. [Turning Logging On, And Scoping It](./course-01-enabling-and-scoping-logs.md)
+2. [The Anatomy Of A Line](./course-02-anatomy-of-a-log-line.md)
+3. [Flags, And Which Proxy Wrote The Line](./course-03-flags-and-which-proxy.md)
+4. [Failures The Client's Proxy Decides](./course-04-failures-the-client-proxy-decides.md), followed by your mission
+5. [A Denial On The Other Proxy](./course-05-a-denial-on-the-other-proxy.md)
+6. [Wrap-Up: Mission Debrief](./course-06-wrap-up.md)
+
+## Why this matters
+
+In a live incident the access log is the fastest first move, because one command splits the problem in three. A flag of `-` with an error status means the application answered, so leave Istio alone. A `U` flag on the client means the request did not get where it was going, so follow the proxy's configuration. Lines on both proxies mean the request arrived, so look at the destination's policy and the response code details.

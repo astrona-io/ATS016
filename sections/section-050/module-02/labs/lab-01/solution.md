@@ -1,6 +1,10 @@
 # Solution: A 503 Where The Destination Log Is Empty
 
-## Step 1 — Read the pair of logs
+The grader checks three things: a `POST` returns `200`; the `PeerAuthentication` is still `STRICT` and the `DestinationRule` `notification` still exists without `tls.mode: DISABLE`; and the destination proxy reports `connection_security_policy="mutual_tls"` with no plain text. This walkthrough finds the mismatch from the logs, fixes the client end, and proves all three.
+
+## Step 1: Read the pair of logs
+
+Read the newest flight log lines (access log) on the client's proxy and on the destination's proxy:
 
 ```sh
 kubectl -n mtlsfail-demo logs deploy/tester -c istio-proxy --tail=3
@@ -17,31 +21,27 @@ Four details together are the whole diagnosis:
 
 | Observation | Means |
 | --- | --- |
-| flag `UF` | upstream connection failure — the proxy could not establish a usable connection |
-| details `upstream_reset_before_response_started` | the connection was terminated before any response began |
+| flag `UF` | upstream connection failure: the proxy could not set up a usable connection |
+| details `upstream_reset_before_response_started` | the connection was closed before any response began |
 | upstream host `10.244.0.12:8084` | an **address**, so the destination was found and reached |
 | destination logged **nothing** | the request never became a request there |
 
-That last row is evidence, not a gap. An access log line is written when a
-*request* completes; a handshake rejected at the transport layer happens one
-level below anything HTTP. So the failure is **below HTTP, on the receiving
-side** — which distinguishes this from `NC`/`UH`, where the upstream host field
-would be `-`.
+The last row is evidence, not a gap. A proxy writes an access log line when a *request* completes. A handshake rejected at the transport layer happens one level below HTTP. So the failure is **below HTTP, on the receiving side**. That separates it from `NC` and `UH`, where the upstream host field would be `-`.
 
-## Step 2 — Rule out the look-alike first
+## Step 2: Rule out the look-alike first
 
-The same signature appears when an **unmeshed** caller talks to a `STRICT`
-workload. Check before touching policy:
+The same signature appears when a caller **outside the mesh** talks to a `STRICT` workload. Check that before you touch any policy:
 
 ```sh
 kubectl -n mtlsfail-demo get pods
 istioctl proxy-status | grep mtlsfail-demo
 ```
 
-Both pods are `2/2` and both appear in `proxy-status`. The caller is in the
-mesh, so this is a configuration mismatch rather than a missing sidecar.
+Both pods are `2/2` and both appear in `proxy-status`, mission control's roll call. The caller is in the mesh, so this is a configuration mismatch, not a missing sidecar.
 
-## Step 3 — Read both ends
+## Step 3: Read both ends
+
+Read the destination's effective mTLS mode, then the client's TLS setting:
 
 ```sh
 export POD=$(kubectl -n mtlsfail-demo get pod -l app=notification-service -o jsonpath='{.items[0].metadata.name}')
@@ -55,22 +55,15 @@ kubectl -n mtlsfail-demo get destinationrule -o yaml | grep -A3 'tls:'
         mode: DISABLE
 ```
 
-The server requires mTLS; the client is told to send plaintext. Each object is
-valid and neither references the other — which is why this survived review.
+The server requires the handshake; the client is told to send plain text. Each object is valid and neither mentions the other, which is why this survived review.
 
-Use `describe` rather than reading `PeerAuthentication` directly: mesh,
-namespace and workload policies resolve narrowest-first and per port, and only
-the effective value accounts for that.
+Use `istioctl x describe pod` instead of reading the `PeerAuthentication` directly. Mesh, namespace and workload policies merge, narrowest first and per port, and only the effective value accounts for that.
 
-## Step 4 — Fix the client, not the server
+## Step 4: Fix the client, not the server
 
-`STRICT` is the intended posture and the task forbids relaxing it. `tls: DISABLE`
-on the client is the mistake — almost always inherited, copied along with a
-`DestinationRule` written for something else.
+`STRICT` is the intended rule and the task forbids relaxing it. `tls: DISABLE` on the client is the mistake.
 
-Remove **only** the TLS override. Istio's default for sidecar-to-sidecar traffic
-is already mesh mTLS, so deleting the field is better than setting it
-explicitly — one less thing to drift:
+Remove the client's traffic policy, which holds only that TLS override. Istio's default for traffic between sidecars is already mesh mTLS, so deleting the setting is better than setting it explicitly: one less thing to drift. The `DestinationRule` itself stays:
 
 ```sh
 kubectl -n mtlsfail-demo patch destinationrule notification --type json \
@@ -83,19 +76,17 @@ kubectl -n mtlsfail-demo exec deploy/tester -- \
 200
 ```
 
-Setting `tls.mode: ISTIO_MUTUAL` is equally correct. What is *not* correct is
-`MUTUAL` — that means "mTLS with certificates I supply" and needs a secret
-reference.
+Setting `tls.mode: ISTIO_MUTUAL` would also be correct. `MUTUAL` would not: it means "mutual TLS with certificates I supply" and needs a certificate reference.
+
+Submit to see the first checks pass:
 
 ```sh
-astrona submit
+astrona submit -c sections/section-050/module-02/labs/lab-01
 ```
 
-## Step 5 — Prove encryption, not just success
+## Step 5: Prove encryption, not just success
 
-A `200` would also appear if somebody had "fixed" this by setting the server to
-`PERMISSIVE` and left the client sending plaintext. Those are different outcomes
-with identical status codes:
+A `200` would also appear if someone had "fixed" this by setting the server to `PERMISSIVE` and left the client sending plain text. Those are different outcomes with the same status code. Ask the destination proxy how the connections were secured:
 
 ```sh
 kubectl -n mtlsfail-demo exec deploy/notification-service-v1 -c istio-proxy -- \
@@ -107,11 +98,9 @@ kubectl -n mtlsfail-demo exec deploy/notification-service-v1 -c istio-proxy -- \
    4 connection_security_policy="mutual_tls"
 ```
 
-The label is meaningful on the **destination** — the receiving proxy is the one
-that knows how the connection was secured. `none` here would mean working,
-unencrypted traffic and a fix applied to the wrong end.
+The label means something on the **destination**: the receiving proxy is the one that knows how the connection was secured. `none` here would mean working, unencrypted traffic and a fix on the wrong end.
 
-Finally, the log that was empty:
+Finally, read the log that was empty:
 
 ```sh
 kubectl -n mtlsfail-demo logs deploy/notification-service-v1 -c istio-proxy --tail=3
@@ -121,43 +110,25 @@ kubectl -n mtlsfail-demo logs deploy/notification-service-v1 -c istio-proxy --ta
 [...] "POST /notify HTTP/1.1" 200 - via_upstream - ... inbound|8084|| ...
 ```
 
-Requests are arriving and being served against the `inbound|8084||` cluster.
-Their absence was the signature; their presence is the proof.
+Requests now arrive and are served against the `inbound|8084||` cluster. Their absence was the signature; their presence is the proof.
+
+Submit again. All three checks should pass:
 
 ```sh
-astrona submit
+astrona submit -c sections/section-050/module-02/labs/lab-01
 ```
 
 ## Common mistakes
 
-- Relaxing the `PeerAuthentication` to `PERMISSIVE` to make the error go away.
-  That hides a client misconfiguration and weakens security for every caller.
-- Looking only at the destination. Its log is empty — which is itself the clue.
-- Forgetting that an absent `DestinationRule` `tls` block means mesh mTLS by
-  default, so *adding* one can only make things worse here.
-- Confusing this with an unmeshed caller. Check whether the client has a sidecar
-  before editing policy.
+- Relaxing the `PeerAuthentication` to `PERMISSIVE` to make the error go away. That hides a client misconfiguration and weakens security for every caller.
+- Looking only at the destination. Its log is empty, and that emptiness is the clue.
+- Forgetting that with no `tls` setting in a `DestinationRule`, the client uses mesh mTLS by default, so *adding* one can only make things worse here.
+- Confusing this with a caller outside the mesh. Check whether the client has a sidecar before you edit policy.
+- Deleting the `DestinationRule` instead of removing its TLS setting.
 - Trusting a `200` as proof of encryption.
 
 ## Practice variations
 
-- Invert the mistake: set the server to `DISABLE` and the client to
-  `ISTIO_MUTUAL`, then read the log signature.
-- Remove the sidecar from the client and reproduce the same `503` with a
-  different root cause.
-- Set a port-level exception with `portLevelMtls` so one port works and another
-  fails.
-
----
-
-## Reference
-
-The official documentation for everything this task touches — open these rather than trying to recall field names:
-
-- [Configuration analysis messages](https://istio.io/latest/docs/reference/config/analysis/) — every `IST####` code and what triggers it
-- [Debugging Envoy and istiod](https://istio.io/latest/docs/ops/diagnostic-tools/proxy-cmd/) — `proxy-status`, `proxy-config` and the workflow around them
-- [Describing pod configuration](https://istio.io/latest/docs/ops/diagnostic-tools/istioctl-describe/) — what the mesh is applying to one workload
-- [Envoy access logs](https://istio.io/latest/docs/tasks/observability/logs/access-log/) — turning logging on and reading the response flags
-- [Common problems: network issues](https://istio.io/latest/docs/ops/common-problems/) — the catalogue of 503 causes and how to tell them apart
-- [Authorization policy](https://istio.io/latest/docs/reference/config/security/authorization-policy/) — the object whose deny you may be debugging
-- [Destination rule reference](https://istio.io/latest/docs/reference/config/networking/destination-rule/) — the traffic objects a broken route points at
+- Invert the mistake: set the server to `DISABLE` and the client to `ISTIO_MUTUAL`, then read the log signature.
+- Remove the sidecar from the client and reproduce the same `503` with a different root cause.
+- Set a port-level exception with `portLevelMtls` so one port works and another fails.

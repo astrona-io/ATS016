@@ -1,6 +1,10 @@
 # Solution: Scope The Logs, Bound The Latency, Name The Flag
 
-## Step 1 — See the current behaviour
+The grader checks three things: a `Telemetry` object in `accesslog-demo` switches on the `envoy` provider, the `VirtualService` for `notification-service` has `timeout: 2s`, and the tester's proxy log contains a `UT` flag. This walkthrough builds each one and proves it.
+
+## Step 1: See the current behaviour
+
+Time one request from the `tester` ship to the `notification-service` beacon:
 
 ```sh
 time kubectl -n accesslog-demo exec deploy/tester -- \
@@ -12,18 +16,23 @@ time kubectl -n accesslog-demo exec deploy/tester -- \
 real    0m5.2s
 ```
 
-A `200` after five seconds. Nothing is failing — which is the point. Latency
-without a bound is a caller's problem, not a server's.
+A `200` after about five seconds. Nothing is failing, and that is the point: a wait with no limit is the caller's problem, not the server's.
 
-## Step 2 — Declare logging for this namespace
-
-Mesh-wide logging is an install setting; a `Telemetry` object is a namespaced
-Kubernetes object you can apply, scope and delete without touching the install:
-
-Write the manifest to a file and apply the file. It is the habit the exam rewards — you get something you can re-read, edit and re-apply, instead of a heredoc that is gone the moment it runs.
+Look at the flight plan (the `VirtualService`) that already exists for the beacon:
 
 ```sh
-cat > telemetry-access-logs.yaml <<'EOF'
+kubectl -n accesslog-demo get virtualservice
+```
+
+There is one, called `notification`. It has no `timeout`.
+
+## Step 2: Declare logging for this namespace
+
+Switching logging on for the whole mesh is an install setting. A `Telemetry` object is the flight log settings for one planet: a Kubernetes object in the namespace that you can apply, scope and delete without touching the install.
+
+Save this as `telemetry-access-logs.yaml`:
+
+```yaml
 apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
@@ -33,29 +42,37 @@ spec:
   accessLogging:
     - providers:
         - name: envoy
-EOF
+```
+
+Apply it:
+
+```sh
 kubectl apply -f telemetry-access-logs.yaml
 ```
 
-`envoy` is the built-in provider name for the standard text access log. Scope is
-decided by **where the object lives**: in an application namespace it covers
-that namespace; in the root namespace it covers the mesh; with a `selector` it
-covers one workload.
+Then check the result:
 
 ```sh
-astrona submit
+kubectl -n accesslog-demo get telemetry
 ```
 
-## Step 3 — Bound the delay with a timeout
+`envoy` is the built-in provider name for the standard text access log. **Where the object lives** decides its scope: in an application namespace it covers that namespace; in the root namespace (`istio-system`) it covers the mesh; with a `selector` it covers matching workloads.
 
-Add `timeout` to the route. The dependency itself is slow — roughly five
-seconds — so the wait happens upstream, where a route timeout can cut it short.
-(Had the delay come from a `fault.delay` on this same rule, it would not: the
-fault filter runs before the router, so the request would wait the full five
-seconds and return 200 with the `DI` flag instead.)
+Submit to see the first check pass:
 
 ```sh
-cat > virtualservice-notification.yaml <<'EOF'
+astrona submit -c sections/section-050/module-01/labs/lab-01
+```
+
+## Step 3: Bound the wait with a timeout
+
+Put `timeout: 2s` on the route. The dependency itself is slow, so the wait happens upstream, where the tester's proxy can cut it short with a route timeout.
+
+The starting `notification` `VirtualService` also carries a 5-second `fault.delay`. Do not keep it next to the timeout: in Envoy, the fault filter runs before the router, and the router is what enforces the route timeout. A delay injected on the same rule happens before the timeout clock starts. The fixed flight plan has only the route and the timeout.
+
+Save this as `virtualservice-notification.yaml`:
+
+```yaml
 apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
@@ -65,20 +82,29 @@ spec:
   hosts:
     - notification-service
   http:
-    - fault:
-        delay:
-          fixedDelay: 5s
-          percentage:
-            value: 100
-      timeout: 2s
+    - timeout: 2s
       route:
         - destination:
             host: notification-service
-EOF
+```
+
+Apply it:
+
+```sh
 kubectl apply -f virtualservice-notification.yaml
 ```
 
-## Step 4 — Produce the flag and read it
+Then check the result:
+
+```sh
+kubectl -n accesslog-demo get virtualservice notification -o yaml | grep timeout
+```
+
+The output should show `timeout: 2s`.
+
+## Step 4: Produce the flag and read it
+
+Send one request and read the tester's newest flight log line:
 
 ```sh
 kubectl -n accesslog-demo exec deploy/tester -- \
@@ -86,35 +112,36 @@ kubectl -n accesslog-demo exec deploy/tester -- \
 kubectl -n accesslog-demo logs deploy/tester -c istio-proxy --tail=1
 ```
 
+The output looks like this (the log line is shortened):
+
 ```text
 504
 [...] "POST /notify HTTP/1.1" 504 UT response_timeout - "-" 0 24 2000 - ... "-" outbound|80||notification-service...
 ```
 
-Four things to read on that line:
+Three things to read on that line:
 
-- **`504`**, not `503` — a timeout has its own status code.
-- **`UT`** — upstream request timeout, the route timeout firing.
-- **duration ≈ `2000`** — the *timeout*, not the five-second delay. The proxy
-  gave up at two seconds.
-- **upstream host `-`** — nothing was ever contacted.
+- **`504`**, not `503`: a timeout has its own status code.
+- **`UT`**: upstream request timeout, the route timeout firing. The details field says `response_timeout`.
+- **Duration about `2000`**: the *timeout*, not the five-second wait. The proxy gave up after two seconds.
 
-Now check the destination:
+Which proxy wrote it? The upstream cluster starts with `outbound|80||`, so this line comes from the tester's own sidecar, the sending side. The tester's proxy enforces the route timeout, so it is the one that stamped `UT` on the signal. Read the destination's side too:
 
 ```sh
 kubectl -n accesslog-demo logs deploy/notification-service-v1 -c istio-proxy --tail=3
 ```
 
-Nothing corresponding. The delay is injected by the **client's** proxy, before
-the request is sent, so the destination never saw it. That pairing — a failure
-on one side and silence on the other — is what tells you the request never
-crossed the network.
+The destination's proxy does not decide the timeout. Whatever it logged, the `504` and the `UT` flag came from the sending ship.
+
+Submit again. All three checks should now pass:
 
 ```sh
-astrona submit
+astrona submit -c sections/section-050/module-01/labs/lab-01
 ```
 
-## Step 5 — Summarise the window
+## Step 5: Summarise the window
+
+Count the flags in the tester's last 60 log lines:
 
 ```sh
 kubectl -n accesslog-demo logs deploy/tester -c istio-proxy --tail=60 \
@@ -126,36 +153,19 @@ kubectl -n accesslog-demo logs deploy/tester -c istio-proxy --tail=60 \
  14 -
 ```
 
-One line is a case; a tally is a pattern. On a real incident this is the fastest
-way to see which failure dominates.
+One line is a case; a count is a pattern. On a real incident this is the fastest way to see which failure is most common.
 
 ## Common mistakes
 
-- Reading the application log instead of the proxy log. Proxy-generated failures
-  never reach the application.
-- Looking at only one side. Client and destination logs together tell you
-  whether the request crossed the network.
-- Assuming all `5xx` are the same. `UH`, `UF`, `UC`, `UO` and `UT` have
-  different fixes.
-- Forgetting that access logs are off by default in some profiles. No log lines
-  is not the same as no traffic.
-- Enabling logging mesh-wide during an incident and drowning in it.
+- Reading the application log instead of the proxy log. Failures the proxy makes never reach the application.
+- Looking at only one side. Client and destination logs together tell you whether the request crossed the network.
+- Assuming all `5xx` errors are the same. `UH`, `UF`, `UC`, `UO` and `UT` have different fixes.
+- Forgetting that access logs are off by default in some profiles. No log lines is not the same as no traffic.
+- Switching logging on for the whole mesh during an incident and drowning in it.
+- Putting the timeout on the same rule as a `fault.delay` and expecting it to cut the delay short.
 
 ## Practice variations
 
-- Add `filter: { expression: "response.code >= 400" }` to the `Telemetry` object
-  and confirm only failures are logged.
+- Add `filter: { expression: "response.code >= 400" }` to the `Telemetry` object and confirm only failures are logged.
 - Set a custom `accessLogFormat` that includes the upstream cluster name.
-- Tighten a `connectionPool` until you can produce `UO`, and compare its
-  duration field with the `UT` line above.
-
----
-
-## Reference
-
-The official documentation for everything this task touches — open these rather than trying to recall field names:
-
-- [Configuration analysis messages](https://istio.io/latest/docs/reference/config/analysis/) — every `IST####` code and what triggers it
-- [Envoy access logs](https://istio.io/latest/docs/tasks/observability/logs/access-log/) — turning logging on and reading the response flags
-- [Common problems: network issues](https://istio.io/latest/docs/ops/common-problems/) — the catalogue of 503 causes and how to tell them apart
-- [Destination rule reference](https://istio.io/latest/docs/reference/config/networking/destination-rule/) — the traffic objects a broken route points at
+- Tighten a `connectionPool` until you can produce `UO`, and compare its duration field with the `UT` line above.

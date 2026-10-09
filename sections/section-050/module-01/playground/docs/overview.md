@@ -5,9 +5,9 @@
 This is a **playground**, not a lab. The environment starts clean, runs
 `bootstrap/prepare.sh`, applies the starting workloads, and then waits. There is
 no task, no `astrona submit`, and no pass/fail. Explore, break things,
-`astrona destroy`, start over.
+`astrona destroy ats-016-playground-050-01`, start over.
 
-## What's in the box
+## What is in the box
 
 - A single-node `kind` Kubernetes cluster with `kubectl` already pointed at it.
 - **Istio 1.30.5**, installed with the `demo` profile, plus `istioctl` on your
@@ -15,14 +15,19 @@ no task, no `astrona submit`, and no pass/fail. Explore, break things,
 - The injected namespace **`accesslog-demo`**, containing
   `notification-service-v1` behind the Service `notification-service` on port
   80, and a `tester` client pod with `curl`.
-- A `Telemetry` object (`manifests/telemetry.yaml`) scoping access logging to
-  this namespace. It is redundant under the `demo` profile and is applied so you
+- A `Telemetry` object (`manifests/telemetry.yaml`), the flight log settings,
+  scoping access logging to this namespace. It is not needed under the `demo` profile and is applied so you
   can see the object that does the scoping in a real install.
-- Four manifests that each produce a different failure, ready to apply:
-  - `fault-timeout.yaml` — a 5s delay against a 1s timeout, for `UT`.
-  - `circuit-breaker.yaml` — a connection pool of one, for `UO`.
-  - `deny-all.yaml` — a deny-all `AuthorizationPolicy`, for an RBAC `403` on the
+- Three manifests in the playground folder that each produce a different failure:
+  - `fault-timeout.yaml`: a 5s delay against a 1s timeout, meant for `UT`.
+    The fault filter runs before the router, so the timeout may never see the
+    delay; if you get a `200` with the flag `DI` instead, that is why.
+  - `circuit-breaker.yaml`: a connection pool of one, for `UO`.
+  - `deny-all.yaml`: a deny-all `AuthorizationPolicy`, for an RBAC `403` on the
     destination proxy.
+
+  The course parts show the same YAML on the page, to save as a file and apply
+  yourself.
 
 Traffic starts healthy. Every failure here is one you apply yourself.
 

@@ -1,10 +1,10 @@
-# Part 3 — Flags, And Which Proxy Wrote The Line
+# Flags, And Which Proxy Wrote The Line
 
-> Prerequisite: [Part 2 — The Anatomy Of A Line](./course-02-anatomy-of-a-log-line.md). Next: [Part 4 — Producing Each Failure On Demand](./course-04-producing-each-failure.md).
-
-Field ④ is two or three characters long and carries more diagnostic weight than everything else on the line combined. This part turns the flag list into a model you can reason from, and then adds the second axis that doubles its value: *which proxy* wrote the line.
+Astronaut, the **response flag** is the short code the communications officer (the sidecar proxy) stamps on a failed signal in the flight log (the access log). It is only two or three characters long, yet it tells you more than the rest of the line put together. This part turns the list of flags into a model you can reason with. Then it adds a second question that doubles their value: *which proxy* wrote the line.
 
 ## The flags
+
+Each flag names one way a request can end. The last column says where to look next, so the flag sends you straight to the right object.
 
 | Flag | Name | What it means | Where to look next |
 | --- | --- | --- | --- |
@@ -21,13 +21,19 @@ Field ④ is two or three characters long and carries more diagnostic weight tha
 | `RL` / `RLSE` | rate limited | a rate limit filter rejected it | rate limit configuration |
 | `DPE` / `UPE` | protocol error | downstream / upstream sent something unparseable | protocol mismatch, a port treated as the wrong protocol |
 
+A few words used in the table: the **upstream** is the destination the proxy sends to, and the **downstream** is the caller. A **cluster** is Envoy's name for a destination squadron, and an **endpoint** is one ship's actual address in it. mTLS (mutual Transport Layer Security) is the secret handshake both ships do before they talk.
+
 ## Two reading aids
 
-The table is easier to hold as a model than as a list, and two patterns do most of the work.
+The table is easier to hold as a model than as a list. Two patterns do most of the work, and one special case saves the most time.
 
-**The prefix names the direction.** `U*` is **upstream** — a statement about the destination the proxy was trying to reach. `D*` is **downstream** — a statement about the client. `N*` is neither: the proxy could not decide where to go at all.
+### The first letter names the direction
 
-**Within `U*`, the order is how far the request got.**
+`U*` flags are about the **upstream**, the destination the proxy was trying to reach. `D*` flags are about the **downstream**, the client. `N*` flags are about neither: the proxy could not decide where to go at all.
+
+### Within the U flags, the order is how far the request got
+
+Read the flags in this order, from "never left" to "left and never came back":
 
 ```text
    NR   nothing matched                    ─ never chose a destination
@@ -39,101 +45,93 @@ The table is easier to hold as a model than as a list, and two patterns do most 
    UT   connected, no answer in time       ─ it started and never finished
 ```
 
-Reading a flag as a *position on that path* tells you which layer to investigate without memorising any individual entry. `NC` and `UH` are configuration. `UF` is connectivity or TLS. `UC` and `UT` are the upstream's behaviour.
+A flag is a *position on that path*, and the position tells you which layer to investigate. `NC` and `UH` are configuration. `UF` is connectivity or the handshake. `UC` and `UT` are about how the upstream behaves.
 
-**And `-` is a real answer.** It means no proxy-level error occurred, which for an error status hands the investigation back to your application. That is the single most time-saving reading in this module, because it stops an Istio investigation that was never going to find anything.
+### A dash is a real answer
 
-Two cases deserve care:
+`-` means no proxy-level error happened. If the status is still an error, the application made it, and the investigation goes back to your application. This is the biggest time saver in this module: it stops an Istio investigation that was never going to find anything.
 
-- **`UO` is not an outage.** Upstream overflow means *your own* `connectionPool` configuration rejected the request. The destination may be completely idle.
-- **`DC` is not your failure.** The client disconnected first. Chasing it in the mesh finds nothing; the cause is a client timeout, a cancelled request, or a user closing a tab.
+Two more flags need care:
 
-## The second axis: who logged it
+- **`UO` is not an outage.** Upstream overflow means *your own* `connectionPool` settings rejected the request. The destination may be completely idle.
+- **`DC` is not your failure.** The client disconnected first. Looking for it in the mesh finds nothing; the cause is a client timeout, a cancelled request, or a user closing a browser tab.
 
-A request crosses two proxies — the client's sidecar on the way out and the destination's on the way in. Both log. Comparing the two answers a question nothing else answers as cheaply: **did the request arrive?**
+## The second question: who wrote the line
 
-```text
-   client proxy          destination proxy       conclusion
-   ────────────          ─────────────────       ──────────
-   failure               (nothing)               never arrived — routing, clusters,
-                                                 endpoints, or the connection itself
-   failure               failure                 arrived, then failed — destination
-                                                 policy, or the application
-   failure               success                 the response path failed — a timeout
-                                                 or a reset after the upstream answered
-   (nothing)             failure                 the client never logged: it is not in
-                                                 the mesh, or logging is scoped away
+A signal between two ships passes two communications officers: the client's sidecar on the way out, and the destination's sidecar on the way in. Both write a line. Comparing the two answers one question more cheaply than anything else: **did the request arrive?**
+
+| Client proxy | Destination proxy | Conclusion |
+| --- | --- | --- |
+| failure | (nothing) | never arrived: routing, clusters, endpoints, or the connection itself |
+| failure | failure | arrived, then failed: destination policy, or the application |
+| failure | success | the response path failed: a timeout or a reset after the upstream answered |
+| (nothing) | failure | the client never logged: it is not in the mesh, or logging is scoped away |
+
+The first row is the most common signature for a `503` you cannot explain, and it is the signature of an mTLS mismatch. A missing line is evidence, but you only get that evidence if you go and look for it.
+
+<!-- astrona:playground:renew -->
+
+### One request, two proxies
+
+Before you read failures, see what a successful request looks like from both ends. Send one request, then read the newest line on each side:
+
+```sh
+kubectl -n accesslog-demo exec deploy/tester -- \
+  curl -s -o /dev/null -X POST http://notification-service/notify
+echo '--- client ---'
+kubectl -n accesslog-demo logs deploy/tester -c istio-proxy --tail=1
+echo '--- destination ---'
+kubectl -n accesslog-demo logs deploy/notification-service-v1 -c istio-proxy --tail=1
 ```
 
-The first row is the signature [module 040-02](../../section-040/module-02/course-01-who-answered-with-503.md) used and the one [module 050-02](../module-02/course.md) works in detail. The absence of a line is evidence, and it is evidence you only get by going to look for it.
+You should see something like:
 
-## The healthy pair, for comparison
+```text
+--- client ---
+[...] "POST /notify HTTP/1.1" 200 - via_upstream - ... "notification-service" "10.244.0.12:8084" outbound|80||notification-service.accesslog-demo.svc.cluster.local ...
+--- destination ---
+[...] "POST /notify HTTP/1.1" 200 - via_upstream - ... "notification-service" "10.244.0.12:8084" inbound|8084|| ...
+```
 
-Before reading failures in [Part 4](./course-04-producing-each-failure.md), see what a successful request looks like from both ends. The differences are as informative as the similarities.
+Same request, same status, same flag, but a different **upstream cluster**. The client's proxy logged `outbound|80||…`, the destination's proxy logged `inbound|8084||`. That field tells you at a glance which side of a connection a line came from, even when you see it out of context in a log system.
 
-> [!TIP]
-> **Try it — one request, two proxies**
->
-> ```sh
-> kubectl -n accesslog-demo exec deploy/tester -- \
->   curl -s -o /dev/null -X POST http://notification-service/notify
-> echo '--- client ---'
-> kubectl -n accesslog-demo logs deploy/tester -c istio-proxy --tail=1
-> echo '--- destination ---'
-> kubectl -n accesslog-demo logs deploy/notification-service-v1 -c istio-proxy --tail=1
-> ```
->
-> Expect something like:
->
-> ```text
-> --- client ---
-> [...] "POST /notify HTTP/1.1" 200 - via_upstream - ... "notification-service" "10.244.0.12:8084" outbound|80||notification-service.accesslog-demo.svc.cluster.local ...
-> --- destination ---
-> [...] "POST /notify HTTP/1.1" 200 - via_upstream - ... "notification-service" "10.244.0.12:8084" inbound|8084|| ...
-> ```
->
-> Same request, same status, same flag — and a different **upstream cluster**. The client logged `outbound|80||…`, the destination logged `inbound|8084||`. That field is how you tell at a glance which side of a connection a line came from, even out of context in a log aggregator, and it is the naming convention from [module 040-01 Part 3](../../section-040/module-01/course-03-clusters-and-endpoints.md) doing double duty.
+## The same idea in metrics
 
-## Reporter, in metrics
-
-The same client/server distinction exists in Istio's metrics as the `reporter` label — `source` and `destination` — which [module 060-02](../../section-060/module-02/course.md) uses to spot the same asymmetry over time rather than per request. Logs give you the individual case; metrics give you "this has been happening for twenty minutes and only the client sees it". The reasoning is identical.
+Istio's metrics make the same client-or-server split with the `reporter` label: which ship filed the report. `source` is the sender, `destination` the receiver. Logs give you one case; metrics tell you "this has been happening for twenty minutes, and only the client sees it". The reasoning is the same.
 
 ## Summarising a window
 
-One line is a case. Many lines are a pattern, and a flag tally over a window is the fastest way to see which failure dominates.
+One line is a case. Many lines are a pattern, and a count of flags over a time window is the fastest way to see which failure is most common.
+
+### Count the flags
+
+Count the flags in the tester's last 200 lines:
 
 ```sh
 kubectl -n accesslog-demo logs deploy/tester -c istio-proxy --tail=200 \
   | awk '{print $5}' | sort | uniq -c | sort -rn
 ```
 
-Field 5 is the flag in the default format. What the shape tells you:
+Field 5 is the flag in the default format. Here is how to read the shape of the count:
 
-| Tally | Reading |
+| Count | Reading |
 | --- | --- |
 | mostly `-`, a few `UT` | healthy with occasional slow requests |
-| a wall of `UF` | connectivity or mTLS — one destination, probably |
+| a wall of `UF` | connectivity or mTLS, probably to one destination |
 | mixed `-` and `UO` | capacity: your own limits are rejecting load |
 | all `NC` | configuration: a route names something that does not exist |
 | all `-` with 5xx statuses | not Istio. The application is failing |
 
-The last row is worth rehearsing, because the reflex on an Istio cluster is to suspect the mesh.
+Practise the last row. On an Istio cluster the reflex is to blame the mesh, and this count shows you when not to.
+
+## Common pitfalls
 
 > [!WARNING]
-> **Pitfalls in reading flags**
->
-> - **Treating `-` as "no information".** It means no *proxy-level* error, which is a positive finding pointing at the application.
+> - **Treating `-` as "no information".** It means no *proxy-level* error, which points at the application.
 > - **Confusing `UO` with an outage.** Upstream overflow is your own connection pool rejecting the request; the destination may be idle.
 > - **Chasing `DC` in the mesh.** The client disconnected first. Look at the client.
-> - **Reading only the client's log.** Anything enforced inbound — authorization, mTLS refusal — is explained on the destination. The client's line for a `403` looks unremarkable.
-> - **Memorising flags instead of the model.** Prefix plus position along the path gives you the layer, which is what you actually need.
-> - **Tallying flags across both proxies at once.** Client and destination lines describe different halves of the request; mixing them produces a meaningless histogram.
+> - **Reading only the client's log.** Anything enforced on the way in, like authorization or an mTLS refusal, is explained on the destination. The client's line for a `403` looks ordinary.
+> - **Memorising flags instead of the model.** The first letter plus the position on the path gives you the layer, and the layer is what you need.
+> - **Counting flags from both proxies at once.** Client and destination lines describe different halves of the request; mixing them gives a meaningless count.
 
-> *A flag has two axes: what failed, and on which side of the connection the line was written — neither is enough alone.*
-
-## Reference
-
-- [Envoy response flags](https://www.envoyproxy.io/docs/envoy/latest/configuration/observability/access_log/usage#config-access-log-format-response-flags) — the complete list with precise definitions, including the ones this table omits.
-- [Istio access logs](https://istio.io/latest/docs/tasks/observability/logs/access-log/) — the default format and field order.
-- [Istio standard metrics](https://istio.io/latest/docs/reference/config/metrics/) — the `reporter` and `response_flags` labels, the metrics counterpart of this part.
-- [Circuit breaking](https://istio.io/latest/docs/tasks/traffic-management/circuit-breaking/) — the `connectionPool` settings behind `UO`, produced deliberately in Part 4.
+> *A flag has two parts: what failed, and on which side of the connection the line was written. Neither is enough alone.*

@@ -1,12 +1,16 @@
-# Part 1 — Turning Logging On, And Scoping It
+# Turning Logging On, And Scoping It
 
-> Prerequisite: [the module landing page](./course.md). Next: [Part 2 — The Anatomy Of A Line](./course-02-anatomy-of-a-log-line.md).
+Astronaut, every ship in the mesh has a communications officer: the sidecar proxy (Envoy) that every signal in or out goes through. That officer can keep a flight log, the **access log**, with one line per signal. This part shows the two ways to switch the flight log on, why the scoped way is the better one, and how to keep only the lines you need.
 
-Access logging is off by default in a production-oriented Istio install, and the reason is volume: one line per request, per proxy, for every request in the mesh. This part covers the two ways to turn it on, why the scoped one is the modern answer, and the filtering that makes it affordable on a busy service.
+A production install of Istio often leaves access logging off. The reason is volume: one line per request, per proxy, for every request in the mesh.
 
-## Two mechanisms
+## Two ways to switch it on
 
-**Mesh-wide, in the install configuration.** `meshConfig.accessLogFile: /dev/stdout` turns it on for every proxy in the mesh:
+Istio gives you two switches for the flight log. One covers the whole fleet at once; the other is an object you place exactly where you need it.
+
+### Mesh-wide, in the install configuration
+
+The setting `meshConfig.accessLogFile: /dev/stdout` turns logging on for every proxy in the mesh. It lives in the install configuration that `istioctl install` reads:
 
 ```yaml
 # values passed to istioctl install / the IstioOperator resource
@@ -16,9 +20,21 @@ meshConfig:
   # accessLogFormat: "..."         # override the default format
 ```
 
-Simple, and blunt. It applies to several hundred proxies you did not want logs from, and changing it means touching the install.
+This is simple, and blunt. It switches on logs for hundreds of proxies you may not care about, and changing it means changing the install.
 
-**Scoped, with a `Telemetry` resource.** A Kubernetes object, applied like any other, whose scope is decided by where you put it:
+<!-- astrona:playground:renew -->
+
+To see whether `accessLogFile` is set on your own cluster, read the live mesh configuration, which `istiod` keeps in the `istio` ConfigMap:
+
+```sh
+kubectl -n istio-system get configmap istio -o yaml
+```
+
+Look for `accessLogFile` in the `mesh` section of the output.
+
+### Scoped, with a Telemetry object
+
+The second way is a **`Telemetry`** object. Think of it as the flight log settings: which planets (namespaces) keep a log, and what goes in it. You apply it like any other Kubernetes object, and where you put it decides what it covers:
 
 | Placed in | Covers |
 | --- | --- |
@@ -26,9 +42,9 @@ Simple, and blunt. It applies to several hundred proxies you did not want logs f
 | an application namespace | every workload in that namespace |
 | any namespace, with `spec.selector` | the matching workloads only |
 
-This is the modern approach and the one to reach for when investigating: it is namespaced, revertible with `kubectl delete`, and needs no install change or control plane restart.
+This is the modern approach, and the one to use during an investigation. It belongs to one namespace, you undo it with `kubectl delete`, and it needs no install change and no restart of the control plane.
 
-The `demo` profile used by this playground already enables logging mesh-wide, so the `Telemetry` object here is redundant — it is present so you can see the shape of the object that does the scoping:
+Your playground was installed with the `demo` profile, which already turns logging on for the whole mesh. So the `Telemetry` object in your playground is not needed there. It is applied so you can see the shape of the object that does the scoping. It looks like this:
 
 ```yaml
 apiVersion: telemetry.istio.io/v1
@@ -42,33 +58,34 @@ spec:
         - name: envoy
 ```
 
-`envoy` is the built-in provider name for the standard text access log. Providers are defined in `meshConfig.extensionProviders`, and the same `Telemetry` object can point at others — an OpenTelemetry collector, for instance — without any workload knowing.
+`envoy` is the built-in provider name for the standard text access log. Providers are defined in `meshConfig.extensionProviders`. The same `Telemetry` object can point at other providers, for example an OpenTelemetry collector, without any workload knowing.
 
-> [!TIP]
-> **Try it — the scoping object, and that logging works**
->
-> ```sh
-> kubectl -n accesslog-demo get telemetry access-logs -o yaml | sed -n '/^spec:/,$p'
-> kubectl -n accesslog-demo exec deploy/tester -- \
->   curl -s -o /dev/null -X POST http://notification-service/notify
-> kubectl -n accesslog-demo logs deploy/tester -c istio-proxy --tail=1
-> ```
->
-> Expect something like:
->
-> ```text
-> spec:
->   accessLogging:
->   - providers:
->     - name: envoy
-> [2026-09-27T10:02:11.401Z] "POST /notify HTTP/1.1" 200 - via_upstream - "-" 0 14 3 2 "-" "curl/8.4.0" "9c41..." "notification-service" "10.244.0.12:8084" outbound|80||notification-service.accesslog-demo.svc.cluster.local ...
-> ```
->
-> One request, one line, written by `tester`'s **own** sidecar — the `istio-proxy` container of the pod that sent the request, not of the pod that received it. That detail decides which `kubectl logs` command you run, and [Part 3](./course-03-flags-and-which-proxy.md) makes it a diagnostic in its own right.
+### See it in your playground
 
-## Turning it off again, per scope
+Read the scoping object, send one signal from the `tester` ship to the `notification-service` beacon, then read the last line of the tester's flight log:
 
-A `Telemetry` object can also **disable** logging for a narrower scope than an enclosing one enables. The field is `disabled: true`:
+```sh
+kubectl -n accesslog-demo get telemetry access-logs -o yaml | sed -n '/^spec:/,$p'
+kubectl -n accesslog-demo exec deploy/tester -- \
+  curl -s -o /dev/null -X POST http://notification-service/notify
+kubectl -n accesslog-demo logs deploy/tester -c istio-proxy --tail=1
+```
+
+You should see something like:
+
+```text
+spec:
+  accessLogging:
+  - providers:
+    - name: envoy
+[2026-09-27T10:02:11.401Z] "POST /notify HTTP/1.1" 200 - via_upstream - "-" 0 14 3 2 "-" "curl/8.4.0" "9c41..." "notification-service" "10.244.0.12:8084" outbound|80||notification-service.accesslog-demo.svc.cluster.local ...
+```
+
+One request gave one line, written by the tester's **own** sidecar. That is the `istio-proxy` container of the pod that sent the request, not of the pod that received it. This detail decides which `kubectl logs` command you run, and it becomes a diagnostic tool of its own once you compare both sides of a request.
+
+## Turning it off again, for a smaller scope
+
+A `Telemetry` object can also **switch logging off** for a narrower scope than a wider object switches it on. The field is `disabled: true`:
 
 ```yaml
 spec:
@@ -81,11 +98,11 @@ spec:
       disabled: true
 ```
 
-Resolution is narrowest-wins, in the same spirit as the policy precedence from [module 010-02 Part 1](../../section-010/module-02/course-01-what-describe-resolves.md): a workload-scoped object overrides a namespace-scoped one, which overrides the root-namespace one. So the realistic production shape is mesh-wide logging enabled at the root, with a handful of high-volume workloads opted out — rather than logging disabled everywhere and switched on in a panic.
+The narrowest scope wins. A workload-scoped object beats a namespace-scoped one, and a namespace-scoped one beats the one in the root namespace. So the realistic production shape is logging switched on for the whole mesh at the root, with a few very busy workloads opted out. That is better than logging switched off everywhere and switched on in a panic during an incident.
 
 ## Filtering: logging only what you need
 
-Full logging on a service handling thousands of requests a second is expensive in log pipeline cost and largely useless — a wall of `200`s in which the interesting lines are invisible. `Telemetry` supports a CEL filter expression evaluated per request:
+Full logging on a service with thousands of requests a second costs a lot to store. It is also hard to use: a wall of `200` lines hides the few interesting ones. A `Telemetry` object can carry a filter, written in the Common Expression Language (CEL), that the proxy checks for each request:
 
 ```yaml
 spec:
@@ -96,7 +113,7 @@ spec:
         expression: "response.code >= 400"
 ```
 
-Only requests matching the expression are logged. Common forms:
+Only requests that match the expression get a line. Common forms:
 
 | Expression | Logs |
 | --- | --- |
@@ -105,40 +122,33 @@ Only requests matching the expression are logged. Common forms:
 | `has(response.code) && response.code != 200` | anything not a clean success |
 | `request.headers['x-debug'] == 'true'` | requests you mark yourself |
 
-The last one is worth knowing: it gives you a way to trace a specific caller's traffic through a mesh where general logging is off, by setting a header rather than changing configuration for everyone.
+The last one is worth knowing. It lets you trace one caller's signals through a mesh where general logging is off: the caller sets a header, and nobody else's logging changes.
 
-There is a trade-off to state plainly. A filter that keeps only failures means you cannot compare a failure against the successful requests around it — no baseline latency, no "it worked for this caller and not that one". For an investigation, log everything for a short window; for steady state, filter.
+There is a trade-off. A filter that keeps only failures takes away the successful requests around them. You lose the normal latency to compare against, and you cannot see that "it worked for this caller and not for that one". During an investigation, log everything for a short time. For normal running, filter.
 
-## Format, and the JSON option
+## The format, and the JSON option
 
-The default format is a fixed field order designed to be readable in a terminal, and [Part 2](./course-02-anatomy-of-a-log-line.md) takes it apart. Two ways to change it:
+The default format is a fixed order of fields, made to be readable in a terminal. There are two ways to change it:
 
-- **`accessLogEncoding: JSON`** — the same fields as a JSON object, which is what you want when something downstream parses the logs. Field names become explicit, so nothing depends on position.
-- **`accessLogFormat`** — a custom template using Envoy's command operators (`%RESPONSE_FLAGS%`, `%UPSTREAM_CLUSTER%`, `%DURATION%`, and so on).
+- **`accessLogEncoding: JSON`** gives the same fields as a JSON (JavaScript Object Notation) object. Use it when another program reads the logs. Each field has a name, so nothing depends on its position.
+- **`accessLogFormat`** is a custom template that uses Envoy's command operators (`%RESPONSE_FLAGS%`, `%UPSTREAM_CLUSTER%`, `%DURATION%` and so on).
 
-A custom format is tempting and worth resisting for one reason: every runbook, blog post and course — including this one — assumes the default field order. Changing it makes your logs unrecognisable to everyone who has learned the standard shape. If you need extra fields, add them at the end rather than rearranging.
+A custom format is tempting, but resist it. Every runbook and course, this one included, assumes the default field order. If you rearrange it, nobody who learned the standard shape can read your logs. If you need extra fields, add them at the end.
 
 ## Where the logs go
 
-`/dev/stdout` means the proxy writes to its container's standard output, which is what makes `kubectl logs <pod> -c istio-proxy` work. Everything else follows from that: your cluster's log collector picks them up like any other container log, retention is whatever it is for container logs, and a pod that is deleted takes its logs with it unless something shipped them.
+`/dev/stdout` means the proxy writes to its container's standard output. That is why `kubectl logs <pod> -c istio-proxy` works. Your cluster's log collector picks up these lines like any other container log, and keeps them for as long as it keeps container logs.
 
-That last point is the practical argument for shipping logs somewhere, and the reason `istioctl bug-report` ([module 010-02 Part 3](../../section-010/module-02/course-03-bug-report-and-handover.md)) exists for the case where they were not.
+It also means that a deleted pod takes its logs with it, unless something shipped them somewhere first. That is the practical reason to ship logs to a central store. When nobody did, `istioctl bug-report` can still capture the current logs of the whole cluster in one archive.
+
+## Common pitfalls
 
 > [!WARNING]
-> **Pitfalls in enabling and scoping**
->
-> - **Expecting logs to be on.** Only some install profiles enable them. In a production mesh you may have to apply a `Telemetry` object before there is anything to read.
-> - **Enabling mesh-wide during an incident.** You get every proxy's traffic at once. Scope to the namespace or workload you are investigating.
-> - **Filtering to errors during an investigation.** Without the surrounding successes you lose the baseline that makes a failure interpretable.
-> - **Customising the format.** Every reference, including this module, assumes the default order. Append fields; do not rearrange them.
-> - **Assuming the logs persist.** They are container stdout. A deleted pod takes them with it.
-> - **Forgetting `disabled: true` exists.** Silencing one chatty workload is better than disabling logging for a namespace to make room for it.
+> - **Expecting logs to be on.** Only some install profiles switch them on. In a production mesh you may have to apply a `Telemetry` object before there is anything to read.
+> - **Switching logging on for the whole mesh during an incident.** You get every proxy's traffic at once. Scope it to the namespace or workload you are investigating.
+> - **Filtering to errors during an investigation.** Without the successful requests around a failure, you lose the baseline that explains it.
+> - **Customising the format.** Every reference assumes the default order. Add fields at the end; do not rearrange them.
+> - **Assuming the logs last.** They are container output. A deleted pod takes them with it.
+> - **Forgetting `disabled: true` exists.** Silencing one chatty workload is better than switching off logging for a whole namespace.
 
-> *Logging is a volume decision before it is a diagnostic one — scope it with Telemetry, and filter it only once you know what you are looking for.*
-
-## Reference
-
-- [Telemetry API — access logging](https://istio.io/latest/docs/tasks/observability/logs/access-log/) — enabling, scoping, disabling and filtering, with the CEL expression syntax.
-- [Telemetry resource reference](https://istio.io/latest/docs/reference/config/telemetry/) — `providers`, `filter`, `disabled` and the scope resolution rules.
-- [Envoy access log configuration](https://www.envoyproxy.io/docs/envoy/latest/configuration/observability/access_log/usage) — the command operators available in a custom format.
-- `kubectl -n istio-system get configmap istio -o yaml` — the live `meshConfig` on your own cluster, including whether `accessLogFile` is set.
+> *Logging is a volume decision before it is a diagnostic one: scope it with Telemetry, and filter it only once you know what you are looking for.*

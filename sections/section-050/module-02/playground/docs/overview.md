@@ -5,9 +5,9 @@
 This is a **playground**, not a lab. The environment starts clean, runs
 `bootstrap/prepare.sh`, applies the starting workloads, and then waits. There is
 no task, no `astrona submit`, and no pass/fail. Explore, break things,
-`astrona destroy`, start over.
+`astrona destroy ats-016-playground-050-02`, start over.
 
-## What's in the box
+## What is in the box
 
 - A single-node `kind` Kubernetes cluster with `kubectl` already pointed at it.
 - **Istio 1.30.5**, installed with the `demo` profile, plus `istioctl` on your
@@ -15,7 +15,7 @@ no task, no `astrona submit`, and no pass/fail. Explore, break things,
 - The injected namespace **`mtlsfail-demo`**, containing
   `notification-service-v1` behind the Service `notification-service` on port
   80, and a `tester` client pod with `curl`.
-- **A live mTLS mismatch** (`manifests/broken-config.yaml`): a namespace-wide
+- **A live mutual TLS (mTLS) mismatch** (`manifests/broken-config.yaml`): a namespace-wide
   `PeerAuthentication` in `STRICT` mode, and a `DestinationRule` setting
   `trafficPolicy.tls.mode: DISABLE`. Every request fails.
 

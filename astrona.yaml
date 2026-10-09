@@ -493,8 +493,8 @@ modules:
         title: "Flags, And Which Proxy Wrote The Line"
         path: sections/section-050/module-01/course-03-flags-and-which-proxy.md
       - type: reading
-        title: "Producing Each Failure On Demand"
-        path: sections/section-050/module-01/course-04-producing-each-failure.md
+        title: "Failures The Client's Proxy Decides"
+        path: sections/section-050/module-01/course-04-failures-the-client-proxy-decides.md
       - type: reading
         title: Question
         path: sections/section-050/module-01/labs/lab-01/question.md
@@ -517,6 +517,12 @@ modules:
             url: https://istio.io/latest/docs/reference/config/telemetry/
           - name: "Envoy access log format and response flags"
             url: https://www.envoyproxy.io/docs/envoy/latest/configuration/observability/access_log/usage
+      - type: reading
+        title: "A Denial On The Other Proxy"
+        path: sections/section-050/module-01/course-05-a-denial-on-the-other-proxy.md
+      - type: reading
+        title: "Wrap-Up: Mission Debrief"
+        path: sections/section-050/module-01/course-06-wrap-up.md
 
       - type: reading
         title: "Debug A 503 Caused By An mTLS Mismatch"
@@ -552,6 +558,9 @@ modules:
             url: https://istio.io/latest/docs/reference/config/security/peer_authentication/
           - name: "DestinationRule reference"
             url: https://istio.io/latest/docs/reference/config/networking/destination-rule/
+      - type: reading
+        title: "Wrap-Up: Mission Debrief"
+        path: sections/section-050/module-02/course-04-wrap-up.md
 
       - type: reading
         title: Question

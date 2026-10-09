@@ -1,53 +1,58 @@
 # Debug A 503 Caused By An mTLS Mismatch
 
-<!-- astrona:playground -->
-> [!NOTE]
-> 🧪 **Hands-on playground for this module** — a clean, throwaway machine to explore on. No task, no grading. Folder: [`playground/`](https://github.com/astrona-io/ATS016/tree/main/sections/section-050/module-02/playground)
->
-> ```sh
-> astrona run --git ssh://git@github.com/astrona-io/ATS016.git -c sections/section-050/module-02/playground
-> astrona destroy ats-016-playground-050-02
-> ```
+Astronaut, mutual TLS (mTLS) is a secret handshake: both ships show their ID badges before they talk. In Istio, two different objects set up the two ends of that handshake, and usually two different people write them. **`PeerAuthentication`** is the rule on the receiving ship's airlock: what the **server** will accept. **`DestinationRule`** tells the sending ship how to approach: what the **client** will send. Neither object mentions the other, and neither is invalid on its own.
 
-Mutual TLS in Istio is configured from two ends by two different objects, usually written by two different people. `PeerAuthentication` says what the **server** will accept. `DestinationRule` says what the **client** will send. Neither object references the other, neither is invalid on its own, and the analyzer will not always object.
-
-The contrast that makes this module worth a section of its own: every other `503` in this course is a failure to *find* a destination, visible in configuration the client holds. This one is a failure to *agree* with a destination that was found perfectly well — and its evidence is as much in what is missing from one log as in what is present in the other.
-
-> A STRICT server plus a client DestinationRule that disables TLS is a guaranteed failure, and nothing in either object looks wrong on its own.
-
-## How this module is organised
-
-1. **[Part 1 — Two Objects, Two Ends Of One Connection](./course-01-two-objects-two-ends.md)** — which object configures which side, every mode on both, the combinations that fail, and what those settings become inside Envoy.
-2. **[Part 2 — The Signature](./course-02-the-signature.md)** — the `UF`-with-a-silent-destination pattern, why the handshake fails before any HTTP exists to log, and reading the effective mode rather than a single object.
-3. **[Part 3 — Fixing It, And Proving Encryption](./course-03-fixing-and-proving-encryption.md)** — which end to change and why, the fix that removes configuration rather than adding it, proving traffic is encrypted rather than merely working, and the variant with no `DestinationRule` at all.
+Most `503` errors come from a client that cannot *find* its destination. This one comes from a client that found the destination perfectly well and cannot *agree* with it. The evidence is as much in what is missing from one flight log as in what is written in the other.
 
 ## Learning objectives
 
 After this module you can:
 
-- Name the object that configures each side of mTLS and the field each one uses.
+- Name the object that sets each side of mTLS, and the field each one uses.
 - List the modes on both sides and predict which combinations work.
-- Explain what `PERMISSIVE` does and why it makes mismatches survive unnoticed.
-- Recognise the `UF`-on-the-client, nothing-on-the-server signature and explain why the destination logs nothing.
-- Read a workload's effective mTLS mode rather than a single policy object.
-- Decide which of the two objects to change, and justify not changing the other.
-- Prove traffic is encrypted after the fix, rather than merely working.
-- Recognise the same signature produced by a caller that is outside the mesh, and fix it correctly.
+- Explain what `PERMISSIVE` does, and why it lets mismatches go unnoticed.
+- Recognise the signature of a `UF` flag on the client with nothing on the server, and explain why the destination logs nothing.
+- Read a workload's effective mTLS mode instead of a single policy object.
+- Decide which of the two objects to change, and explain why not the other.
+- Prove traffic is encrypted after the fix, not just working.
+- Recognise the same signature from a caller outside the mesh, and fix it correctly.
 
 ## Before you start
 
-You need [module 050-01](../module-01/course.md) — this module is an applied reading of the access log, and the `UF` flag plus the two-proxy comparison are central to it. It also helps to know `istioctl x describe pod` from [module 010-02](../../section-010/module-02/course.md), and the inbound filter chains from [module 040-01 Part 4](../../section-040/module-01/course-04-inbound-secrets-and-method.md).
+Every mission starts with a pre-flight check, astronaut. Make sure you have the knowledge this module expects, and know what is waiting in your playground.
 
-The playground gives you a single-node `kind` cluster with **Istio 1.30.5 already installed** (the `demo` profile), `istioctl` on your PATH, and the injected namespace **`mtlsfail-demo`** containing:
+### What you should already know
 
-- `notification-service-v1` behind the Service `notification-service` on port 80.
-- `tester` — a client pod with `curl`.
-- A `PeerAuthentication` and a `DestinationRule` that are **already in conflict**. Diagnosing that is the module's subject.
+- **Kubernetes basics.** Namespaces, Deployments, Services, `kubectl logs` and `kubectl exec`.
+- **How to read an access log line.** Each sidecar proxy writes one line per request. The response flag (for example `UF`, upstream connection failure) says why the request ended, and the upstream host field shows the address the proxy connected to, or `-` if none.
+- **Both sides log.** A request between two meshed pods is logged by the client's proxy on the way out and by the destination's proxy on the way in.
 
-Every command in every part runs against the playground cluster; `kubectl` is already pointed at it.
+### What is in your playground
 
-## Where this fits
+Your playground is a small training solar system: one `kind` cluster with **Istio 1.30.5** installed with the `demo` profile, and `istioctl` ready to use. Access logging is on for the whole mesh, which this module depends on.
 
-This module completes section 050's method: read the flag, read *which proxy* logged it, then read what each end was configured to do.
+It has one planet, the namespace **`mtlsfail-demo`**, with sidecar injection switched on:
 
-The `UF`-with-silent-destination pattern is worth committing to memory, because it is the one signature in Istio that points at a small, specific set of causes: an mTLS mode mismatch, a caller outside the mesh, or a port with no declared protocol. All three are configuration problems between two healthy workloads, and none of them will ever appear in an application log.
+| Kubernetes name | What it is |
+| --- | --- |
+| `notification-service` | The beacon (Service) on port `80`, in front of `notification-service-v1` |
+| `notification-service-v1` | The app: nginx answering `["EMAIL"]` on any path |
+| `tester` | Your test ship: a pod with `curl`. Every test signal is sent from here |
+| `default` (`PeerAuthentication`) and `notification` (`DestinationRule`) | Two objects that are **already in conflict**. Every request fails |
+
+Diagnosing that conflict is what this module is about, so do not read the objects until a part asks you to.
+
+Launch your playground now, and keep it running next to you while you read the parts:
+
+<!-- astrona:playground -->
+
+## The parts, in order
+
+1. [Two Objects, Two Ends Of One Connection](./course-01-two-objects-two-ends.md)
+2. [The Signature](./course-02-the-signature.md)
+3. [Fixing It, And Proving Encryption](./course-03-fixing-and-proving-encryption.md), followed by your mission
+4. [Wrap-Up: Mission Debrief](./course-04-wrap-up.md)
+
+## Why this matters
+
+A `UF` flag with an upstream address and a silent destination is one of the few signatures in Istio that points at a short, specific list of causes: an mTLS mode mismatch, a caller outside the mesh, or a wrong port. All three are configuration problems between two healthy workloads, and none of them ever shows up in an application log. Learn to read it, and you also learn the most important habit of mesh security: a working request is not proof of an encrypted one.
