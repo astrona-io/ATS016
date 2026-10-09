@@ -1,3 +1,7 @@
+---
+estimated_duration: 15m
+---
+
 # Diagnose Configuration Sync With proxy-status
 
 - **ID:** LAB

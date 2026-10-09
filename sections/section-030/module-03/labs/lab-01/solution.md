@@ -1,6 +1,6 @@
 # Solution: Bring An Exempt Workload Back Into The Mesh
 
-Astronaut, one ship on this planet flies without its communications officer. This walkthrough finds it with two checks, works the checklist to the cause, removes it, and proves the ship joined the mesh and still answers.
+One workload in this namespace runs without its sidecar proxy. This walkthrough finds it with two checks, works the checklist to the cause, removes it, and proves the workload joined the mesh and still answers.
 
 ## Step 1: Find the workload that is not in the mesh
 
@@ -18,23 +18,19 @@ reporting-service-7fd4c8b96-mn5tp         true         reporting-service
 tester-6d9f7b8c5-hj4kz                    true,true    tester,istio-proxy
 ```
 
-One container where the others have two. Nothing here is an error, which is exactly why this state survives reviews.
+`reporting-service` has one container where the others have two. Nothing here is an error, which is exactly why this state survives reviews. If the cluster runs the proxy as a native sidecar, `istio-proxy` appears under `.spec.initContainers` instead; the `READY` column of `kubectl get pods` (`1/1` against `2/2`) shows the same difference either way.
 
-The second, independent check comes from the mesh's side. Run the pre-flight inspector:
+The second, independent check comes from `istiod`'s side:
 
 ```sh
-istioctl analyze -n noinject-demo
+istioctl proxy-status | grep noinject-demo
 ```
 
-```text
-Info [IST0103] (Pod reporting-service-...) The pod is missing the Istio proxy.
-```
-
-`Info` severity, the lowest there is, for a workload exempt from every policy in the namespace. Always read the analyzer output to the bottom.
+The output lists `notification-service-v1` and `tester`, and no row for `reporting-service`, because it has no proxy to connect. `istioctl analyze -n noinject-demo` does not help here: it reports `IST0103` only for pods that lack a proxy without opting out, so it skips a deliberate opt-out.
 
 ## Step 2: Work the checklist in order
 
-**1. Namespace label.** Check what the planet asks for:
+**1. Namespace label.** Check what the namespace asks for:
 
 ```sh
 kubectl get ns noinject-demo --show-labels
@@ -60,9 +56,7 @@ kubectl -n noinject-demo get deploy notification-service-v1 \
 {"app":"notification-service","version":"v1"}
 ```
 
-There is the cause. The opt-out sits on `spec.template.metadata.labels`, the **pod template**, which is the only place it has any effect. It beats the namespace setting, because the webhook's `objectSelector` excludes such pods before `istiod` is ever asked.
-
-Steps 3 and 4 (pod age and webhook health) are not needed once step 2 gives the answer. They would be the next checks if it had not.
+There is the cause. The opt-out sits on `spec.template.metadata.labels`, the **pod template**, which is the only place it has any effect. It beats the namespace setting, because the webhook's `objectSelector` excludes such pods before `istiod` is ever asked. Steps 3 and 4, pod age and webhook health, are not needed once step 2 gives the answer.
 
 ## Step 3: Remove the opt-out
 
@@ -74,7 +68,7 @@ kubectl -n noinject-demo patch deployment reporting-service --type json \
 kubectl -n noinject-demo rollout status deployment/reporting-service --timeout=180s
 ```
 
-Patching the **pod template** changes its hash, so a new ReplicaSet and new pods are created automatically. No separate `rollout restart` is needed here. A fix to a *namespace* label would have needed one.
+Patching the **pod template** changes its hash, so a new ReplicaSet and new pods are created automatically. No separate `rollout restart` is needed here; a fix to a *namespace* label would have needed one.
 
 Submit to see your progress:
 
@@ -84,12 +78,12 @@ astrona submit
 
 ## Step 4: Prove it joined, and that it still works
 
-Check the container, the roll call, a real request, and the inspector:
+Check the container, the sync state, a real request, and the analyzer:
 
 ```sh
 kubectl -n noinject-demo get pods -l app=reporting-service \
   -o jsonpath='{.items[0].spec.containers[*].name}{"\n"}'
-istioctl proxy-status | grep reporting-service
+istioctl proxy-status -v 1 | grep reporting-service
 kubectl -n noinject-demo exec deploy/tester -- \
   curl -s -o /dev/null -w '%{http_code}\n' http://reporting-service/
 istioctl analyze -n noinject-demo
@@ -97,14 +91,14 @@ istioctl analyze -n noinject-demo
 
 ```text
 reporting-service istio-proxy
-reporting-service-...noinject-demo   Kubernetes   SYNCED   SYNCED   SYNCED   SYNCED   ...
+reporting-service-...noinject-demo   Kubernetes   SYNCED (30s)   IGNORED   SYNCED (30s)   SYNCED (30s)   SYNCED (30s)   ...
 200
 ✔ No validation issues found when analyzing namespace: noinject-demo.
 ```
 
-On Kubernetes 1.28 and later the proxy can run as a native sidecar, listed under `initContainers`. If the first command prints only `reporting-service`, read `.spec.initContainers[*].name` as well; the grader checks both lists.
+If the first command prints only `reporting-service`, the proxy runs as a native sidecar; read `.spec.initContainers[*].name` as well. The grader checks both lists. Since Istio 1.27, plain `istioctl proxy-status` shows no per-type sync state, so use `-v 1`.
 
-The `200` matters as much as the sidecar. Joining the mesh means the traffic is now intercepted, and interception is where two hidden problems appear at once: a Service port with no protocol name, and an application listening only on `127.0.0.1`. Both work without a sidecar and break the moment one arrives.
+The `200` matters as much as the sidecar. Joining the mesh means the traffic is now intercepted, and interception is where two hidden problems appear: a Service port with no protocol name, and an application listening only on `127.0.0.1`. Both work without a sidecar and break the moment one arrives.
 
 Submit for the final grade:
 
@@ -122,6 +116,6 @@ astrona submit
 
 ## Practice variations
 
-- Delete the namespace label instead, and reproduce a different root cause.
+- Delete the namespace label instead, and reproduce a different cause.
 - Pin the namespace to a revision that does not exist, and watch what happens.
 - Set `hostNetwork: true` on a pod, and explain why injection is skipped.

@@ -6,7 +6,7 @@ Solve this question on: `terminal`
 
 ## Scenario
 
-Astronaut, an on-call engineer reports that the planet (namespace) `cphealth-demo` "looks completely fine". Traffic flows, pods are `Running`, and dashboards are green:
+An on-call engineer reports that the namespace `cphealth-demo` "looks completely fine". Traffic flows, pods are `Running`, and dashboards are green:
 
 ```sh
 kubectl -n cphealth-demo exec deploy/tester -- \
@@ -31,4 +31,4 @@ They also report two other things. A `VirtualService` they applied earlier "did 
 
 - `istiod` has at least one ready replica, and `istioctl proxy-status` can reach it.
 - No `VirtualService` in `cphealth-demo` has route weights that fail to add up to 100, and `istioctl analyze -n cphealth-demo` reports no `Error`.
-- `istioctl proxy-status` shows at least two proxies from `cphealth-demo`, none of them `STALE`, and a `POST` from `tester` to `http://notification-service/notify` returns `200`.
+- `istioctl proxy-status` shows at least two proxies from `cphealth-demo`, and no xDS type in `istioctl proxy-status -v 1` is `STALE` or `ERROR`, and a `POST` from `tester` to `http://notification-service/notify` returns `200`.

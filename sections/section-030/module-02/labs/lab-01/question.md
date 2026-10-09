@@ -6,7 +6,7 @@ Solve this question on: `terminal`
 
 ## Scenario
 
-Astronaut, a platform change went out overnight. This morning, mission control's roll call, `istioctl proxy-status`, lists fewer proxies than the planet (namespace) `proxysync-demo` has workloads:
+A platform change went out overnight. This morning, `istioctl proxy-status` lists fewer proxies than the namespace `proxysync-demo` has workloads:
 
 ```sh
 istioctl proxy-status | grep proxysync-demo
@@ -30,6 +30,6 @@ In the namespace `proxysync-demo`:
 
 ## Done when
 
-- Every running pod in `proxysync-demo` appears in `istioctl proxy-status`, and no row is `STALE`.
+- Every running pod in `proxysync-demo` appears in `istioctl proxy-status`, and no xDS type in `istioctl proxy-status -v 1` is `STALE` or `ERROR`.
 - The `notification-service` pod carries the `istio-proxy` sidecar, and the namespace carries an injection label (`istio-injection` or `istio.io/rev`), so new pods get one too.
 - A `POST` from the `tester` pod to `http://notification-service/notify` still returns `200`.

@@ -6,13 +6,13 @@ Solve this question on: `terminal`
 
 ## Scenario
 
-Astronaut, a platform migration left three workloads in an inconsistent state across two planets (namespaces):
+A platform migration left three workloads in an inconsistent state across two namespaces:
 
 - `orders-service` in `cpcapstone-demo`
 - `payments-service` in `cpcapstone-demo`
 - `billing-service` in `cpcapstone-legacy`
 
-Mission control's roll call, `istioctl proxy-status`, lists fewer proxies than there are workloads. A `VirtualService` applied for `payments-service` "did nothing". The control plane itself is running normally: this is not one outage with three symptoms.
+`istioctl proxy-status` lists fewer proxies than there are workloads. A `VirtualService` applied for `payments-service` "did nothing". The control plane itself is running normally: this is not one outage with three symptoms.
 
 ## Your task
 
@@ -29,7 +29,7 @@ Mission control's roll call, `istioctl proxy-status`, lists fewer proxies than t
 
 ## Done when
 
-- `orders-service`, `payments-service`, `billing-service` and `tester` all appear in `istioctl proxy-status`, and none is `STALE`.
+- `orders-service`, `payments-service`, `billing-service` and `tester` all appear in `istioctl proxy-status`, and no xDS type in `istioctl proxy-status -v 1` is `STALE` or `ERROR`.
 - `orders-service` pods carry the `istio-proxy` sidecar, and its pod template no longer carries the `sidecar.istio.io/inject: "false"` opt-out.
 - `billing-service` pods carry the `istio-proxy` sidecar, and `cpcapstone-legacy` carries an injection label that names an installed revision (or `istio-injection=enabled`).
 - No route weights in `cpcapstone-demo` fail to add up to 100, and a request from `tester` to `http://payments-service/get` returns `200`.

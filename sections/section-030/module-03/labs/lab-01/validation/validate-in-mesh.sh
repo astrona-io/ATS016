@@ -5,13 +5,13 @@ set -uo pipefail
 NS="noinject-demo"
 rc=0
 
-ROW="$(istioctl proxy-status 2>/dev/null | grep "reporting-service.*\.$NS" || true)"
+ROW="$(istioctl proxy-status -v 1 2>/dev/null | grep "reporting-service.*\.$NS" || true)"
 if [ -z "$ROW" ]; then
   echo "FAIL: reporting-service does not appear in istioctl proxy-status."
   echo "      A container that exists is not a proxy that connected."
   rc=1
-elif printf '%s' "$ROW" | grep -q 'STALE'; then
-  echo "FAIL: reporting-service is present but STALE:"
+elif printf '%s' "$ROW" | grep -qE 'STALE|ERROR'; then
+  echo "FAIL: reporting-service is present but STALE or ERROR:"
   printf '%s\n' "$ROW"
   rc=1
 fi

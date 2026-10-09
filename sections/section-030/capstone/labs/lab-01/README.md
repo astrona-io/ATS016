@@ -1,3 +1,7 @@
+---
+estimated_duration: 40m
+---
+
 # Capstone: Three Workloads, Three Different Control Plane Faults
 
 - **ID:** CAPSTONE

@@ -1,3 +1,7 @@
+---
+estimated_duration: 15m
+---
+
 # Debug A Workload With No Sidecar
 
 - **ID:** LAB

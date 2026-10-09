@@ -6,7 +6,7 @@ Solve this question on: `terminal`
 
 ## Scenario
 
-Astronaut, a security review of the planet (namespace) `noinject-demo` found that its mesh policies "apply to everything except `reporting-service`". Nobody wrote an exception for it, and the namespace is labelled for injection:
+A security review of the namespace `noinject-demo` found that its mesh policies "apply to everything except `reporting-service`". Nobody wrote an exception for it, and the namespace is labelled for injection:
 
 ```sh
 kubectl get ns noinject-demo --show-labels
@@ -34,4 +34,4 @@ In the namespace `noinject-demo`:
 
 - `reporting-service` pods carry the `istio-proxy` sidecar.
 - The pod template no longer carries a `sidecar.istio.io/inject: "false"` opt-out, and the namespace label is still `istio-injection=enabled`.
-- `reporting-service` appears in `istioctl proxy-status` and is not `STALE`, and a request to `http://reporting-service/` from the `tester` pod returns `200`.
+- `reporting-service` appears in `istioctl proxy-status`, no xDS type in `istioctl proxy-status -v 1` is `STALE` or `ERROR`, and a request to `http://reporting-service/` from the `tester` pod returns `200`.

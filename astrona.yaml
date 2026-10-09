@@ -260,8 +260,8 @@ modules:
         title: "The Instruments"
         path: sections/section-030/module-01/course-02-instruments-logs-and-metrics.md
       - type: reading
-        title: "Take Mission Control Away"
-        path: sections/section-030/module-01/course-03-take-mission-control-away.md
+        title: "Take The Control Plane Away"
+        path: sections/section-030/module-01/course-03-take-the-control-plane-away.md
       - type: reading
         title: "Accepted, Never Applied"
         path: sections/section-030/module-01/course-04-accepted-never-applied.md
@@ -288,8 +288,8 @@ modules:
           - name: "Debugging Envoy and istiod"
             url: https://istio.io/latest/docs/ops/diagnostic-tools/proxy-cmd/
       - type: reading
-        title: "Wrap-Up: Mission Debrief"
-        path: sections/section-030/module-01/course-05-wrap-up.md
+        title: Summary
+        path: sections/section-030/module-01/course-05-summary.md
 
       - type: reading
         title: "Diagnose Configuration Sync With proxy-status"
@@ -324,8 +324,8 @@ modules:
           - name: "Application requirements and ports"
             url: https://istio.io/latest/docs/ops/deployment/application-requirements/
       - type: reading
-        title: "Wrap-Up: Mission Debrief"
-        path: sections/section-030/module-02/course-04-wrap-up.md
+        title: Summary
+        path: sections/section-030/module-02/course-04-summary.md
 
       - type: reading
         title: "Debug A Workload With No Sidecar"
@@ -363,8 +363,8 @@ modules:
           - name: "Installing the sidecar"
             url: https://istio.io/latest/docs/setup/additional-setup/sidecar-injection/
       - type: reading
-        title: "Wrap-Up: Mission Debrief"
-        path: sections/section-030/module-03/course-05-wrap-up.md
+        title: Summary
+        path: sections/section-030/module-03/course-05-summary.md
 
       - type: reading
         title: Question

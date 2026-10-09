@@ -1,71 +1,59 @@
 # How Injection Actually Happens
 
-Astronaut, most wrong ideas about sidecar injection come from picturing it as something Istio keeps doing to your Deployment, like a controller. It is not. Injection is a single edit to a Pod object, made while the Kubernetes API server holds the request open. In space terms, the launch-pad crew puts a communications officer on board at launch, and only at launch. Everything surprising about injection follows from that one fact.
+Most wrong ideas about sidecar injection come from picturing it as something Istio keeps doing to your Deployment, like a controller. It is not. Injection is a single edit to a Pod object, made while the Kubernetes API server holds the create request open. It happens when the pod is created, and only then, and everything surprising about injection follows from that one fact. This part follows a pod through that path, lists what is added, and shows two ways to check whether a pod is in the mesh.
 
 ## The path a pod takes
 
-When a ReplicaSet (or you) creates a Pod, the API server passes it through a fixed set of checks before it is stored. The injection webhook is one of them: a call the API server makes to `istiod` while it handles the request.
+When a ReplicaSet, or you, creates a Pod, the API server passes it through a fixed set of stages before it stores it. One of them is mutating admission: the API server calls webhooks that may change the object. The injection webhook is one of them, served by `istiod`.
 
 ```mermaid
 flowchart TB
-    C["Pod created"] --> A["API server: who are you, may you?"]
+    C["Pod created"] --> A["authentication and authorization"]
     A --> M["mutating admission"]
     M -->|"selectors match"| I["istiod, port 15017"]
-    I -->|"JSONPatch: add sidecar"| P["API server applies the patch"]
+    I -->|"JSONPatch"| P["API server applies the patch"]
     P --> V["validation, then etcd"]
-    M -->|"selectors do not match: skip"| V
-    V --> S["scheduler sees the stored pod"]
+    M -->|"no match"| V
+    V --> S["scheduler"]
 ```
 
-The diagram shows the API server asking `istiod` for a change (a JSONPatch) only when the webhook's selectors match, then storing the changed pod as if it had always looked that way.
+The diagram shows the API server asking `istiod` for a change only when the webhook's selectors match, then storing the changed pod as if it had always looked that way.
 
-The webhook first checks two selectors. The `namespaceSelector` asks: does this pod's planet (namespace) want injection? The `objectSelector` asks: does this one ship accept it? If both say yes, the API server sends the Pod to `istiod` on port `15017`. `istiod` answers with a JSONPatch, a list of edits that adds the sidecar and its supporting pieces. The API server applies the edits to the Pod object, then continues with validation and stores the result in etcd (the registry office's archive).
-
-The scheduler, the kubelet and every later reader see a pod that was born with a sidecar. The pod itself keeps no record of the edit, apart from the added content and an annotation that names the injection template used.
+The webhook first checks two selectors. The `namespaceSelector` asks whether the pod's namespace wants injection. The `objectSelector` asks whether this one pod accepts it. If both match, the API server sends the Pod to `istiod` on port `15017`. `istiod` answers with a JSONPatch, a list of edits that adds the sidecar and its supporting pieces. The API server applies the edits to the Pod object, then continues with validation and stores the result in etcd, the cluster's database. The scheduler, the kubelet and every later reader see a pod that was created with a sidecar. The pod keeps no record of the edit, apart from the added content and an annotation that names the injection template used.
 
 ## What gets added, and why
 
-The JSONPatch adds several pieces. Each one has a job.
-
-### The pieces of the patch
+The JSONPatch adds several pieces, and each one has a job:
 
 | Added | Purpose |
 | --- | --- |
-| `istio-proxy` container | Envoy plus `pilot-agent`: the proxy itself, the communications officer |
+| `istio-proxy` container | Envoy plus `pilot-agent`: the sidecar proxy itself |
 | `istio-init` init container | Runs `iptables` rules that redirect the pod's traffic into Envoy |
 | `istio-token` volume | A projected service account token, used to prove the pod's identity to `istiod` |
 | `istio-ca-root-cert` volume | The mesh root certificate, used to check that `istiod` is genuine |
 | `istio-envoy` volume | An in-memory volume for the proxy's working files |
 
-The init container is what makes the redirection invisible to the app. It installs `iptables` rules (Linux firewall rules) in the pod's own network space that send outgoing traffic to port `15001` and incoming traffic to port `15006`, where Envoy listens. Your application connects to `notification-service:80` exactly as before and never learns that something stepped in.
+The init container is what makes the redirection invisible to the application. It installs `iptables` rules, Linux packet filtering rules, in the pod's own network namespace. They send outgoing traffic to port `15001` and incoming traffic to port `15006`, where Envoy listens. Your application connects to `notification-service:80` exactly as before and never learns that a proxy is in the path. That also explains one exclusion: a pod that shares the **node's** network (`hostNetwork: true`) cannot get those rules safely, because they would change the node itself.
 
-That also explains one kind of exclusion. A pod that shares the **node's** network (`hostNetwork: true`) cannot have those rules applied safely, because they would change the node itself, not just the pod.
-
-### Variations you may meet
-
-Two variations change what you see on a real cluster, but not the decision path above. First, some installs use the **Istio CNI plugin** instead of the init container. The plugin does the same `iptables` work when the pod's network is set up, so `istio-init` is missing and the pod needs no extra privileges. Second, newer Kubernetes versions let the proxy run as a **native sidecar**: an init container with `restartPolicy: Always`, started before the app. Then `istio-proxy` appears under `initContainers`, not `containers`.
-
-The content of the patch comes from a template stored in the `istio-sidecar-injector` ConfigMap in `istio-system`. When injection produces something unexpected, such as a wrong image, a missing environment variable or resource limits you did not set, that template is where the answer is.
+Two variations change what you see on a real cluster, but not the decision path. Some installs use the **Istio CNI plugin** instead of the init container; it does the same `iptables` work when the pod's network is set up, so `istio-init` is missing. And Istio 1.30 runs the proxy as a Kubernetes **native sidecar**, an init container with `restartPolicy: Always` that starts before the application, when every node runs Kubernetes 1.33 or later. Then `istio-proxy` appears under `initContainers`, not `containers`. The content of the patch comes from a template in the `istio-sidecar-injector` ConfigMap in `istio-system`. When injection adds something unexpected, such as a wrong image or resource limits you did not set, that template is where the answer is.
 
 ## Three consequences
 
-Because injection is one edit at pod creation, three things follow. Each one explains a common surprise.
+Because injection is one edit at pod creation, three things follow, and each one explains a common surprise.
 
-**1. It happens at pod creation only.** There is no loop that repairs pods later. Nothing will ever add a sidecar to a pod that already exists, however many labels you fix. The only way to inject an existing workload is to replace its pods.
+**It happens at pod creation only.** There is no loop that repairs pods later. Nothing will ever add a sidecar to a pod that already exists, however many labels you fix. The only way to inject an existing workload is to replace its pods.
 
-**2. It changes the Pod, not the Deployment.** `kubectl get deployment -o yaml` never shows `istio-proxy`. The Deployment really does not contain it. Check the pod; never the controller.
+**It changes the Pod, not the Deployment.** `kubectl get deployment -o yaml` never shows `istio-proxy`, because the Deployment really does not contain it. Check the pod, never the controller.
 
-**3. It needs `istiod` to answer at that moment.** Injection is a call that the pod creation waits for. That is why the webhook's `failurePolicy` decides what an `istiod` outage does: `Fail` (the Istio default) blocks new pods, `Ignore` lets them start with no sidecar.
+**It needs `istiod` to answer at that moment.** The pod creation waits for the webhook call. That is why the webhook's `failurePolicy` decides what an `istiod` outage does: `Fail`, the Istio default, blocks new pods, and `Ignore` lets them start with no sidecar.
 
 ## Is it in the mesh?
 
-Two checks answer this. They cost the same, and they fail in different ways, so it is worth knowing both.
+Two checks answer this question. They come from different sides, so they fail in different ways, and it is worth knowing both.
 
 <!-- astrona:playground:renew -->
 
-### Count the containers in each pod
-
-List each pod with its ready flags and its container names:
+The first check asks Kubernetes. List each pod with its ready flags and its container names:
 
 ```sh
 kubectl -n noinject-demo get pods \
@@ -81,47 +69,37 @@ reporting-service-7fd4c8b96-mn5tp         true         reporting-service
 tester-6d9f7b8c5-hj4kz                    true,true    tester,istio-proxy
 ```
 
-`reporting-service` has one container where the others have two. It is healthy, ready and serving, and it is outside the mesh. Nothing in this output is an error, which is exactly why this state passes reviews and reaches production. In daily work the short version is the `READY` column of plain `kubectl get pods`: `2/2` against `1/1`.
+`reporting-service` has one container where the others have two. It is healthy, ready and serving, and it is outside the mesh. Nothing in this output is an error, which is exactly why this state passes reviews and reaches production. If your nodes run the proxy as a native sidecar, `istio-proxy` is missing from the `CONTAINERS` column for every pod; then read `.spec.initContainers[*].name` instead. In daily work the short version is the `READY` column of plain `kubectl get pods`, which counts native sidecars too: `2/2` against `1/1`.
 
-### Ask the pre-flight inspector
-
-The second check comes from a different direction. `istioctl analyze` reads the pods against what the mesh expects and reports the gap:
+The second check asks `istiod`. List the proxies it serves in this namespace:
 
 ```sh
-istioctl analyze -n noinject-demo
+istioctl proxy-status | grep noinject-demo
 ```
 
 You should see something like:
 
 ```text
-Info [IST0103] (Pod reporting-service-7fd4c8b96-mn5tp.noinject-demo) The pod is missing the Istio proxy. This can often be resolved by restarting or redeploying the workload.
+notification-service-v1-6c9f8b7d5-x2kqp.noinject-demo   Kubernetes     istiod-7d4c9b8f4-k2m8x     1.30.5     4 (CDS,LDS,EDS,RDS)
+tester-6d9f7b8c5-hj4kz.noinject-demo                    Kubernetes     istiod-7d4c9b8f4-k2m8x     1.30.5     4 (CDS,LDS,EDS,RDS)
 ```
 
-Look at the severity: `Info`, the lowest there is. A workload left out of every mesh policy you have written is reported at the same level as a style note.
-
-The suggested fix, "restarting or redeploying", is consequence 1 stated as advice. It is right *once the cause is fixed*, and useless before that.
+`reporting-service` has no row, because it has no proxy to connect. Do not expect `istioctl analyze` to help in this case. Its injection analyzer reports `IST0103` (`PodMissingProxy`, a `Warning`) only for a pod that has no proxy *and* did not opt out, in a namespace labelled `istio-injection=enabled`. It skips pods that opt out with `sidecar.istio.io/inject: "false"`, and pods with `hostNetwork: true`, because their exclusion is deliberate. So `istioctl analyze -n noinject-demo` reports nothing about `reporting-service`.
 
 > [!TIP]
-> Always read `istioctl analyze` output to the bottom. `IST0103`, the missing-proxy message, is only `Info`, and it is easy to skip.
+> When a policy has no effect on one workload, count its containers before you read any YAML. A clean `istioctl analyze` run does not prove every pod has a sidecar.
 
 ## Why this matters more than it looks
 
-A workload outside the mesh is not weakened; it is exempt from the mesh:
+A workload outside the mesh is not weakened; it is exempt from the mesh. A `PeerAuthentication` in `STRICT` mode does not apply to it, so it sends and receives plain text. An `AuthorizationPolicy` does not apply to it, so nothing checks its requests. No telemetry is produced for it, so dashboards show it with no traffic, and it does not appear in `istioctl proxy-status`. Each of those absences looks like a different bug, and none of them names the cause.
 
-- A `PeerAuthentication` in `STRICT` mode does not apply to it, so it sends and receives plain text.
-- An `AuthorizationPolicy` does not apply to it, so nothing checks its requests.
-- No telemetry is produced for it, so dashboards show it with no traffic.
-- It does not appear in `istioctl proxy-status`.
-
-Each of those absences looks like a different bug. A security review sees a policy that "works". A dashboard shows a service that "has no traffic". A sync check shows a proxy that "is not there". One cause, four symptoms, and none of them names it.
+You now know that injection is one edit to a Pod at creation, made by the API server with a patch from `istiod`, and that nothing adds a sidecar later. You can check a pod from the Kubernetes side by counting containers and from the `istiod` side with `istioctl proxy-status`. The open question is *why* the webhook skipped `reporting-service`, and the answer is in the labels the selectors read.
 
 ## Common pitfalls
 
 > [!WARNING]
-> - **Labelling a namespace and expecting existing pods to change.** Injection happens at pod creation. Without new pods, the label is only a wish.
+> - **Labelling a namespace and expecting existing pods to change.** Injection happens at pod creation. Without new pods, the label has no effect.
 > - **Looking for `istio-proxy` in the Deployment.** It is added to the Pod. The Deployment never contains it.
-> - **Assuming a `Running` pod is a meshed pod.** Kubernetes has no opinion about the mesh. Count the containers.
-> - **Expecting `IST0103` to stand out.** It is `Info` severity, at the bottom of the output.
-> - **Expecting `hostNetwork: true` pods to be injected.** Traffic redirection cannot be applied to the node's network, so they never are.
-
-> *Injection is one edit to a Pod at launch, which is why nothing can ever add it later.*
+> - **Assuming a `Running` pod is in the mesh.** Kubernetes has no opinion about the mesh. Count the containers.
+> - **Expecting `istioctl analyze` to report every pod without a sidecar.** It skips pods that opt out and pods with `hostNetwork: true`.
+> - **Missing a native sidecar.** On Kubernetes 1.33 and later nodes, `istio-proxy` is listed under `initContainers`.

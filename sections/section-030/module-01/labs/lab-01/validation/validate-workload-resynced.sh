@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-# PASS when every proxy in the namespace is SYNCED and traffic returns 200.
+# PASS when every proxy in the namespace is SYNCED (checked with `istioctl proxy-status -v 1`,
+# because since Istio 1.27 the short form shows no per-type sync state) and traffic returns 200.
 set -uo pipefail
 
 NS="cphealth-demo"
 rc=0
 
-ROWS="$(istioctl proxy-status 2>/dev/null | grep "\.$NS" || true)"
+ROWS="$(istioctl proxy-status -v 1 2>/dev/null | grep "\.$NS" || true)"
 if [ -z "$ROWS" ]; then
   echo "FAIL: no proxies from $NS appear in istioctl proxy-status."
   exit 1
@@ -17,8 +18,8 @@ if [ "$COUNT" -lt 2 ]; then
   rc=1
 fi
 
-if printf '%s\n' "$ROWS" | grep -qE 'STALE'; then
-  echo "FAIL: at least one proxy is STALE:"
+if printf '%s\n' "$ROWS" | grep -qE 'STALE|ERROR'; then
+  echo "FAIL: at least one proxy is STALE or ERROR:"
   printf '%s\n' "$ROWS"
   rc=1
 fi

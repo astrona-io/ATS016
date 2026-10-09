@@ -1,3 +1,7 @@
+---
+estimated_duration: 20m
+---
+
 # Check Control Plane Health
 
 - **ID:** LAB
