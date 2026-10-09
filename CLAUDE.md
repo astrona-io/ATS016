@@ -306,6 +306,22 @@ playground actually runs it.
   fault is the material. Never "fix" it in the bootstrap.
 - **No load balancer on `kind`.** A gateway Service's `EXTERNAL-IP` stays
   `<pending>`; use `kubectl port-forward` when a page needs the gateway.
+- **Istio 1.30.5 output that older pages got wrong.** Check these before you
+  copy output from memory or from an older page:
+  - `istioctl analyze` names objects as `<Kind> <namespace>/<name>`, prints
+    one message per object involved (`IST0109` appears once on each
+    `VirtualService`), and exits with code `79` when it finds issues.
+  - Severities: `IST0101` Error, `IST0102` Info, `IST0103` Warning,
+    `IST0106` Error (schema), `IST0109` Error, `IST0130` Warning
+    (unreachable rule), `IST0002` Warning (deprecated).
+  - A shadowed route rule is not silent: `kubectl apply` prints
+    `Warning: virtualService rule #N not used`, and analyze reports `IST0130`.
+  - Plain `istioctl proxy-status` shows `NAME CLUSTER ISTIOD VERSION
+    SUBSCRIBED TYPES`; the per-type `SYNCED`/`STALE` columns need `-v 1`. A
+    rejected push shows as `ERROR`.
+  - Route JSON from `proxy-config routes -o json` holds header matches as
+    `headers[].stringMatch.exact`; there is no `exact_match` field.
+  - The default Envoy log level of every scope is `warning`.
 - **The proof is a request from `tester`.** A fix is proven with
   `kubectl exec` from the `tester` pod to `http://notification-service`, plus
   the matching diagnostic command (`istioctl analyze` clean,
@@ -318,25 +334,19 @@ playground actually runs it.
 | --- | --- |
 | Course outline the platform reads: every reading page and lab, in order. Never list `solution.md` here | `astrona.yaml` |
 | Overview, sections and modules tables, the investigation order, how to run things | `README.md` |
-| Introduction (see "Every course starts with an Introduction") | `sections/intro/` (not created yet) |
+| Introduction (see "Every course starts with an Introduction") | `sections/intro/` |
 | Section overview and its modules | `sections/section-0N0/README.md` |
 | Module reading: landing page, deep-dive parts, closing page | `sections/section-0N0/module-0M/course.md`, `course-0N-*.md` |
 | Graded lab: task, walkthrough, setup, grader | `.../labs/lab-01/` (`question.md`, `solution.md`, `prerequisites.md`, `bootstrap/`, `manifests/`, `solution/`, `testing/`, `validation/`) |
 | Ungraded sandbox for a module | `.../playground/` (`config.yaml`, `bootstrap/prepare.sh`, `manifests/`, `docs/overview.md`, which is the only learner page) |
 | One graded integration lab per section | `sections/section-0N0/capstone/labs/lab-01/` |
 
-The repository does not yet follow every general rule above. Modules close
-with `course-0N-wrap-up.md` titled "Wrap-Up: Mission Debrief" instead of a
-`course-0N-summary.md` titled `# Summary`, and there is no `sections/intro/`.
-Bring a module in line when you rewrite it, and update `astrona.yaml` in the
-same change.
-
 A lab folder holds:
 
 | Path | Purpose |
 | --- | --- |
 | `config.yaml` | Lab definition; `metadata.docs` points at `question.md` and `solution.md` |
-| `README.md` | Short intro for authors (slug, namespaces) with the run, submit and destroy commands; no `estimated_duration` front matter yet, add it when you touch the lab |
+| `README.md` | Short intro for authors with `estimated_duration` front matter and the run, submit and destroy commands |
 | `prerequisites.md` | What the learner needs before starting |
 | `question.md` | The exam-style task. Starts with `# Question` and `Solve this question on: \`terminal\`` |
 | `solution.md` | Step-by-step walkthrough with real output |
@@ -416,6 +426,7 @@ this order:
   `response-flags`
 - Observability: `access-log`, `istio-metrics`, `prometheus`, `promql`,
   `grafana`, `kiali`, `reporter-label`
+- Tools: `bug-report`
 
 ### Running things
 
