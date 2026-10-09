@@ -5,9 +5,10 @@ Associate (ICA) exam, which is **20% of the exam**. Built for **Istio 1.30.5**.
 
 Everything lives under `sections/`. Each section contains:
 
-- **Modules** — a reading chapter split into a short landing page plus ordered
-  deep-dive parts, a throwaway **playground** to explore in, and a graded
-  **lab** with an exam-style task.
+- **Modules** — a reading chapter split into a short landing page, ordered
+  deep-dive parts and a wrap-up page, a throwaway **playground** to explore in,
+  and a graded **lab** with an exam-style task, placed right after the part it
+  tests.
 - **A capstone** — one larger graded lab combining that section's modules into a
   single scenario with several independent faults.
 
@@ -43,15 +44,15 @@ sections teach you to read by hand.
 | 010-01 | [Find Configuration Errors With istioctl analyze](sections/section-010/module-01/course.md) | 3 | [lab-01](sections/section-010/module-01/labs/lab-01) |
 | 010-02 | [Summarise A Workload With describe, Capture A Cluster With bug-report](sections/section-010/module-02/course.md) | 3 | [lab-01](sections/section-010/module-02/labs/lab-01) |
 | 020-01 | [Debug Conflicting And Shadowed Routes](sections/section-020/module-01/course.md) | 3 | [lab-01](sections/section-020/module-01/labs/lab-01) |
-| 030-01 | [Check Control Plane Health](sections/section-030/module-01/course.md) | 3 | [lab-01](sections/section-030/module-01/labs/lab-01) |
-| 030-02 | [Diagnose Config Sync With proxy-status](sections/section-030/module-02/course.md) | 3 | [lab-01](sections/section-030/module-02/labs/lab-01) |
-| 030-03 | [Debug A Workload With No Sidecar](sections/section-030/module-03/course.md) | 3 | [lab-01](sections/section-030/module-03/labs/lab-01) |
-| 040-01 | [Read The Proxy Configuration](sections/section-040/module-01/course.md) | 4 | [lab-01](sections/section-040/module-01/labs/lab-01) |
-| 040-02 | [Debug A 503 Caused By A Missing Subset](sections/section-040/module-02/course.md) | 3 | [lab-01](sections/section-040/module-02/labs/lab-01) |
-| 050-01 | [Read Envoy Access Logs And Response Flags](sections/section-050/module-01/course.md) | 4 | [lab-01](sections/section-050/module-01/labs/lab-01) |
+| 030-01 | [Check Control Plane Health](sections/section-030/module-01/course.md) | 4 | [lab-01](sections/section-030/module-01/labs/lab-01) |
+| 030-02 | [Diagnose Configuration Sync With proxy-status](sections/section-030/module-02/course.md) | 3 | [lab-01](sections/section-030/module-02/labs/lab-01) |
+| 030-03 | [Debug A Workload With No Sidecar](sections/section-030/module-03/course.md) | 4 | [lab-01](sections/section-030/module-03/labs/lab-01) |
+| 040-01 | [Read The Proxy Configuration](sections/section-040/module-01/course.md) | 5 | [lab-01](sections/section-040/module-01/labs/lab-01) |
+| 040-02 | [Debug A 503 Caused By A Missing Subset](sections/section-040/module-02/course.md) | 4 | [lab-01](sections/section-040/module-02/labs/lab-01) |
+| 050-01 | [Read Envoy Access Logs And Response Flags](sections/section-050/module-01/course.md) | 5 | [lab-01](sections/section-050/module-01/labs/lab-01) |
 | 050-02 | [Debug A 503 Caused By An mTLS Mismatch](sections/section-050/module-02/course.md) | 3 | [lab-01](sections/section-050/module-02/labs/lab-01) |
 | 060-01 | [Troubleshoot With Kiali](sections/section-060/module-01/course.md) | 3 | [lab-01](sections/section-060/module-01/labs/lab-01) |
-| 060-02 | [Troubleshoot With Prometheus And Grafana](sections/section-060/module-02/course.md) | 3 | [lab-01](sections/section-060/module-02/labs/lab-01) |
+| 060-02 | [Troubleshoot With Prometheus And Grafana](sections/section-060/module-02/course.md) | 4 | [lab-01](sections/section-060/module-02/labs/lab-01) |
 
 ---
 
@@ -103,9 +104,10 @@ astrona run --git ssh://git@github.com/astrona-io/ATS016.git -c sections/<sectio
 astrona destroy <name>
 ```
 
-The exact `run` line and the environment name for each module are in the callout
-at the top of its `course.md`. Several playgrounds start with something
-deliberately broken — that is the material, not a defect.
+The environment name is the playground's `metadata.name` in its `config.yaml`,
+for example `ats-016-playground-010-01`; each module's landing page launches its
+playground. Several playgrounds start with something deliberately broken — that
+is the material, not a defect.
 
 ## Running a lab
 
@@ -113,7 +115,7 @@ Labs and capstones are graded. Read `question.md`, do the work, and submit:
 
 ```bash
 astrona run --git ssh://git@github.com/astrona-io/ATS016.git -c sections/<section>/<module>/labs/lab-01
-astrona submit
+astrona submit -c sections/<section>/<module>/labs/lab-01
 astrona destroy <name>
 ```
 
