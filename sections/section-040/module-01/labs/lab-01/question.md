@@ -1,12 +1,12 @@
-# Task: Build The Routing, Then Prove It From The Proxy
+# Question
+
+Solve this question on: `terminal`
 
 **Time:** about 25 minutes · **Weight:** Troubleshooting the Mesh Data Plane
 
 ## Scenario
 
-`proxycfg-demo` runs two versions of `notification-service` behind one Service.
-`v1` answers `["EMAIL"]`; `v2` answers `["EMAIL","SMS"]`. There is no Istio
-traffic configuration at all, so requests are load balanced across both:
+Astronaut, the planet (namespace) `proxycfg-demo` runs two versions of `notification-service` behind one beacon (Service). `v1` answers `["EMAIL"]`; `v2` answers `["EMAIL","SMS"]`. There is no Istio traffic configuration at all, so requests are spread across both versions:
 
 ```sh
 kubectl -n proxycfg-demo exec deploy/tester -- sh -c \
@@ -18,36 +18,18 @@ kubectl -n proxycfg-demo exec deploy/tester -- sh -c \
 In the namespace `proxycfg-demo`:
 
 1. Define subsets `v1` and `v2` over the pods' `version` label.
-2. Route requests carrying the header `testing: true` to `v2`, and everything
-   else to `v1`.
-3. **Verify the result from the proxy's own configuration**, not only from
-   responses — this is what the task is really testing. Be able to name, for the
-   `tester` proxy: the listener that captures the traffic, the route
-   configuration it hands off to, the cluster each rule selects, and the
-   endpoints that cluster resolves to.
+2. Route requests carrying the header `testing: true` to `v2`, and everything else to `v1`.
+3. **Check the result in the proxy's own configuration**, not only in the responses. This is what the task really tests. For the `tester` proxy, be able to name the listener that catches the traffic, the route configuration it hands off to, the cluster each rule selects, and the endpoints that cluster resolves to.
 
 ## Constraints
 
 - The header match must be an **exact** match on the value `true`.
 - The catch-all route must come **after** the header rule.
-- Both subsets must resolve to at least one healthy endpoint — a subset whose
-  labels match no pod is not a valid answer.
-- Do not modify the Deployments, the Service or the `tester` pod.
+- Both subsets must resolve to at least one healthy endpoint. A subset whose labels match no pod is not a valid answer.
+- Do not change the Deployments, the Service or the `tester` pod.
 
 ## Done when
 
-- A `DestinationRule` defines `v1` and `v2` over the `version` label.
-- The `tester` proxy's route table sends the header case to the `v2` cluster and
-  everything else to `v1`.
-- `istioctl proxy-config endpoint` shows at least one `HEALTHY` endpoint for
-  both subset clusters.
-
----
-
-## Reference
-
-The official documentation for everything this task touches — open these rather than trying to recall field names:
-
-- [Configuration analysis messages](https://istio.io/latest/docs/reference/config/analysis/) — every `IST####` code and what triggers it
-- [Debugging Envoy and istiod](https://istio.io/latest/docs/ops/diagnostic-tools/proxy-cmd/) — `proxy-status`, `proxy-config` and the workflow around them
-- [Destination rule reference](https://istio.io/latest/docs/reference/config/networking/destination-rule/) — the traffic objects a broken route points at
+- A `DestinationRule` for `notification-service` defines `v1` and `v2` over the `version` label (`version: v1` and `version: v2`).
+- In the `tester` proxy's route table for port 80, the first route matches the header `testing` exactly on `true` and sends it to the `v2` cluster, and the last route sends everything else to the `v1` cluster.
+- `istioctl proxy-config endpoint` shows at least one `HEALTHY` endpoint for both subset clusters.

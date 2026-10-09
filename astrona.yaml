@@ -377,8 +377,11 @@ modules:
         title: "Clusters And Endpoints"
         path: sections/section-040/module-01/course-03-clusters-and-endpoints.md
       - type: reading
-        title: "The Inbound Direction, Certificates And Method"
-        path: sections/section-040/module-01/course-04-inbound-secrets-and-method.md
+        title: "The Receiving Proxy And Its Certificates"
+        path: sections/section-040/module-01/course-04-the-receiving-proxy-and-certificates.md
+      - type: reading
+        title: "The Four-Stage Walk"
+        path: sections/section-040/module-01/course-05-the-four-stage-walk.md
       - type: reading
         title: Question
         path: sections/section-040/module-01/labs/lab-01/question.md
@@ -401,6 +404,9 @@ modules:
             url: https://istio.io/latest/docs/reference/config/networking/destination-rule/
           - name: "VirtualService reference"
             url: https://istio.io/latest/docs/reference/config/networking/virtual-service/
+      - type: reading
+        title: "Wrap-Up: Mission Debrief"
+        path: sections/section-040/module-01/course-06-wrap-up.md
 
       - type: reading
         title: "Debug A 503 Caused By A Missing Subset"
@@ -412,8 +418,8 @@ modules:
         title: "Walking The Chain"
         path: sections/section-040/module-02/course-02-walking-the-chain.md
       - type: reading
-        title: "Choosing The Fix, And The Other Cause"
-        path: sections/section-040/module-02/course-03-choosing-the-fix.md
+        title: "Choosing And Proving The Fix"
+        path: sections/section-040/module-02/course-03-choosing-and-proving-the-fix.md
       - type: reading
         title: Question
         path: sections/section-040/module-02/labs/lab-01/question.md
@@ -434,6 +440,12 @@ modules:
             url: https://istio.io/latest/docs/ops/diagnostic-tools/proxy-cmd/
           - name: "Traffic management problems"
             url: https://istio.io/latest/docs/ops/common-problems/network-issues/
+      - type: reading
+        title: "The Other Cause: An Undeclared Port"
+        path: sections/section-040/module-02/course-04-the-other-cause-an-undeclared-port.md
+      - type: reading
+        title: "Wrap-Up: Mission Debrief"
+        path: sections/section-040/module-02/course-05-wrap-up.md
 
       - type: reading
         title: Question

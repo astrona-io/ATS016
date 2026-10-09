@@ -27,7 +27,7 @@ no task, no `astrona submit`, and no pass/fail. Explore, break things,
   write down what you predict the chain will show.
 - Fix it the *wrong* way — add a `v2` subset to the `DestinationRule` with
   labels no pod carries — and watch the flag change from `NC` to `UH`. That
-  transition is the clearest demonstration in this section.
+  transition is the clearest demonstration in this module.
 - Scale `notification-service-v1` to zero with correct routing in place, and see
   a third variant of the same status code.
 - Rename the Service port from `http` to `web`, restart, and find out how many

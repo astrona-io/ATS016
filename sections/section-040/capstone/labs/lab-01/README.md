@@ -16,7 +16,7 @@ astrona destroy ats-016-capstone-040
 ```
 
 `astrona destroy` takes the environment name (`metadata.name` = `ats-016-capstone-040`), not
-the config path.
+the configuration path.
 
 ## Layout
 
