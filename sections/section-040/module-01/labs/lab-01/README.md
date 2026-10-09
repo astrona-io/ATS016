@@ -1,3 +1,7 @@
+---
+estimated_duration: 25m
+---
+
 # Read The Proxy Configuration
 
 - **ID:** LAB

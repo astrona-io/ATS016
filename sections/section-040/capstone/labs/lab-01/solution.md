@@ -4,7 +4,7 @@ This walkthrough reads the response flags first, then follows each service's fai
 
 ## Step 1: Read the flags before forming a theory
 
-Send one request to each service, then read the test ship's proxy log:
+Send one request to each service, then read the `tester` pod's proxy log:
 
 ```sh
 kubectl -n dpcapstone-demo exec deploy/tester -- \
@@ -14,7 +14,7 @@ kubectl -n dpcapstone-demo exec deploy/tester -- \
 kubectl -n dpcapstone-demo logs deploy/tester -c istio-proxy --tail=6
 ```
 
-The two lines look nothing alike. The `notification-service` request carries a `503` with `NC` (no cluster) and a `-` in the upstream host field: nothing was ever contacted. The `reporting-service` request went somewhere, on a plain TCP connection, with no HTTP routing applied at all.
+The two lines look nothing alike. The `notification-service` request carries a `503` with `NC` (no cluster found) and a `-` in the upstream host field: nothing was ever contacted. The `reporting-service` request has no HTTP request line at all, because the proxy handled it as a plain TCP connection with no HTTP routing.
 
 That difference is the whole capstone: two failures, two stages.
 
@@ -77,12 +77,7 @@ The `VirtualService` for this host looks perfect and does nothing. Start at stag
 istioctl proxy-config listener deploy/tester -n dpcapstone-demo --port 80
 ```
 
-```text
-ADDRESSES  PORT  MATCH   DESTINATION
-0.0.0.0    80    ALL     Cluster: outbound|80||reporting-service.dpcapstone-demo.svc.cluster.local
-```
-
-Compare that with a healthy HTTP port, which reads `Trans: raw_buffer; App: http/1.1,h2c` and hands off to a **`Route:`**. Here the listener goes **straight to a cluster**. There is no route stage at all, so there is nothing for a `VirtualService` to attach to.
+Find the line for `reporting-service`. Its `DESTINATION` is `Cluster: outbound|80||reporting-service.dpcapstone-demo.svc.cluster.local`, not a `Route:`. Compare that with an HTTP port, which matches `Trans: raw_buffer; App: http/1.1,h2c` and hands off to a **`Route:`**. Here the listener goes **straight to a cluster**. There is no route stage at all, so there is nothing for a `VirtualService` to attach to.
 
 Find out why by reading the Service's ports:
 
@@ -91,20 +86,20 @@ kubectl -n dpcapstone-demo get svc reporting-service -o jsonpath='{.spec.ports}{
 ```
 
 ```text
-[{"name":"web","port":80,"protocol":"TCP","targetPort":8080}]
+[{"name":"tcp-web","port":80,"protocol":"TCP","targetPort":8080}]
 ```
 
-Istio reads a port's protocol from its **name** (`http`, `http2`, `grpc`, `tcp`, `tls` and so on, optionally with a suffix such as `http-status`) or from `appProtocol`. A port named `web` declares nothing, so the traffic is treated as plain TCP:
+Istio reads a port's protocol from `appProtocol` first, then from the port's **name** in the form `<protocol>[-<suffix>]` (`http`, `http2`, `grpc`, `tcp`, `tls` and so on). The port is named `tcp-web`, so its protocol is `tcp`, and Istio handles it as an opaque TCP stream. The `"protocol":"TCP"` field is the Kubernetes transport protocol, which every HTTP port has too; it is not the problem:
 
 ```text
-port has no declared protocol
+port declared as tcp
      ├── no HTTP route is built            → the VirtualService never applies
      ├── no HTTP filters                   → retries, timeouts, header routing gone
      ├── no HTTP telemetry                 → absent from dashboards
      └── requests may still succeed        → which is why nobody noticed
 ```
 
-`istioctl x describe pod` reports it as a warning, which is the fastest way to find it:
+`istioctl x describe pod` prints each Service port with the protocol Istio uses for it, which is another fast way to find it:
 
 ```sh
 export POD=$(kubectl -n dpcapstone-demo get pod -l app=reporting-service -o jsonpath='{.items[0].metadata.name}')
@@ -158,7 +153,7 @@ astrona submit
 | Flag | `503` / `NC` | none: traffic succeeded, unrouted |
 | Symptom | every request fails | rules silently ignored |
 | Evidence | route names a cluster that does not exist | listener has no `Route:`, only a `Cluster:` |
-| Fix | route to a subset that exists | name the Service port |
+| Fix | route to a subset that exists | declare the Service port as HTTP |
 | Restart needed | no | no |
 
 ## Common mistakes
@@ -166,11 +161,11 @@ astrona submit
 - **Reading the app log.** Both failures happened in a proxy.
 - **Assuming the destination pod is broken.** Check the cluster and endpoints before restarting anything.
 - **Rewriting a `VirtualService` that is never consulted.** When a rule is *ignored* rather than *wrong*, suspect the listener stage.
-- **Overlooking the Service port name.** It is the most common cause of "Istio is not applying my configuration".
+- **Overlooking the Service port declaration.** A port declared as `tcp` silently removes every HTTP rule for that Service.
 - **Adding the missing subset to make the analyzer quiet.**
 
 ## Practice variations
 
-- Rename the port back to `web` and watch which of the two symptoms returns.
+- Rename the port back to `tcp-web` and watch which of the two symptoms returns. Then try `web` and explain why Istio's automatic protocol detection makes the routing work again.
 - Set `appProtocol: http` instead of renaming the port, and confirm the listener changes the same way.
 - Scale `notification-service-v1` to zero and compare the flag with the one you started from.

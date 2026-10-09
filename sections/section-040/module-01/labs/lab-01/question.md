@@ -6,7 +6,7 @@ Solve this question on: `terminal`
 
 ## Scenario
 
-Astronaut, the planet (namespace) `proxycfg-demo` runs two versions of `notification-service` behind one beacon (Service). `v1` answers `["EMAIL"]`; `v2` answers `["EMAIL","SMS"]`. There is no Istio traffic configuration at all, so requests are spread across both versions:
+The namespace `proxycfg-demo` runs two versions of `notification-service` behind one Service. `v1` answers `["EMAIL"]`; `v2` answers `["EMAIL","SMS"]`. There is no Istio traffic configuration at all, so requests are spread across both versions:
 
 ```sh
 kubectl -n proxycfg-demo exec deploy/tester -- sh -c \

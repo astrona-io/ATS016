@@ -4,22 +4,22 @@ This walkthrough asks who answered first, then walks the chain on the client pro
 
 ## Step 1: Ask who answered, before asking why
 
-Read the last lines of the test ship's proxy log:
+Read the last lines of the `tester` pod's proxy log:
 
 ```sh
 kubectl -n fivezerothree-demo logs deploy/tester -c istio-proxy --tail=5
 ```
 
 ```text
-[...] "POST /notify HTTP/1.1" 503 NC no_healthy_upstream - "-" 0 19 0 - ... "notification-service" "-" ...
+[...] "POST /notify HTTP/1.1" 503 NC cluster_not_found - "-" ... "notification-service" "-" ...
 ```
 
-Read the fourth field. `NC` (no cluster) means the **proxy** produced this `503`, not the app, and it names the reason: the route pointed at a cluster that does not exist. Depending on the Istio version and state you may see `UH` here instead, so read the flag you actually get.
+The line is shortened. Read the field after the status code. `NC` (no cluster found) means the **proxy** produced this `503`, not the application, and it names the reason: the route pointed at a cluster that does not exist. The next field, `cluster_not_found`, is Envoy's response code details: the same reason in words.
 
 Two more details on that line:
 
 - The upstream host field is `-`, so no connection was ever attempted.
-- A flag of `-` would have meant the app answered, and this whole investigation would belong somewhere else.
+- A flag of `-` would have meant the application answered, and this whole investigation would belong somewhere else.
 
 Now check the **destination's** log for the same request:
 
@@ -31,7 +31,7 @@ There is no matching line. The client failed and the server saw nothing, so the 
 
 ## Step 2: The fast path
 
-Run the analyzer on the planet:
+Run the analyzer on the namespace:
 
 ```sh
 istioctl analyze -n fivezerothree-demo
@@ -160,11 +160,11 @@ The analyzer goes quiet and the traffic still fails, and the diagnosis is now ha
 
 - **Reading the app log.** The proxy produced this `503`, so the app never saw the request.
 - **Assuming the destination pod is broken.** Check the cluster and endpoints before restarting anything.
-- **Overlooking the Service port name.** An unnamed or wrongly named port breaks HTTP routing with the same symptom.
+- **Overlooking the Service port protocol.** A port declared as TCP (for example named `tcp`) gets no HTTP routing at all, so every `VirtualService` rule for it is ignored.
 - **Adding the subset to the wrong `DestinationRule`** when several exist for related hosts.
 
 ## Practice variations
 
-- Rename the Service port from `http` to `foo` and reproduce a `503` with a different cause.
+- Rename the Service port from `http` to `tcp` and see that the `VirtualService` no longer applies at all.
 - Delete the `DestinationRule` entirely and compare the response flag.
 - Scale the Deployment to zero and watch `UH` appear instead of `NC`.

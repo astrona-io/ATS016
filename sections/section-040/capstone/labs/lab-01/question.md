@@ -6,7 +6,7 @@ Solve this question on: `terminal`
 
 ## Scenario
 
-Astronaut, the planet (namespace) `dpcapstone-demo` runs two services, and neither behaves. Both destination pods are `2/2 Running` with no restarts.
+The namespace `dpcapstone-demo` runs two services, and neither behaves. Both destination pods are `2/2 Running` with no restarts.
 
 ```sh
 kubectl -n dpcapstone-demo exec deploy/tester -- \

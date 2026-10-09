@@ -1,57 +1,39 @@
 # Debug A 503 Caused By A Missing Subset
 
-Astronaut, `503 Service Unavailable` is the most common failure in an Istio mesh, and on its own it says almost nothing. It can mean the app crashed, or that nothing was ever running. In a mesh it usually means something else: the communications officer (the sidecar proxy) had nowhere to send the signal, because its flight plan names a ship class nobody built.
+`503 Service Unavailable` is one of the most common failures in an Istio mesh, and on its own it says almost nothing. It can mean the application crashed, or that no pod was ever running. In a mesh it often means something else: the sidecar proxy had nowhere to send the request, because its route names a destination that does not exist.
 
-Hold on to this contrast: a `503` from your **app** and a `503` from the **proxy in front of it** look exactly the same to the client, yet they need completely different investigations. One question separates them, and it takes one command. This module works through one case from start to finish, a `VirtualService` that routes to a subset no `DestinationRule` defines, but the method is the point, and it works for every `503` you will meet.
+A `503` from your **application** and a `503` from the **proxy in front of it** look exactly the same to the client, yet they need completely different investigations. One question separates them, and it takes one command. This module works through one case from start to finish: a `VirtualService` that routes to a subset no `DestinationRule` defines. The method is the real goal, because it works for every `503`.
 
-> A route to a subset with no DestinationRule names a cluster that does not exist, and a proxy with nowhere to send a request answers 503.
+The module has four parts. **Who Answered With 503** reads the Envoy access log to find out whether a proxy or the application produced the status code, and what the response flag says. **Walking The Chain** confirms the finding with `istioctl analyze`, then follows the route, cluster and endpoint stages by hand to the missing link. **Choosing And Proving The Fix** decides which end of the broken reference to change and proves the fix three ways; a graded lab follows it. **Declaring The Port Protocol** shows a second cause of "my routing rule does nothing": a Service port whose protocol Istio does not treat as HTTP. A second graded lab follows that part.
 
 ## Learning objectives
 
 After this module you can:
 
-- Read a `503` as a statement about the proxy rather than about the app, and prove which one answered.
+- Read a `503` as a statement about the proxy rather than the application, and prove which one answered.
 - Find the response flag in an Envoy access log line and say what `NC`, `UH`, `NR`, `UF`, `UC` and `-` each point at.
-- Explain why a failing request leaves no trace on the destination proxy.
+- Explain why a failing request leaves no trace in the destination proxy's log.
 - Follow the route, cluster and endpoint chain to the exact link that is missing.
 - Tell a missing cluster from an empty one, and name the flag that separates them.
 - Decide whether to change the route or define the missing subset, and explain the choice.
-- Prove a fix with traffic, the proxy's own configuration, and the analyzer.
-- Recognise a Service port with no declared protocol as a second cause of the same symptom.
+- Prove a fix with a real request, the proxy's own configuration, and the analyzer.
+- Explain how Istio decides a Service port's protocol, and fix a port whose protocol stops HTTP routing.
 
 ## Before you start
 
-Every mission starts with a pre-flight check, astronaut. Make sure you have the knowledge this module expects, and know what is waiting in your playground.
+You need Kubernetes basics: namespaces, Deployments, Services, pod labels, `kubectl logs` and `kubectl exec`. You also need the four stages of the sidecar proxy (Envoy), the proxy container Istio adds to each pod. Envoy handles a request as listener, then route, then cluster, then endpoint, and `istioctl proxy-config` has one subcommand for each.
 
-### What you should already know
+You also need to read cluster names. Istio names a cluster `direction|port|subset|fqdn`, for example `outbound|80|v1|notification-service.fivezerothree-demo.svc.cluster.local`. A subset is a named group of pods selected by labels in a `DestinationRule`, and a subset cluster exists only if a `DestinationRule` defines that subset.
 
-- **Kubernetes basics.** Namespaces, Deployments, Services, pod labels, `kubectl logs` and `kubectl exec`.
-- **The proxy's four stages.** Envoy handles a request as listener, then route, then cluster, then endpoint, and `istioctl proxy-config` has one subcommand for each.
-- **Cluster names.** Istio names a cluster `direction|port|subset|fqdn`, for example `outbound|80|v1|notification-service.fivezerothree-demo.svc.cluster.local`. A subset cluster exists only if a `DestinationRule` defines that subset.
+Your playground is a single-node `kind` cluster with **Istio 1.30.5** installed with the `demo` profile, which turns on Envoy access logging, and `istioctl` on your PATH. The namespace **`fivezerothree-demo`** has sidecar injection switched on and runs these workloads:
 
-### What is in your playground
-
-Your playground is a small training solar system: a single-node `kind` cluster with **Istio 1.30.5** already installed (the `demo` profile, which turns access logging on), and `istioctl` ready to use. It has one planet (namespace), **`fivezerothree-demo`**, with injection switched on:
-
-| Ship | Its role |
+| Workload | What it is |
 | --- | --- |
-| `notification-service-v1` | The app, labelled `version: v1`, behind the beacon `notification-service` on port 80 |
-| `tester` | Your test ship, with `curl`. Every test signal is sent from here |
+| `notification-service-v1` | A Deployment with the label `version: v1`, behind the Service `notification-service` on port `80` |
+| `tester` | A client pod with `curl`. Every test request in this module is sent from here |
 
-The planet also holds a `DestinationRule` and a `VirtualService` that are **already broken**, in exactly the way this module diagnoses. Work the chain before you read the files in `playground/manifests/`. Every command in every part runs against this playground, and `kubectl` already points at it.
+The namespace also holds a `DestinationRule` and a `VirtualService` that are **broken on purpose**, in exactly the way this module diagnoses. Follow the chain before you read their YAML. Every command in the parts runs against this playground, and `kubectl` already points at it.
 
 Launch your playground now, and keep it running next to you while you read the parts:
 
 <!-- astrona:playground -->
-
-## The parts, in order
-
-1. [Who Answered With 503](./course-01-who-answered-with-503.md): a proxy failure against an app failure, the response flag, and what each flag in the `503` family points at.
-2. [Walking The Chain](./course-02-walking-the-chain.md): the analyzer's fast path, then route, cluster and endpoint by hand, and the two kinds of empty answer.
-3. [Choosing And Proving The Fix](./course-03-choosing-and-proving-the-fix.md): which end of a dangling reference to change, proving the fix three ways, and your graded mission.
-4. [The Other Cause: An Undeclared Port](./course-04-the-other-cause-an-undeclared-port.md): a Service port with no declared protocol, which produces the same symptom from a different place.
-5. [Wrap-Up: Mission Debrief](./course-05-wrap-up.md): what you learned, a self-check, and cleaning up.
-
-## Why this matters
-
-The method in this module is short and works for any `503`: read the response flag on the client proxy, check whether the destination saw the request, run the analyzer, walk the chain, and fix the end that matches reality. Learn it on one clear case, and the next `503` takes minutes instead of an afternoon.

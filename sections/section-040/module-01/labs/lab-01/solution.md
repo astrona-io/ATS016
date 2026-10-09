@@ -4,7 +4,7 @@ This walkthrough builds the routing in two small objects, then proves it from th
 
 ## Step 1: See the default behaviour first
 
-Send ten requests from the test ship and list the different answers:
+Send ten requests from the `tester` pod and list the different answers:
 
 ```sh
 kubectl -n proxycfg-demo exec deploy/tester -- sh -c \
@@ -186,7 +186,7 @@ astrona submit
 - **Looking at the wrong proxy.** Outbound routing lives on the **client**; authorization and inbound listeners live on the **destination**.
 - **Reading the short table output when the answer needs `-o json`.** Match conditions are only in the JSON.
 - **Searching a full `proxy-config all` dump by eye.** Narrow with `--fqdn` and `--port` first.
-- **Forgetting that ports 15001, 15006, 15021 and 15090 belong to Istio**, not to your app.
+- **Forgetting that ports 15001, 15006, 15021 and 15090 belong to the sidecar proxy**, not to your application.
 - **Writing `exact: true` without quotes.**
 
 ## Practice variations

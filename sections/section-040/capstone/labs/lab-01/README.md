@@ -1,3 +1,7 @@
+---
+estimated_duration: 35m
+---
+
 # Capstone: Two 503s, Two Different Stages
 
 - **ID:** CAPSTONE

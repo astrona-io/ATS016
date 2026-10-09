@@ -1,0 +1,39 @@
+# The routing is correct. It never applies, because the Service port is
+# declared as TCP (`tcp-notify` in lab-start.yaml), so the client proxy builds
+# no HTTP route for this host and the header rule is ignored.
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: notification
+  namespace: portproto-demo
+spec:
+  host: notification-service
+  subsets:
+    - name: v1
+      labels:
+        version: v1
+    - name: v2
+      labels:
+        version: v2
+---
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: notification
+  namespace: portproto-demo
+spec:
+  hosts:
+    - notification-service
+  http:
+    - match:
+        - headers:
+            testing:
+              exact: "true"
+      route:
+        - destination:
+            host: notification-service
+            subset: v2
+    - route:
+        - destination:
+            host: notification-service
+            subset: v1

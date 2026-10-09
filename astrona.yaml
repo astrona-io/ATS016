@@ -412,8 +412,9 @@ modules:
     title: "Reading Data Plane Configuration"
     description: >
       Read what one proxy is configured to do, layer by layer (listeners,
-      routes, clusters, endpoints, secrets), and use that chain to trace a
-      503 to the exact stage that produced it.
+      routes, clusters, endpoints, secrets), use that chain to trace a 503 to
+      the exact stage that produced it, and find a Service port whose declared
+      protocol stops HTTP routing.
 
     content:
       - type: reading
@@ -461,8 +462,8 @@ modules:
           - name: "VirtualService reference"
             url: https://istio.io/latest/docs/reference/config/networking/virtual-service/
       - type: reading
-        title: "Wrap-Up: Mission Debrief"
-        path: sections/section-040/module-01/course-06-wrap-up.md
+        title: Summary
+        path: sections/section-040/module-01/course-06-summary.md
 
       - type: reading
         title: "Debug A 503 Caused By A Missing Subset"
@@ -497,11 +498,31 @@ modules:
           - name: "Traffic management problems"
             url: https://istio.io/latest/docs/ops/common-problems/network-issues/
       - type: reading
-        title: "The Other Cause: An Undeclared Port"
-        path: sections/section-040/module-02/course-04-the-other-cause-an-undeclared-port.md
+        title: "Declaring The Port Protocol"
+        path: sections/section-040/module-02/course-04-declaring-the-port-protocol.md
       - type: reading
-        title: "Wrap-Up: Mission Debrief"
-        path: sections/section-040/module-02/course-05-wrap-up.md
+        title: Question
+        path: sections/section-040/module-02/labs/lab-02/question.md
+      - type: lab
+        title: "Declare The Service Port Protocol So The Route Applies Lab"
+        path: sections/section-040/module-02/labs/lab-02
+        difficulty: intermediate
+        estimated_duration: 20m
+        topic: data-plane
+        task_kind: troubleshooting
+        tags: [service-ports, protocol-selection, proxy-config, routes, virtualservice, header-matching]
+        learning_goals:
+          - Show from the client proxy's listener and route stages that a port declared as TCP gets no HTTP route
+          - Declare the Service port as HTTP without changing the port numbers or the VirtualService
+          - Prove that requests with the testing header reach v2 and all others reach v1
+        resources:
+          - name: "Protocol selection"
+            url: https://istio.io/latest/docs/ops/configuration/traffic-management/protocol-selection/
+          - name: "Debugging Envoy and istiod"
+            url: https://istio.io/latest/docs/ops/diagnostic-tools/proxy-cmd/
+      - type: reading
+        title: Summary
+        path: sections/section-040/module-02/course-05-summary.md
 
       - type: reading
         title: Question

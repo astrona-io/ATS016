@@ -6,7 +6,7 @@ Solve this question on: `terminal`
 
 ## Scenario
 
-Astronaut, every request to `notification-service` in the planet (namespace) `fivezerothree-demo` returns `503`. The destination pod is `2/2 Running` with no restarts, and its app log is empty:
+Every request to `notification-service` in the namespace `fivezerothree-demo` returns `503`. The destination pod is `2/2 Running` with no restarts, and its app log is empty:
 
 ```sh
 kubectl -n fivezerothree-demo exec deploy/tester -- \

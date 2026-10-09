@@ -1,3 +1,7 @@
+---
+estimated_duration: 15m
+---
+
 # Debug A 503 Caused By A Missing Subset
 
 - **ID:** LAB
