@@ -1,4 +1,4 @@
-# Overview: Diagnose Config Sync With proxy-status (Playground)
+# Overview: Diagnose Configuration Sync With proxy-status (Playground)
 
 > Declared in [`../config.yaml`](../config.yaml) under `metadata.docs.guide`.
 

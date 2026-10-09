@@ -238,8 +238,11 @@ modules:
         title: "The Instruments"
         path: sections/section-030/module-01/course-02-instruments-logs-and-metrics.md
       - type: reading
-        title: "Outage Anatomy And Rejected Configuration"
-        path: sections/section-030/module-01/course-03-outage-anatomy-and-rejects.md
+        title: "Take Mission Control Away"
+        path: sections/section-030/module-01/course-03-take-mission-control-away.md
+      - type: reading
+        title: "Accepted, Never Applied"
+        path: sections/section-030/module-01/course-04-accepted-never-applied.md
       - type: reading
         title: Question
         path: sections/section-030/module-01/labs/lab-01/question.md
@@ -262,9 +265,12 @@ modules:
             url: https://istio.io/latest/docs/ops/common-problems/validation/
           - name: "Debugging Envoy and istiod"
             url: https://istio.io/latest/docs/ops/diagnostic-tools/proxy-cmd/
+      - type: reading
+        title: "Wrap-Up: Mission Debrief"
+        path: sections/section-030/module-01/course-05-wrap-up.md
 
       - type: reading
-        title: "Diagnose Config Sync With proxy-status"
+        title: "Diagnose Configuration Sync With proxy-status"
         path: sections/section-030/module-02/course.md
       - type: reading
         title: "How Configuration Reaches A Proxy"
@@ -295,6 +301,9 @@ modules:
             url: https://istio.io/latest/docs/ops/diagnostic-tools/proxy-cmd/
           - name: "Application requirements and ports"
             url: https://istio.io/latest/docs/ops/deployment/application-requirements/
+      - type: reading
+        title: "Wrap-Up: Mission Debrief"
+        path: sections/section-030/module-02/course-04-wrap-up.md
 
       - type: reading
         title: "Debug A Workload With No Sidecar"
@@ -308,6 +317,9 @@ modules:
       - type: reading
         title: "Working The Checklist"
         path: sections/section-030/module-03/course-03-working-the-checklist.md
+      - type: reading
+        title: "Fix It And Prove It Joined"
+        path: sections/section-030/module-03/course-04-fix-and-prove.md
       - type: reading
         title: Question
         path: sections/section-030/module-03/labs/lab-01/question.md
@@ -328,6 +340,9 @@ modules:
             url: https://istio.io/latest/docs/ops/common-problems/injection/
           - name: "Installing the sidecar"
             url: https://istio.io/latest/docs/setup/additional-setup/sidecar-injection/
+      - type: reading
+        title: "Wrap-Up: Mission Debrief"
+        path: sections/section-030/module-03/course-05-wrap-up.md
 
       - type: reading
         title: Question

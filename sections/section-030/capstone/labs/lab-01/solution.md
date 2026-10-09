@@ -1,9 +1,10 @@
 # Solution: Three Workloads, Three Different Control Plane Faults
 
-The temptation is to find one cause and apply it three times. There are three
-causes, and the checklist is what separates them.
+Astronaut, the temptation is to find one cause and apply its fix three times. There are three causes, and the checklist is what tells them apart.
 
-## Step 1 — Establish the facts for each workload
+## Step 1: Establish the facts for each workload
+
+List the pods in both namespaces with their containers, and take the roll call:
 
 ```sh
 kubectl -n cpcapstone-demo get pods \
@@ -23,23 +24,19 @@ payments-service-...cpcapstone-demo   Kubernetes  SYNCED  SYNCED  SYNCED  SYNCED
 tester-...cpcapstone-demo             Kubernetes  SYNCED  SYNCED  SYNCED  SYNCED  ...
 ```
 
-Two workloads are `1/1` and absent from `proxy-status` — no sidecar, so no xDS
-stream, so no row. `payments-service` **is** meshed and synced, which already
-tells you its problem is something else entirely.
+Two workloads have one container and no row in `istioctl proxy-status`: no sidecar, so no xDS stream, so no row. `payments-service` **is** meshed and `SYNCED`, which already tells you its problem is something else.
 
-And note what is healthy: `istiod` is running and serving two proxies. This is
-not one outage with three symptoms.
+Notice what is healthy, too: `istiod` is running and serving two proxies. This is not one outage with three symptoms.
 
-## Step 2 — orders-service: a pod-template opt-out
+## Step 2: orders-service, a pod-template opt-out
 
-Work the checklist. Namespace first:
+Work the checklist. Start with the namespace:
 
 ```sh
 kubectl get ns cpcapstone-demo --show-labels
 ```
 
-`istio-injection=enabled` — correct, and the other workloads in the same
-namespace prove it works. So the cause is narrower than the namespace:
+The namespace has `istio-injection=enabled`, which is correct, and the other workloads in the same namespace prove injection works there. So the cause is narrower than the namespace. Check the pod template:
 
 ```sh
 kubectl -n cpcapstone-demo get deploy orders-service \
@@ -50,9 +47,7 @@ kubectl -n cpcapstone-demo get deploy orders-service \
 {"app":"orders-service","sidecar.istio.io/inject":"false","version":"v1"}
 ```
 
-The opt-out is on the **pod template**, which is the only place it matters, and
-it beats the namespace setting because the injector's `objectSelector` excludes
-such pods before `istiod` is consulted.
+The opt-out is on the **pod template**, the only place it matters. It beats the namespace setting, because the injector's `objectSelector` excludes such pods before `istiod` is asked. Remove it:
 
 ```sh
 kubectl -n cpcapstone-demo patch deployment orders-service --type json \
@@ -60,12 +55,11 @@ kubectl -n cpcapstone-demo patch deployment orders-service --type json \
 kubectl -n cpcapstone-demo rollout status deployment/orders-service --timeout=180s
 ```
 
-Patching the template creates a new ReplicaSet, so no separate restart is
-needed.
+Patching the template creates a new ReplicaSet, so no separate restart is needed.
 
-## Step 3 — billing-service: a revision that does not exist
+## Step 3: billing-service, a revision that does not exist
 
-Same symptom, different namespace, different cause:
+Same symptom, different namespace, different cause. Check the namespace and the pod template:
 
 ```sh
 kubectl get ns cpcapstone-legacy --show-labels
@@ -78,17 +72,14 @@ istio.io/rev=does-not-exist,kubernetes.io/metadata.name=cpcapstone-legacy
 {"app":"billing-service","version":"v1"}
 ```
 
-The pod template is clean. The namespace names a **revision** — and nothing
-answers to that name:
+The pod template is clean. The namespace names a **revision**, a named mission control shift, and nothing answers to that name. List what is installed:
 
 ```sh
 kubectl -n istio-system get pods -l app=istiod -L istio.io/rev
 istioctl tag list
 ```
 
-The installed control plane is the `default` revision. A namespace pinned to a
-revision that was never installed (or has since been removed) gets no injection
-at all, while looking perfectly configured to anyone reading the labels.
+The installed control plane is the `default` revision. A namespace pinned to a revision that was never installed, or has since been removed, gets no injection at all, while it looks perfectly configured to anyone reading the labels. Point it at the control plane that exists, and recreate the pods:
 
 ```sh
 kubectl label namespace cpcapstone-legacy istio.io/rev-
@@ -97,18 +88,13 @@ kubectl -n cpcapstone-legacy rollout restart deployment billing-service
 kubectl -n cpcapstone-legacy rollout status deployment/billing-service --timeout=180s
 ```
 
-Remove the stale revision label rather than leaving both: if `istio-injection`
-and `istio.io/rev` are both present, `istio-injection` wins and the revision
-label is silently ignored — which is how this class of fault survives an
-upgrade.
+Remove the stale revision label rather than leaving both. If `istio-injection` and `istio.io/rev` are both present, `istio-injection` wins and the revision label is quietly ignored, which is how this kind of fault survives an upgrade.
 
-Here the label change does **not** recreate pods, so the explicit
-`rollout restart` is required. That is the difference from step 2.
+Here the label change does **not** recreate pods, so the explicit `rollout restart` is required. That is the difference from step 2.
 
-## Step 4 — payments-service: accepted and never applied
+## Step 4: payments-service, accepted and never applied
 
-This workload is meshed and synced, so injection is not its problem. The
-complaint was that a `VirtualService` "did nothing":
+This workload is meshed and `SYNCED`, so injection is not its problem. The complaint was that a `VirtualService` "did nothing". List it, search the `istiod` log, and run the pre-flight inspector:
 
 ```sh
 kubectl -n cpcapstone-demo get virtualservice
@@ -120,25 +106,25 @@ istioctl analyze -n cpcapstone-demo
 Error [IST0101] ... total destination weight 120 != 100
 ```
 
-The object exists in etcd and `istiod` refuses it every time it tries to build
-configuration from it. It reached the cluster because the validating webhook was
-unavailable at the moment it was applied.
+The object exists in etcd, and `istiod` refuses it every time it builds configuration from it. It reached the cluster because the validating webhook was not reachable when it was applied.
 
-`kubectl get` shows it; `kubectl describe` shows no events, because Istio
-networking resources carry no status conditions. Only the `istiod` log,
-`pilot_total_xds_rejects`, and the analyzer know.
+`kubectl get` shows it; `kubectl describe` shows no events, because Istio networking objects carry no status conditions. Only the `istiod` log, the `pilot_total_xds_rejects` counter and the analyzer know. Remove it:
 
 ```sh
 kubectl -n cpcapstone-demo delete virtualservice payments-split
 ```
 
-Correcting the weights to sum to 100 is equally acceptable.
+Correcting the weights so they add up to 100 is also accepted.
+
+Submit to see your progress:
 
 ```sh
 astrona submit
 ```
 
-## Step 5 — Verify all three, together
+## Step 5: Verify all three together
+
+Take the roll call, send a real request to `payments-service`, and run the inspector:
 
 ```sh
 istioctl proxy-status | grep -E 'cpcapstone'
@@ -155,6 +141,8 @@ tester-...cpcapstone-demo              Kubernetes  SYNCED  SYNCED  SYNCED  SYNCE
 200
 ```
 
+Submit for the final grade:
+
 ```sh
 astrona submit
 ```
@@ -163,41 +151,22 @@ astrona submit
 
 | Workload | Cause | Where the checklist stopped | Does the fix recreate pods? |
 | --- | --- | --- | --- |
-| `orders-service` | pod-template opt-out | step 2 | **yes** — patching the template does it |
-| `billing-service` | namespace pinned to a missing revision | step 5 | **no** — needs an explicit restart |
-| `payments-service` | invalid config stored while the webhook was down | not an injection fault at all | n/a |
+| `orders-service` | Pod-template opt-out | Step 2 | **Yes**: patching the template does it |
+| `billing-service` | Namespace pinned to a missing revision | Step 5 | **No**: it needs an explicit restart |
+| `payments-service` | Invalid configuration stored while the webhook was down | Not an injection fault at all | Not applicable |
 
-Noting *which* step stopped you is what tells you whether the fix needs a
-restart, a relabel, or an install change.
+Noting *which* step stopped you tells you whether the fix needs a restart, a relabel, or an install change.
 
 ## Common mistakes
 
-- Applying one fix to all three workloads. The symptom is shared; the causes are
-  not.
+- Applying one fix to all three workloads. The symptom is shared; the causes are not.
 - Fixing a namespace label and not restarting the workload.
 - Leaving both `istio-injection` and `istio.io/rev` on a namespace.
-- Looking for the rejected configuration in `kubectl apply` output. It
-  succeeded; the rejection happened later, inside `istiod`.
-- Concluding the control plane is broken because two workloads are missing from
-  `proxy-status`. `payments-service` being synced rules that out immediately.
+- Looking for the rejected configuration in the `kubectl apply` output. The apply succeeded; the rejection happened later, inside `istiod`.
+- Deciding the control plane is broken because two workloads are missing from `istioctl proxy-status`. `payments-service` being `SYNCED` rules that out straight away.
 
 ## Practice variations
 
-- Scale `istiod` to zero, then try to create a pod, and explain the error in
-  terms of the injector webhook's `failurePolicy`.
-- Install a second revision, move one namespace to it, and confirm the move with
-  the `ISTIOD` column of `proxy-status`.
-- Set the injector's `failurePolicy` to `Ignore`, take `istiod` down, and
-  observe how much quieter the resulting failure is.
-
----
-
-## Reference
-
-The official documentation for everything this task touches — open these rather than trying to recall field names:
-
-- [Configuration analysis messages](https://istio.io/latest/docs/reference/config/analysis/) — every `IST####` code and what triggers it
-- [Debugging Envoy and istiod](https://istio.io/latest/docs/ops/diagnostic-tools/proxy-cmd/) — `proxy-status`, `proxy-config` and the workflow around them
-- [Destination rule reference](https://istio.io/latest/docs/reference/config/networking/destination-rule/) — the traffic objects a broken route points at
-- [Sidecar injection](https://istio.io/latest/docs/setup/additional-setup/sidecar-injection/) — why a pod came up without a proxy
-- [Canary upgrades and revision labels](https://istio.io/latest/docs/setup/upgrade/canary/) — revision labels, and the skew that breaks a data plane
+- Scale `istiod` to zero, try to create a pod, and explain the error with the injector webhook's `failurePolicy`.
+- Install a second revision, move one namespace to it, and confirm the move with the `ISTIOD` column of `istioctl proxy-status`.
+- Set the injector's `failurePolicy` to `Ignore`, take `istiod` down, and see how much quieter the failure is.

@@ -1,54 +1,56 @@
 # Check Control Plane Health
 
-<!-- astrona:playground -->
-> [!NOTE]
-> 🧪 **Hands-on playground for this module** — a clean, throwaway machine to explore on. No task, no grading. Folder: [`playground/`](https://github.com/astrona-io/ATS016/tree/main/sections/section-030/module-01/playground)
->
-> ```sh
-> astrona run --git ssh://git@github.com/astrona-io/ATS016.git -c sections/section-030/module-01/playground
-> astrona destroy ats-016-playground-030-01
-> ```
+Astronaut, when something in the mesh goes wrong, you usually look at the ship that is failing. Often the better place to look is mission control: `istiod`, the control plane that sends every communications officer (sidecar proxy) their orders. People look there last, because a broken control plane does not look like an outage. Signals keep flowing and dashboards stay green. What stops is *change*, and nothing reports that change has stopped.
 
-When a mesh misbehaves, the instinct is to look at the workload. Often the right place to look is `istiod`, and the reason people look there last is that a broken control plane does not look like an outage. Traffic keeps flowing. Dashboards stay green. What stops is *change* — and nothing reports that change has stopped.
+Here is the difference to hold on to. A **data plane** failure (a problem in the proxies that carry the requests) shows up at once, as failed requests. A **control plane** failure shows up as something missing: configuration that never takes effect, pods that never become ready, badges (certificates) that quietly expire. This module splits `istiod` into the four jobs it does, shows how each one fails, and gives you the tools that say which job is in trouble.
 
-The contrast that sharpens the boundary: a **data plane** failure shows up as failed requests, immediately, on the request path. A **control plane** failure shows up as an absence — configuration that never takes effect, pods that never become ready, certificates that eventually expire. This module takes `istiod` apart into the four jobs it does, shows how each fails on its own, and gives you the instruments that say which one is in trouble.
-
-> istiod is a config server and a CA: when it is down, existing traffic keeps flowing but nothing new can change.
-
-## How this module is organised
-
-1. **[Part 1 — Four Jobs In One Process](./course-01-the-four-jobs-of-istiod.md)** — the xDS server, the certificate authority, the injection webhook and the validation webhook; what each failure looks like from the outside, and the certificate clock that makes one of them a delayed fuse.
-2. **[Part 2 — The Instruments](./course-02-instruments-logs-and-metrics.md)** — readiness against liveness, what a healthy push log narrates, the metrics endpoint on 15014, how to decode the `pilot_*` names, and reading resource pressure.
-3. **[Part 3 — Outage Anatomy And Rejected Configuration](./course-03-outage-anatomy-and-rejects.md)** — taking the control plane down and watching which half of the mesh notices, why new pods are blocked rather than unmeshed, and the failure where `kubectl apply` succeeds and nothing is ever pushed.
+> `istiod` is a configuration server and a badge office: when it is down, existing traffic keeps flowing, but nothing new can change.
 
 ## Learning objectives
 
 After this module you can:
 
-- Name the four jobs `istiod` performs and describe how the mesh degrades when each one fails.
+- Name the four jobs `istiod` does and describe how the mesh degrades when each one fails.
 - Explain why running proxies keep serving traffic without a control plane, and what ends that grace period.
-- Distinguish `istiod`'s readiness from its health, and say what a climbing restart count on a `Running` pod means.
-- Query `istiod`'s metrics endpoint and interpret `pilot_xds_pushes`, `pilot_xds_push_errors`, `pilot_total_xds_rejects` and `pilot_proxy_convergence_time`.
-- Explain why a counter that has never incremented is absent rather than zero.
-- Predict what happens to pod creation during a control plane outage, for each webhook `failurePolicy`.
-- Explain where a rejected configuration becomes visible, given that `kubectl apply` reported success.
-- Recognise the slow version of the same failure — a control plane under resource pressure.
+- Tell `istiod`'s readiness apart from its health, and say what a climbing restart count on a `Running` pod means.
+- Read `istiod`'s metrics and explain `pilot_xds_pushes`, `pilot_xds_push_errors`, `pilot_total_xds_rejects` and `pilot_proxy_convergence_time`.
+- Explain why a counter that has never gone up is missing rather than zero.
+- Predict what happens to new pods during a control plane outage, for each webhook `failurePolicy`.
+- Explain where a rejected configuration shows up, even though `kubectl apply` reported success.
+- Recognise the slow version of the same failure: a control plane short of memory or processor time.
 
 ## Before you start
 
-You need to be comfortable with `kubectl`, including `logs`, `exec` and `scale`. No Istio object is written in this module — the subject is the component that serves them.
+Every mission starts with a pre-flight check, astronaut. Make sure you have the knowledge this module expects, and know what is waiting in your playground.
 
-The playground gives you a single-node `kind` cluster with **Istio 1.30.5 already installed** (the `demo` profile), `istioctl` on your PATH, and the injected namespace **`cphealth-demo`** containing `notification-service-v1` behind a Service on port 80, plus a `tester` client pod with `curl`.
+### What you should already know
 
-Every command in every part runs against the playground cluster; `kubectl` is already pointed at it. Part 3 deliberately takes the control plane down — safe here because the environment is throwaway, and something that would stop every team's deployments on a shared cluster.
+- **Kubernetes basics.** You can use `kubectl`, including `logs`, `exec` and `scale`.
+- **No Istio objects to write.** This module is about the component that serves Istio objects, not about writing them.
 
-## Where this fits
+### What is in your playground
 
-This module sits at the top of the outside-in sequence, one level above where [module 010-01](../../section-010/module-01/course.md) started:
+Your playground is a small training solar system: one `kind` cluster with **Istio 1.30.5** installed with the `demo` profile, and `istioctl` ready to use. It has one planet (namespace), **`cphealth-demo`**, with injection switched on:
 
-1. Is the **control plane** healthy enough to serve configuration at all? → this module
-2. Did the configuration **reach** each proxy? → [`istioctl proxy-status`](../module-02/course.md)
-3. Is the workload even **in the mesh**? → [sidecar injection](../module-03/course.md)
-4. What is the proxy **doing** with what it received? → [`istioctl proxy-config`](../../section-040/module-01/course.md)
+| Ship | What it does |
+| --- | --- |
+| `notification-service-v1` | The app, behind the beacon (Service) `notification-service` on port `80` |
+| `tester` | Your test ship: a client pod with `curl`. Every test signal is sent from here |
 
-Taking them in order stops you debugging a route that was never pushed, or a policy on a pod with no sidecar to enforce it.
+Nothing is broken when the playground starts. In one part you take `istiod` down yourself, on purpose. That is safe here, because the training solar system is yours and you can throw it away. On a shared cluster, the same command would stop every team's deployments.
+
+Launch your playground now, and keep it running next to you while you read the parts:
+
+<!-- astrona:playground -->
+
+## The parts, in order
+
+1. [Four Jobs In One Process](./course-01-the-four-jobs-of-istiod.md)
+2. [The Instruments](./course-02-instruments-logs-and-metrics.md)
+3. [Take Mission Control Away](./course-03-take-mission-control-away.md)
+4. [Accepted, Never Applied](./course-04-accepted-never-applied.md)
+5. [Wrap-Up: Mission Debrief](./course-05-wrap-up.md)
+
+## Why this matters
+
+If mission control is not healthy, nothing else you check means much. A route that was never sent cannot be debugged in the proxy, and a policy that `istiod` refused will never take effect. Checking the control plane first takes two minutes, and it stops you from fixing YAML that was right all along.

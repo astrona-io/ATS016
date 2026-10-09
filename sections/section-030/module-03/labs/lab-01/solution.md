@@ -1,6 +1,10 @@
 # Solution: Bring An Exempt Workload Back Into The Mesh
 
-## Step 1 — Find the workload that is not in the mesh
+Astronaut, one ship on this planet flies without its communications officer. This walkthrough finds it with two checks, works the checklist to the cause, removes it, and proves the ship joined the mesh and still answers.
+
+## Step 1: Find the workload that is not in the mesh
+
+List each pod with its ready flags and container names:
 
 ```sh
 kubectl -n noinject-demo get pods \
@@ -14,10 +18,9 @@ reporting-service-7fd4c8b96-mn5tp         true         reporting-service
 tester-6d9f7b8c5-hj4kz                    true,true    tester,istio-proxy
 ```
 
-One container where the others have two. Nothing here is an error, which is
-exactly why this state survives review.
+One container where the others have two. Nothing here is an error, which is exactly why this state survives reviews.
 
-The second, independent check comes from the mesh's own side:
+The second, independent check comes from the mesh's side. Run the pre-flight inspector:
 
 ```sh
 istioctl analyze -n noinject-demo
@@ -27,12 +30,11 @@ istioctl analyze -n noinject-demo
 Info [IST0103] (Pod reporting-service-...) The pod is missing the Istio proxy.
 ```
 
-`Info` severity — the lowest there is — for a workload exempt from every policy
-in the namespace. Read analyzer output to the bottom.
+`Info` severity, the lowest there is, for a workload exempt from every policy in the namespace. Always read the analyzer output to the bottom.
 
-## Step 2 — Work the checklist in order
+## Step 2: Work the checklist in order
 
-**1. Namespace label**
+**1. Namespace label.** Check what the planet asks for:
 
 ```sh
 kubectl get ns noinject-demo --show-labels
@@ -42,9 +44,9 @@ kubectl get ns noinject-demo --show-labels
 istio-injection=enabled,kubernetes.io/metadata.name=noinject-demo
 ```
 
-Correct. The most common cause is eliminated in one command.
+Correct. The most common cause is ruled out in one command.
 
-**2. Pod template label** — compare the broken workload against a working one:
+**2. Pod template label.** Compare the broken workload with a working one:
 
 ```sh
 kubectl -n noinject-demo get deploy reporting-service \
@@ -58,18 +60,13 @@ kubectl -n noinject-demo get deploy notification-service-v1 \
 {"app":"notification-service","version":"v1"}
 ```
 
-There is the cause. The opt-out is on `spec.template.metadata.labels` — the
-**pod template** — which is the only place it has any effect, and it beats the
-namespace setting because the webhook's `objectSelector` excludes such pods
-before `istiod` is ever consulted.
+There is the cause. The opt-out sits on `spec.template.metadata.labels`, the **pod template**, which is the only place it has any effect. It beats the namespace setting, because the webhook's `objectSelector` excludes such pods before `istiod` is ever asked.
 
-Steps 3 and 4 (pod age, webhook health) are not needed once step 2 answers, but
-they are the next checks if it had not.
+Steps 3 and 4 (pod age and webhook health) are not needed once step 2 gives the answer. They would be the next checks if it had not.
 
-## Step 3 — Remove the opt-out
+## Step 3: Remove the opt-out
 
-The label key contains a `/`, which is the path separator in a JSON Patch, so it
-must be escaped as `~1`:
+The label key contains a `/`, which separates the parts of a JSON Patch path, so it must be written as `~1`:
 
 ```sh
 kubectl -n noinject-demo patch deployment reporting-service --type json \
@@ -77,15 +74,17 @@ kubectl -n noinject-demo patch deployment reporting-service --type json \
 kubectl -n noinject-demo rollout status deployment/reporting-service --timeout=180s
 ```
 
-Patching the **pod template** changes the template hash, so a new ReplicaSet and
-new pods are created automatically — no separate `rollout restart` is needed
-here. A fix to a *namespace* label would have needed one.
+Patching the **pod template** changes its hash, so a new ReplicaSet and new pods are created automatically. No separate `rollout restart` is needed here. A fix to a *namespace* label would have needed one.
+
+Submit to see your progress:
 
 ```sh
 astrona submit
 ```
 
-## Step 4 — Prove it joined, and that it still works
+## Step 4: Prove it joined, and that it still works
+
+Check the container, the roll call, a real request, and the inspector:
 
 ```sh
 kubectl -n noinject-demo get pods -l app=reporting-service \
@@ -103,10 +102,11 @@ reporting-service-...noinject-demo   Kubernetes   SYNCED   SYNCED   SYNCED   SYN
 ✔ No validation issues found when analyzing namespace: noinject-demo.
 ```
 
-The `200` matters as much as the sidecar. Joining the mesh means traffic is now
-intercepted, and interception is where two latent problems surface at once: a
-Service port with no protocol name, and an application listening only on
-`127.0.0.1`. Both work without a sidecar and break the moment one appears.
+On Kubernetes 1.28 and later the proxy can run as a native sidecar, listed under `initContainers`. If the first command prints only `reporting-service`, read `.spec.initContainers[*].name` as well; the grader checks both lists.
+
+The `200` matters as much as the sidecar. Joining the mesh means the traffic is now intercepted, and interception is where two hidden problems appear at once: a Service port with no protocol name, and an application listening only on `127.0.0.1`. Both work without a sidecar and break the moment one arrives.
+
+Submit for the final grade:
 
 ```sh
 astrona submit
@@ -114,30 +114,14 @@ astrona submit
 
 ## Common mistakes
 
-- Fixing the namespace label but not restarting the workload. Nothing changes
-  and the fix looks wrong.
-- Missing the pod-template opt-out because it is on the template, not on the
-  Deployment's own `metadata.labels`.
-- A namespace carrying both `istio-injection` and `istio.io/rev` — the revision
-  is ignored, which breaks canary setups.
-- Assuming the mesh is broken when only one workload is affected. Compare
-  against a working pod in the same namespace first.
-- Stopping at "the sidecar is there". A container that exists is not a proxy
-  that connected.
+- Fixing the namespace label but not restarting the workload. Nothing changes, and the fix looks wrong.
+- Missing the pod-template opt-out because you looked at the Deployment's own `metadata.labels` instead of the template.
+- Leaving a namespace with both `istio-injection` and `istio.io/rev`. The revision label is ignored, which breaks canary upgrades.
+- Assuming the whole mesh is broken when only one workload is affected. Compare with a working pod in the same namespace first.
+- Stopping at "the sidecar is there". A container that exists is not a proxy that connected.
 
 ## Practice variations
 
-- Delete the namespace label instead and reproduce a different root cause.
-- Pin the namespace to a revision that does not exist and read the behaviour.
-- Set `hostNetwork: true` on a pod and explain why injection is skipped.
-
----
-
-## Reference
-
-The official documentation for everything this task touches — open these rather than trying to recall field names:
-
-- [Configuration analysis messages](https://istio.io/latest/docs/reference/config/analysis/) — every `IST####` code and what triggers it
-- [Debugging Envoy and istiod](https://istio.io/latest/docs/ops/diagnostic-tools/proxy-cmd/) — `proxy-status`, `proxy-config` and the workflow around them
-- [Sidecar injection](https://istio.io/latest/docs/setup/additional-setup/sidecar-injection/) — why a pod came up without a proxy
-- [Canary upgrades and revision labels](https://istio.io/latest/docs/setup/upgrade/canary/) — revision labels, and the skew that breaks a data plane
+- Delete the namespace label instead, and reproduce a different root cause.
+- Pin the namespace to a revision that does not exist, and watch what happens.
+- Set `hostNetwork: true` on a pod, and explain why injection is skipped.
