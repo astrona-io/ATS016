@@ -18,12 +18,12 @@ kubectl get deployments -n istio-system
 
 ## Step 2: Build the include filter
 
-`--include` takes up to six fields separated by slashes: namespace, Deployment, pod, label, annotation, container. A container is collected when it matches any of the `--include` flags. Two flags select exactly what the task asks for:
+`--include` takes up to six fields separated by slashes: namespace, Deployment, pod, label, annotation, container. Each field can hold a comma-separated list. Do not pass `--include` twice: in Istio 1.30.5, repeated `--include` selectors are joined with AND, so `--include describe-demo/notification-service-v1 --include istio-system/istiod` matches nothing and the archive holds no proxy data. One selector with lists selects exactly what the task asks for:
 
-- `--include describe-demo/notification-service-v1` selects the `notification-service-v1` Deployment and no other workload in `describe-demo`;
-- `--include istio-system/istiod` selects `istiod` and leaves out the two gateways.
+- the namespaces `describe-demo,istio-system`;
+- the Deployments `notification-service-v1,istiod`.
 
-`istiod` is not collected automatically. With only the first flag, the archive has no control plane data.
+That matches `notification-service-v1` in `describe-demo` and `istiod` in `istio-system`, and nothing else: the `tester` pods and the two gateways belong to other Deployments. `istiod` is not collected automatically. Without `istio-system` and `istiod` in the selector, the archive has no control plane data.
 
 ## Step 3: Take the capture
 
@@ -32,8 +32,7 @@ Create the folder, then run the capture with a ten-minute log window. The captur
 ```sh
 mkdir -p /tmp/ats-016-bug-report
 istioctl bug-report \
-  --include describe-demo/notification-service-v1 \
-  --include istio-system/istiod \
+  --include describe-demo,istio-system/notification-service-v1,istiod \
   --duration 10m \
   --output-dir /tmp/ats-016-bug-report
 ```
@@ -49,7 +48,7 @@ tar tzf /tmp/ats-016-bug-report/bug-report.tar.gz \
   | grep -E '^bug-report/(proxies|istio)/' | cut -d/ -f2-4 | sort -u
 ```
 
-You should see two kinds of line: `istio/istio-system/` followed by the `istiod` pod name, and `proxies/describe-demo/` followed by the `notification-service-v1` pod name. If a `tester` pod, a `noise-demo` pod or a gateway appears, the filter is too wide: fix the `--include` flags and capture again. The new archive replaces the old file.
+You should see two kinds of line: `istio/istio-system/` followed by the `istiod` pod name, and `proxies/describe-demo/` followed by the `notification-service-v1` pod name. If a `tester` pod, a `noise-demo` pod or a gateway appears, the filter is too wide: fix the `--include` selector and capture again. The new archive replaces the old file.
 
 Then confirm the configuration dump of the proxy is there:
 

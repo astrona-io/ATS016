@@ -35,8 +35,12 @@ if printf '%s\n' "$LIST" | grep -q '^istio/istio-system/istiod-'; then
   echo "ok: the archive holds istiod data."
 else
   echo "FAIL: no istiod data under bug-report/istio/istio-system/."
-  echo "      istiod is only collected when an --include matches it."
+  echo "      istiod is only collected when the --include selector matches it. Repeated --include flags are joined with AND."
   rc=1
+fi
+if [ $rc -ne 0 ]; then
+  echo "      The archive holds these folders (first 30):"
+  tar tzf "$ARCHIVE" 2>/dev/null | cut -d/ -f1-4 | sort -u | head -30 | sed 's/^/        /'
 fi
 [ $rc -eq 0 ] && echo "PASS: the target proxy and istiod were captured."
 exit $rc

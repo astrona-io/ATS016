@@ -12,7 +12,7 @@ Envoy's administration interface on `localhost:15000` is behind `istioctl proxy-
 
 `istioctl bug-report` freezes the state of `istiod` and selected proxies into `bug-report.tar.gz`, including each proxy's full configuration dump. It must be limited and handled with care. The key facts to remember are these:
 
-- Limit a capture with `--include` and `--duration`; `istiod` is collected only when an `--include` matches it, for example `istio-system/istiod`.
+- Limit a capture with `--include` and `--duration`; `istiod` is collected only when the `--include` selector matches it. Repeated `--include` flags are joined with AND, so put several namespaces and Deployments in one selector, for example `describe-demo,istio-system/notification-service-v1,istiod`.
 - Proxy data sits under `bug-report/proxies/<namespace>/<pod>/`, and `istiod` data under `bug-report/istio/<namespace>/<pod>/`.
 - Put a raised log scope back with `istioctl proxy-config log <pod> --level <scope>:warning`, and check it by running the command with no `--level`.
 - Review an archive before you share it, and never share one taken with `--full-secrets`.

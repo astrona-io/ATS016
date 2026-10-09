@@ -28,20 +28,20 @@ Run with no flags, `bug-report` targets every proxy in the mesh. On a cluster wi
 | `--exclude` | Drop matching targets, applied after `--include` | a noisy sidecar in an otherwise relevant namespace |
 | `--duration` | Collect only log lines from this far back, for example `10m` | a known incident window |
 
-`--include` and `--exclude` take a selector with up to six fields separated by slashes, in this order: namespace, Deployment, pod, label, annotation, container. Each field can hold a comma-separated list, and empty fields at the end can be left out. So `--include describe-demo` selects the whole namespace, and `--include describe-demo/notification-service-v1` selects one Deployment in it. You can pass `--include` more than once; a container is collected when it matches any of them.
+`--include` and `--exclude` take a selector with up to six fields separated by slashes, in this order: namespace, Deployment, pod, label, annotation, container. Each field can hold a comma-separated list, and empty fields at the end can be left out. So `--include describe-demo` selects the whole namespace, and `--include describe-demo/notification-service-v1` selects one Deployment in it. Be careful with more than one `--include` flag: in Istio 1.30.5, `bug-report` joins repeated `--include` selectors with AND, so two flags that name different namespaces match nothing, and the archive holds no proxy data. The `include:` line at the top of the output shows how the filter was read. To select workloads in two namespaces, use one selector with lists: `describe-demo,istio-system/notification-service-v1,istiod` selects the Deployment `notification-service-v1` or `istiod` in the namespace `describe-demo` or `istio-system`.
 
-The include filter also decides whether `istiod` is collected. `istiod` runs in `istio-system`, so a capture limited to `describe-demo` contains no control plane data. Add a second `--include istio-system/istiod` when the problem might sit in the control plane. `--duration` is the flag people forget. Without it you get the full stored log of every selected container, which is usually hours of unrelated traffic around the ten seconds that matter.
+The include filter also decides whether `istiod` is collected. `istiod` runs in `istio-system`, so a capture limited to `describe-demo` contains no control plane data. Add `istio-system` and `istiod` to the same selector when the problem might sit in the control plane. `--duration` is the flag people forget. Without it you get the full stored log of every selected container, which is usually hours of unrelated traffic around the ten seconds that matter.
 
 ## Taking a limited capture
 
-The command below captures every proxy in `describe-demo`, plus `istiod`, with the last ten minutes of logs. It takes a minute or two even when limited, because `istioctl` contacts each selected proxy's administration port in turn and runs `istioctl analyze` at the end.
+The command below captures both proxies in `describe-demo`, the Deployments `notification-service-v1` and `tester`, plus `istiod`, with the last ten minutes of logs. One selector lists both namespaces and all three Deployments. It takes a minute or two even when limited, because `istioctl` contacts each selected proxy's administration port in turn and runs `istioctl analyze` at the end.
 
 <!-- astrona:playground:renew -->
 
 Run it from a folder where you can write files:
 
 ```sh
-istioctl bug-report --include describe-demo --include istio-system/istiod --duration 10m
+istioctl bug-report --include describe-demo,istio-system/notification-service-v1,tester,istiod --duration 10m
 ```
 
 The last line of the output names the file it wrote: `bug-report.tar.gz` in the current folder. The `--output-dir` flag writes it to another folder instead. Now list which pods the archive holds data for:
@@ -94,7 +94,8 @@ You now know what `istioctl bug-report` collects and where each item sits in the
 > [!WARNING]
 > - **Running it without `--include`.** It walks every proxy in the mesh: a long wait, heavy load, and an archive too large to hand to anyone.
 > - **Leaving out `--duration`.** You collect the full stored log of every selected container and bury the window that matters.
-> - **Expecting `istiod` in a capture limited to one namespace.** Add `--include istio-system/istiod` when the control plane may be involved.
+> - **Expecting `istiod` in a capture limited to one namespace.** Add `istio-system` and `istiod` to the selector when the control plane may be involved.
+> - **Passing `--include` twice.** Repeated selectors are joined with AND, so two namespaces in two flags match nothing. Put the lists in one selector.
 > - **Sharing it without looking inside, or with `--full-secrets`.** It holds your service layout, identities and whatever your applications logged.
 > - **Forgetting it is a snapshot.** Nothing in the archive updates. A capture taken after the problem cleared shows a healthy system and proves nothing.
 

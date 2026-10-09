@@ -9,7 +9,6 @@ ARCHIVE_DIR="/tmp/ats-016-bug-report"
 mkdir -p "$ARCHIVE_DIR"
 
 istioctl bug-report \
-  --include describe-demo/notification-service-v1 \
-  --include istio-system/istiod \
+  --include describe-demo,istio-system/notification-service-v1,istiod \
   --duration 10m \
   --output-dir "$ARCHIVE_DIR"
