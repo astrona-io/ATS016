@@ -322,6 +322,22 @@ playground actually runs it.
   - Route JSON from `proxy-config routes -o json` holds header matches as
     `headers[].stringMatch.exact`; there is no `exact_match` field.
   - The default Envoy log level of every scope is `warning`.
+  - `IST0127` (Warning) reports an `AuthorizationPolicy` whose selector
+    matches no workload; `IST0132` (Warning) follows a missing gateway.
+  - kind runs Kubernetes 1.33 or later, so `istio-proxy` is a native sidecar
+    under `spec.initContainers`; `READY` still shows `2/2`.
+  - A `VirtualService` bound only to a `Gateway` is ignored by the sidecars;
+    list `mesh` too when a page needs the sidecars to use it.
+  - Route weights that add up to more than 100 are accepted. A rule with
+    both `redirect` and `route` is rejected by the webhook.
+  - Two validating webhooks exist (`rev.validation.istio.io` and
+    `validation.istio.io`), and a running `istiod` switches them back to
+    `Fail`. An object stored past them is served as it is, not dropped.
+  - `bug-report` joins repeated `--include` flags with AND; use one selector
+    with comma lists.
+  - Proxies write access logs in batches and reconnect to a restarted
+    `istiod` within about a minute: commands and graders that read logs,
+    events or `proxy-status` right after a change need a short wait or retry.
 - **The proof is a request from `tester`.** A fix is proven with
   `kubectl exec` from the `tester` pod to `http://notification-service`, plus
   the matching diagnostic command (`istioctl analyze` clean,
