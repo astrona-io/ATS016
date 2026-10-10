@@ -11,7 +11,7 @@ prom_query() { kubectl -n metrics-demo exec deploy/tester -- curl -s \
 
 ## Step 1: Generate load
 
-Metrics are rates over a time window, so a handful of manual requests measures nothing. Start a background loop in the `tester` pod, about ten requests a second, and wait:
+Metrics are rates over a time window, so a handful of manual requests measures nothing. Start a background loop in the `tester` pod that sends a request about every 0.1 seconds, and wait:
 
 ```sh
 kubectl -n metrics-demo exec deploy/tester -- sh -c \
@@ -30,33 +30,27 @@ prom_query 'sum(rate(istio_requests_total{reporter="source",response_code=~"5.."
 ```
 
 ```text
-{"metric":{},"value":[...,"0.29"]}
+{"status":"success","data":{"resultType":"vector","result":[{"metric":{},"value":[1791585243.585,"0.3292181069958848"]}]}}
 ```
 
 The answer is about `0.3`. `=~` is a regular-expression match, so `"5.."` is any three-character code starting with `5`. Dividing two sums gives a ratio that does not depend on traffic volume, which is what a service level objective is written against.
 
 ## Step 3: Find the asymmetry
 
-Every request is counted twice: once by the client's proxy (`reporter="source"`) and once by the server's (`reporter="destination"`). Group the rate by both labels:
+Every request is counted twice: once by the client's proxy (`reporter="source"`) and once by the server's (`reporter="destination"`). Group the rate by both labels. Filter on the Service, `destination_service_name`, not on `destination_workload`: the client's proxy aborts the failing requests before it picks a pod, so they never carry `destination_workload="notification-service-v1"`, and a filter on the workload hides them completely.
 
 ```sh
-prom_query 'sum(rate(istio_requests_total{destination_workload="notification-service-v1"}[1m])) by (reporter, response_code)'
+prom_query 'sum(rate(istio_requests_total{destination_service_name="notification-service"}[1m])) by (reporter, response_code)'
 ```
 
-```text
-{"reporter":"destination","response_code":"200"} 6.9
-{"reporter":"source","response_code":"200"}      6.9
-{"reporter":"source","response_code":"500"}      2.9
-```
-
-**The missing fourth series is the finding.** There is no `destination` line for `500`: the server never received those requests. The difference between the two views is a diagnosis in its own right:
+The result has three series: `200` from both reporters, and `500` from `reporter="source"` only. **The missing fourth series is the finding.** There is no `destination` line for `500`: the server never received those requests. The difference between the two views is a diagnosis in its own right:
 
 | Pattern | Conclusion |
 | --- | --- |
 | errors in `source` only | the request never arrived — client-side configuration, connectivity, or the client's own limits |
 | errors in both | it arrived and failed there — destination policy or the application |
 
-The numbers confirm it: `6.9 + 2.9 ≈ 9.8`, the full rate. The failures were taken away from what reached the destination, not added to it. So the failure lives in the client's proxy, not in the service.
+The numbers confirm it: the `200` rate from the client plus the `500` rate from the client add up to the full rate the loop sends. The failures were taken away from what reached the destination, not added to it. So the failure lives in the client's proxy, not in the service.
 
 Name the cause with the response flag label, the short Envoy code the proxy writes next to each failed request. For an abort from fault injection the flag is `FI`, or `DI,FI` when the same request was also delayed:
 

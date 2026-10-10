@@ -28,7 +28,7 @@ The last row is quietly useful. It finds callers outside the mesh that call a se
 
 Forgetting this label is the most common way to get a query wrong. A rate added up across both reporters is roughly **double** the real request rate. Every dashboard built on it is then wrong by a factor of two, and nobody notices until they compare it with something else.
 
-To see both counts, you first need steady traffic. The next command starts a loop in the background inside the `tester` pod that sends ten requests a second until you stop it. After 30 seconds it asks Prometheus for the request rate, grouped by reporter and response code:
+To see both counts, you first need steady traffic. The next command starts a loop in the background inside the `tester` pod that sends a request about every 0.1 seconds until you stop it. After 30 seconds it asks Prometheus for the request rate, grouped by reporter and response code:
 
 <!-- astrona:playground:renew -->
 
@@ -44,12 +44,10 @@ kubectl -n metrics-demo exec deploy/tester -- curl -s \
 You should see something like:
 
 ```text
-{"status":"success","data":{"resultType":"vector","result":[
-  {"metric":{"reporter":"destination","response_code":"200"},"value":[1774000000,"9.8"]},
-  {"metric":{"reporter":"source","response_code":"200"},"value":[1774000000,"9.8"]}]}}
+{"status":"success","data":{"resultType":"vector","result":[{"metric":{"reporter":"source","response_code":"200"},"value":[1791585151.374,"4.115172222222222"]},{"metric":{"reporter":"destination","response_code":"200"},"value":[1791585151.374,"3.689622222222223"]}]}}
 ```
 
-There are two series with almost the same rate, around ten requests a second each. That is **one** workload's traffic, seen from both ends. They are rarely exactly equal: Prometheus scrapes the two proxies at different moments, so a request in flight is counted by one and not yet by the other. Leave the loop running for the rest of this part.
+There are two series with almost the same rate, about four requests a second each. The loop waits 0.1 seconds between requests, but each `curl` also takes time, so the real rate is lower than ten. That is **one** workload's traffic, seen from both ends. They are rarely exactly equal: Prometheus scrapes the two proxies at different moments, so a request in flight is counted by one and not yet by the other. Leave the loop running for the rest of this part.
 
 ## The three query shapes
 
@@ -138,11 +136,12 @@ prom_query 'histogram_quantile(0.99, sum(rate(istio_request_duration_millisecond
 You should see something like this for the first two queries:
 
 ```text
-{"status":"success",...,"result":[{"metric":{"response_code":"200"},"value":[...,"9.9"]}]}
-{"status":"success",...,"result":[{"metric":{},"value":[...,"0.9"]}]}
+{"status":"success","data":{"resultType":"vector","result":[{"metric":{"response_code":"200"},"value":[1791585151.839,"3.7619555555555557"]}]}}
+{"status":"success","data":{"resultType":"vector","result":[{"metric":{},"value":[1791585151.909,"2.369637233259729"]}]}}
+{"status":"success","data":{"resultType":"vector","result":[]},"warnings":["PromQL warning: bucket label \"le\" is missing or has a malformed value of \"\" (1:26)"]}
 ```
 
-That is ten requests a second, and a 99th percentile under a millisecond. The third query still reports `"status":"success"`, but its `result` list is empty, and the response carries a `warnings` entry saying the bucket label `le` is missing. Prometheus skips every sample that has no `le` label, so nothing is left to compute from. That is why `le` gets its own warning in this course: the query looks right, runs without an error, and answers nothing.
+The first number is the request rate: almost four requests a second, all `200`. The loop sleeps 0.1 seconds, but each `curl` also takes time, so the real rate is lower than ten; read the rate Prometheus reports, not the one you expect. The second number is the 99th percentile, about 2.4 milliseconds. The third query still reports `"status":"success"`, but its `result` list is empty, and the response carries a `warnings` entry saying the bucket label `le` is missing. Prometheus skips every sample that has no `le` label, so nothing is left to compute from. That is why `le` gets its own warning in this course: the query looks right, runs without an error, and answers nothing.
 
 > [!TIP]
 > Keep a small query helper like `prom_query` in your shell whenever you troubleshoot with Prometheus from a terminal. It turns every check into one short line you can repeat after each change.

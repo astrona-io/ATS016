@@ -16,22 +16,18 @@ echo '--- destination ---'
 kubectl -n logcapstone-demo logs deploy/notification-service-v1 -c istio-proxy --tail=3
 ```
 
-```text
-503
-[...] "POST /notify HTTP/1.1" 503 UF upstream_reset_before_response_started{connection_termination} - "-" ... "10.244.0.12:8084" outbound|80||notification-service...
---- destination ---
-```
+The request returns `503`. The client's newest access log line shows `"POST /notify HTTP/1.1" 503 UC upstream_reset_before_response_started{connection_termination}`, with the address of the destination pod as upstream host. The destination's newest access log line is a connection-level line, `"- - -" 0 NR filter_chain_not_found`, with no method and no path. If the client's newest line is older than your request, wait two seconds and read the logs again: the proxy writes its access log in short batches.
 
 Four observations, read together:
 
 | Observation | Means |
 | --- | --- |
-| flag `UF` | the connection could not be set up |
+| client flag `UC` | the connection was set up, then the other side closed it |
 | `upstream_reset_before_response_started` | closed before any response began |
 | upstream host is an **address** | the destination was found and reached |
-| destination logged **nothing** | the request never became a request there |
+| destination line `NR filter_chain_not_found` | no filter chain on the destination's inbound listener accepted the connection, so no request was read |
 
-A proxy writes an access log line when a *request* completes. A handshake rejected at the transport layer happens below HTTP, so there is nothing to log. The silence tells you exactly where the failure is.
+A proxy writes a request line when an HTTP request completes. With `STRICT`, every inbound filter chain requires TLS, so a plain-text connection matches none and is closed below HTTP. The destination logs only the connection, which tells you exactly where the failure is.
 
 ## Step 2: Rule out the look-alike
 
@@ -162,17 +158,17 @@ astrona submit -c sections/section-050/capstone/labs/lab-01
 | | Fault 1 | Fault 2 |
 | --- | --- | --- |
 | Status | `503` | `403` |
-| Flag | `UF` | `-` on both sides |
+| Flag | `UC` on the client | `-` on both sides |
 | Upstream host | an address | an address |
-| Destination logged | **nothing** | yes, with `rbac_access_denied…` |
-| Layer | transport (handshake) | HTTP (authorization) |
+| Destination logged | `"- - -" 0 NR filter_chain_not_found`, no request line | a `403` request line with `rbac_access_denied…` |
+| Layer | transport (no filter chain for plain text) | HTTP (authorization) |
 | Fix | client `DestinationRule` | destination `AuthorizationPolicy` |
 
 ## Common mistakes
 
 - Relaxing the `PeerAuthentication` to make the `503` go away. It hides a client misconfiguration and weakens security for every caller.
 - Removing the whole `trafficPolicy` from the `DestinationRule`. The connection pool goes with it, and the grader checks that it is still there.
-- Looking only at the destination during fault 1. Its log is empty, and that is the clue.
+- Looking only at one side during fault 1. The client's `UC` and the destination's `filter_chain_not_found` line only make sense together.
 - Looking only at the client during fault 2. Its line looks ordinary.
 - Stopping at the first fix because the error changed. A new symptom means the first fault is cleared, not that the system is healthy.
 - Adding `POST` to the method list instead of replacing `PUT`, leaving a method allowed that the intent never included.

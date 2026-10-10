@@ -20,6 +20,12 @@ Check how the playground's Service declares its port:
 kubectl -n fivezerothree-demo get svc notification-service -o jsonpath='{.spec.ports}{"\n"}'
 ```
 
+You should see something like:
+
+```text
+[{"name":"http","port":80,"protocol":"TCP","targetPort":8084}]
+```
+
 In this playground the port is named `http` and maps port 80 to the container port 8084. That name is why the `tester` proxy builds full HTTP routing for this Service. Keep the field in mind: it is the first thing to check when routing rules seem to be ignored.
 
 ## What goes wrong when the port is declared as TCP
@@ -38,6 +44,10 @@ kubectl -n fivezerothree-demo patch svc notification-service --type json \
   -p '[{"op":"replace","path":"/spec/ports/0/name","value":"tcp"}]'
 ```
 
+```text
+service/notification-service patched
+```
+
 Then look at the listener and route stages on the `tester` proxy:
 
 ```sh
@@ -45,7 +55,17 @@ istioctl proxy-config listener deploy/tester -n fivezerothree-demo --port 80
 istioctl proxy-config route deploy/tester -n fivezerothree-demo -o json | grep -c 'notification-service.fivezerothree-demo'
 ```
 
-In the listener output, the line for `notification-service` now hands off to a `Cluster:` instead of a `Route:`. The route count is `0`: no route configuration in the `tester` proxy has a virtual host for `notification-service` any more. If the counts on your cluster differ, look for the `Cluster:` hand-off in the listener output; that is the proof. Put the name back before you go on:
+You should see something like:
+
+```text
+ADDRESSES     PORT MATCH                                DESTINATION
+0.0.0.0       80   Trans: raw_buffer; App: http/1.1,h2c Route: 80
+0.0.0.0       80   ALL                                  PassthroughCluster
+10.96.187.226 80   ALL                                  Cluster: outbound|80||notification-service.fivezerothree-demo.svc.cluster.local
+0
+```
+
+The listener now has a third line, bound to the ClusterIP of `notification-service` (`10.96.187.226` here; yours will differ). It matches `ALL` and hands off straight to the cluster `outbound|80||notification-service...`, with no `Route:`, so the subset routing of the `VirtualService` is skipped. The route count is `0`: no route configuration in the `tester` proxy has a virtual host for `notification-service` any more. `grep -c` exits with code `1` when it counts `0`, which is expected here. Put the name back before you go on:
 
 ```sh
 kubectl -n fivezerothree-demo patch svc notification-service --type json \

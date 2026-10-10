@@ -34,10 +34,10 @@ kubectl -n kiali-demo exec deploy/tester -c istio-proxy -- \
 ```
 
 ```text
-istio_requests_total{reporter="source",source_workload="tester",destination_workload="notification-service-v1",response_code="200",...} 98
+istio_requests_total{reporter="source",source_workload="tester",...,destination_workload="notification-service-v1",...,response_code="200",...,connection_security_policy="unknown"} 98
 ```
 
-That one series **is** one edge of the graph: a source workload, a destination workload, a response code and a count. Five requests a second is plenty. The graph needs traffic that keeps going, not a lot of it.
+The output is shortened: the real line carries many more labels, shown here as `...`. That one series **is** one edge of the graph: a source workload, a destination workload, a response code and a count. Five requests a second is plenty. The graph needs traffic that keeps going, not a lot of it.
 
 Allow for the delay along the way: the proxy, then a Prometheus scrape about every 15 seconds, then the Kiali query. A new edge takes tens of seconds to appear even when everything works.
 
@@ -50,11 +50,12 @@ istioctl analyze -n kiali-demo
 ```
 
 ```text
-Error [IST0101] (VirtualService broken.kiali-demo) Referenced gateway not found: "does-not-exist"
-Error [IST0101] (VirtualService broken.kiali-demo) Referenced host+subset in destinationrule not found: "notification-service+nonexistent"
+Error [IST0101] (VirtualService kiali-demo/broken) Referenced gateway not found: "does-not-exist"
+Error [IST0101] (VirtualService kiali-demo/broken) Referenced host+subset in destinationrule not found: "notification-service+nonexistent"
+Warning [IST0132] (VirtualService kiali-demo/broken) one or more host [notification-service] defined in VirtualService kiali-demo/broken not found in Gateway kiali-demo/does-not-exist.
 ```
 
-The output is shortened to the two messages. They are the red icon: the `VirtualService` named `broken` names a `Gateway` called `does-not-exist` and a subset called `nonexistent`, and neither exists. Both are references between objects, which is why the API server accepted the object: its validating webhook only ever sees one object at a time.
+The output is shortened to the messages. The two `IST0101` errors are the red icon: the `VirtualService` named `broken` names a `Gateway` called `does-not-exist` and a subset called `nonexistent`, and neither exists. Both are references between objects, which is why the API server accepted the object: its validating webhook only ever sees one object at a time.
 
 ## Step 4: Fix them
 

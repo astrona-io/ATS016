@@ -73,7 +73,7 @@ Check the route stage again, then send ten requests with the header and ten with
 
 ```sh
 istioctl proxy-config route deploy/tester -n portproto-demo -o json \
-  | grep -E '"exact_match"|"cluster"' | grep -E 'true|notification'
+  | grep -E '"exact"|"cluster": "outbound\|80\|v'
 kubectl -n portproto-demo exec deploy/tester -- sh -c \
   'for i in $(seq 1 10); do curl -s -X POST -H "testing: true" http://notification-service/notify; echo; done' | sort -u
 kubectl -n portproto-demo exec deploy/tester -- sh -c \

@@ -37,6 +37,7 @@ Then check the result. The `VirtualService` that matches only `/reports` is stil
 sleep 3
 kubectl -n accesslog-demo exec deploy/tester -- \
   curl -s -o /dev/null -w '%{http_code}\n' -X POST http://notification-service/reports/today
+sleep 2
 echo '--- client ---'
 kubectl -n accesslog-demo logs deploy/tester -c istio-proxy --tail=1
 echo '--- destination ---'
@@ -48,10 +49,12 @@ You should see something like:
 ```text
 403
 --- client ---
-[...] "POST /reports/today HTTP/1.1" 403 - via_upstream - ... "10.244.0.12:8084" outbound|80||notification-service...
+[...] "POST /reports/today HTTP/1.1" 403 - via_upstream - ... outbound|80||notification-service.accesslog-demo.svc.cluster.local ...
 --- destination ---
-[...] "POST /reports/today HTTP/1.1" 403 - rbac_access_denied_matched_policy[ns[accesslog-demo]-policy[deny-all]-rule[0]] ... inbound|8084||
+[2026-10-09T22:25:29.779Z] "POST /reports/today HTTP/1.1" 403 - rbac_access_denied_matched_policy[ns[accesslog-demo]-policy[deny-all]-rule[0]] - "-" 0 19 0 - "-" "curl/8.22.0" "4759b35e-f918-9a3d-898e-2768e3990275" "notification-service" "-" inbound|8084|| - 10.244.0.8:8084 10.244.0.9:52088 outbound_.80_._.notification-service.accesslog-demo.svc.cluster.local default
 ```
+
+The client's line is shortened to the fields that matter here.
 
 Both proxies wrote a line, both show the flag `-`, and both are right: at the connection level nothing went wrong. The destination's proxy refused the request after it arrived. The client's line looks like an ordinary `403` that came back from the upstream (`via_upstream`). Only the destination's response code details field carries `rbac_access_denied_matched_policy[...]`, which names the namespace, the policy and the number of the rule that refused the request.
 
@@ -68,13 +71,14 @@ kubectl -n accesslog-demo delete destinationrule notification
 sleep 3
 kubectl -n accesslog-demo exec deploy/tester -- \
   curl -s -o /dev/null -w '%{http_code}\n' -X POST http://notification-service/notify
+sleep 2
 kubectl -n accesslog-demo logs deploy/tester -c istio-proxy --tail=60 \
-  | awk '{print $6}' | sort | uniq -c | sort -rn
+  | grep '^\[' | awk '{print $6}' | sort | uniq -c | sort -rn
 ```
 
 If you skipped one of the earlier examples, `kubectl` reports that the object is not found. That is fine; carry on.
 
-The request returns `200`, so traffic works again. The count below it is a short history of what you did in this module: mostly `UO` and `-`, plus one `UT` and one `NR`. Your numbers will differ, because the `UO` count depends on timing. On a real incident, the same command over a longer window is the fastest way to see which failure is most common. A mix of `-` and `UO` reads as a capacity problem; a wall of `UF` reads as connectivity or mTLS.
+The request returns `200`, so traffic works again. The count below it is a short history of what you did in this module: mostly `UO` and `-`, plus one `UT` and one `NR`. Your numbers will differ, because the `UO` count depends on timing. On a real incident, the same command over a longer window is the fastest way to see which failure is most common. A mix of `-` and `UO` reads as a capacity problem; a wall of `UF` or `UC` reads as connectivity or mTLS.
 
 ## The four, side by side
 

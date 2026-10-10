@@ -97,9 +97,9 @@ kubectl -n fivezerothree-demo logs deploy/tester -c istio-proxy --tail=1
 You should see something like:
 
 ```text
-        "cluster": "outbound|80|v1|notification-service.fivezerothree-demo.svc.cluster.local",
+                            "cluster": "outbound|80|v1|notification-service.fivezerothree-demo.svc.cluster.local",
 ✔ No validation issues found when analyzing namespace: fivezerothree-demo.
-[...] "POST /notify HTTP/1.1" 200 - via_upstream - ... "10.244.0.12:8084" outbound|80|v1|notification-service... 
+[2026-10-09T22:24:00.586Z] "POST /notify HTTP/1.1" 200 - via_upstream - "-" 0 9 6 5 "-" "curl/8.22.0" "95de549a-9e12-92c4-a50f-c3a9a0844e4d" "notification-service" "10.244.0.8:8084" outbound|80|v1|notification-service.fivezerothree-demo.svc.cluster.local 10.244.0.9:46392 10.96.187.226:80 10.244.0.9:56716 - -
 ```
 
 All three agree. The access log line is the most precise proof: the flag is `-` where it was `NC`, and there is an **upstream host address** where there was a `-`. That address proves a connection to a pod actually happened, in the same field that showed none had before.

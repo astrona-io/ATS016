@@ -12,10 +12,10 @@ Each flag names one way a request can end. The last column says where to look ne
 | `NR` | no route | No route matched the request (status `404`) | `Host` header, port protocol, `VirtualService` match rules and binding |
 | `NC` | no cluster | The route named a cluster that does not exist | `DestinationRule` subsets, host names |
 | `UH` | no healthy upstream | The cluster exists and has no usable endpoints (status `503`) | Service selector, readiness, subset labels, ejected endpoints |
-| `UF` | upstream connection failure | The proxy could not set up a connection (status `503`) | mTLS mismatch, wrong port, network policy |
+| `UF` | upstream connection failure | The proxy could not set up a connection (status `503`) | nothing listens on the port, network policy |
 | `UO` | upstream overflow | A circuit breaker rejected the request (status `503`) | `DestinationRule` `connectionPool` limits |
 | `UT` | upstream request timeout | The route timeout fired (status `504`) | `VirtualService` `timeout`, a slow upstream |
-| `UC` | upstream connection termination | The upstream closed the connection during the request (status `503`) | application crash, protocol mismatch |
+| `UC` | upstream connection termination | The upstream closed the connection before or during the response (status `503`) | mTLS mismatch, application crash, protocol mismatch |
 | `DC` | downstream connection termination | The **client** closed the connection first | client timeouts, cancelled requests |
 | `URX` | upstream retry limit exceeded | Retries were attempted and all failed | the underlying failure, plus the retry policy |
 | `DI` | delay injected | A fault-injection delay held the request | `VirtualService` `fault.delay` |
@@ -42,12 +42,12 @@ Read the main flags in this order, from "never left" to "left and never came bac
    NC   chose one that does not exist      - a name with nothing behind it
    UH   it exists, nothing healthy in it   - a cluster with no endpoints
    UO   refused by our own limits          - the proxy declined to try
-   UF   tried to connect, failed           - the network or the handshake
-   UC   connected, then lost it            - it started and did not finish
+   UF   tried to connect, failed           - the network
+   UC   connected, then it was closed      - refused by the other side, or did not finish
    UT   connected, no answer in time       - it started and never finished
 ```
 
-A flag is a position on that path, and the position tells you which layer to investigate. `NC` and `UH` point at configuration. `UF` points at connectivity or the TLS handshake. `UC` and `UT` point at how the upstream behaves.
+A flag is a position on that path, and the position tells you which layer to investigate. `NC` and `UH` point at configuration. `UF` points at connectivity. `UC` and `UT` point at how the upstream behaves, including a connection the destination's proxy refused, such as an mTLS mismatch.
 
 ### A dash is a real answer
 
@@ -66,7 +66,7 @@ A request between two pods in the mesh passes two proxies: the client's sidecar 
 | failure | success | the response path failed: a timeout or a reset after the upstream answered |
 | (nothing) | failure | the client wrote no line: it is not in the mesh, or its logging is switched off |
 
-The first row is the most common signature of a `503` you cannot explain, and it is also the signature of an mTLS mismatch. A missing line is evidence, but you only get that evidence if you go and look for it.
+The first row is the most common signature of a `503` you cannot explain. An mTLS mismatch is a close relative: the destination's proxy writes no request line, only a connection-level line with the flag `NR` and the details `filter_chain_not_found`. A missing request line is evidence, but you only get that evidence if you go and look for it.
 
 Before you read failures, see what a successful request looks like from both ends. Send one request, then read the newest line on each side:
 
@@ -75,6 +75,7 @@ Before you read failures, see what a successful request looks like from both end
 ```sh
 kubectl -n accesslog-demo exec deploy/tester -- \
   curl -s -o /dev/null -X POST http://notification-service/notify
+sleep 2
 echo '--- client ---'
 kubectl -n accesslog-demo logs deploy/tester -c istio-proxy --tail=1
 echo '--- destination ---'
@@ -85,12 +86,14 @@ You should see something like:
 
 ```text
 --- client ---
-[...] "POST /notify HTTP/1.1" 200 - via_upstream - ... "notification-service" "10.244.0.12:8084" outbound|80||notification-service.accesslog-demo.svc.cluster.local ...
+[2026-10-09T22:25:21.660Z] "POST /notify HTTP/1.1" 200 - via_upstream - "-" 0 9 1 1 "-" "curl/8.22.0" "fa39714f-2a27-9f31-bd6b-84cc96d3b5dc" "notification-service" "10.244.0.8:8084" outbound|80||notification-service.accesslog-demo.svc.cluster.local 10.244.0.9:51998 10.96.92.93:80 10.244.0.9:57742 - default
 --- destination ---
-[...] "POST /notify HTTP/1.1" 200 - via_upstream - ... "notification-service" "10.244.0.12:8084" inbound|8084|| ...
+[2026-10-09T22:25:21.661Z] "POST /notify HTTP/1.1" 200 - via_upstream - "-" 0 9 0 0 "-" "curl/8.22.0" "fa39714f-2a27-9f31-bd6b-84cc96d3b5dc" "notification-service" "10.244.0.8:8084" inbound|8084|| 127.0.0.6:45761 10.244.0.8:8084 10.244.0.9:51998 outbound_.80_._.notification-service.accesslog-demo.svc.cluster.local default
 ```
 
-It is the same request, with the same status and the same flag, but a different **upstream cluster**. The client's proxy logged `outbound|80||…`, and the destination's proxy logged `inbound|8084||`. That field tells you which side of a connection a line came from, even when you see the line out of context in a log system.
+If the client's line shows an older request, wait two seconds and read the logs again: each proxy writes its access log in short batches, so the newest line can lag the request by about a second.
+
+It is the same request: both lines carry the same request ID, `fa39714f-…`. It has the same status and the same flag, but a different **upstream cluster**. The client's proxy logged `outbound|80||…`, and the destination's proxy logged `inbound|8084||`. That field tells you which side of a connection a line came from, even when you see the line out of context in a log system.
 
 ## The same idea in metrics
 
@@ -102,15 +105,15 @@ One line is a case; many lines are a pattern. A count of flags over a window of 
 
 ```sh
 kubectl -n accesslog-demo logs deploy/tester -c istio-proxy --tail=200 \
-  | awk '{print $6}' | sort | uniq -c | sort -rn
+  | grep '^\[' | awk '{print $6}' | sort | uniq -c | sort -rn
 ```
 
-Field `$6` is the flag in the default format. On a healthy playground the count shows only `-`. Here is how to read the shape of a count on a real cluster:
+Field `$6` is the flag in the default format. The `grep '^\['` keeps only access log lines, which start with a timestamp in square brackets; without it, the start-up messages of the proxy, which share the same log, add random words to the count. On a healthy playground the count shows only `-`. Here is how to read the shape of a count on a real cluster:
 
 | Count | Reading |
 | --- | --- |
 | mostly `-`, a few `UT` | healthy, with some slow requests |
-| a wall of `UF` | connectivity or mTLS, probably to one destination |
+| a wall of `UF` or `UC` | connectivity or mTLS, probably to one destination |
 | mixed `-` and `UO` | capacity: your own limits are rejecting load |
 | all `NC` | configuration: a route names something that does not exist |
 | all `-` with `5xx` statuses | not Istio: the application is failing |

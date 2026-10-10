@@ -50,13 +50,19 @@ istioctl proxy-config listener deploy/tester -n proxycfg-demo | head
 You should see something like:
 
 ```text
-ADDRESSES     PORT  MATCH                                                             DESTINATION
-10.96.0.10    53    ALL                                                               Cluster: outbound|53||kube-dns.kube-system.svc.cluster.local
-0.0.0.0       80    Trans: raw_buffer; App: http/1.1,h2c                              Route: 80
-0.0.0.0       80    ALL                                                               PassthroughCluster
-0.0.0.0       15001 ALL                                                               PassthroughCluster
-0.0.0.0       15006 Addr: *:15006                                                     Inline Route: /*
+ADDRESSES    PORT  MATCH                                                   DESTINATION
+10.96.0.10   53    ALL                                                     Cluster: outbound|53||kube-dns.kube-system.svc.cluster.local
+0.0.0.0      80    Trans: raw_buffer; App: http/1.1,h2c                    Route: 80
+0.0.0.0      80    ALL                                                     PassthroughCluster
+10.96.0.1    443   ALL                                                     Cluster: outbound|443||kubernetes.default.svc.cluster.local
+10.96.118.41 443   ALL                                                     Cluster: outbound|443||istiod.istio-system.svc.cluster.local
+10.96.161.85 443   ALL                                                     Cluster: outbound|443||istiod-revision-tag-default.istio-system.svc.cluster.local
+10.96.24.221 443   ALL                                                     Cluster: outbound|443||istio-egressgateway.istio-system.svc.cluster.local
+10.96.95.84  443   ALL                                                     Cluster: outbound|443||istio-ingressgateway.istio-system.svc.cluster.local
+10.96.0.10   9153  Trans: raw_buffer; App: http/1.1,h2c                    Route: kube-dns.kube-system.svc.cluster.local:9153
 ```
+
+The list is sorted by port, so the two catch-all listeners on 15001 and 15006 come after these first ten lines. The IP addresses on your cluster will differ.
 
 Read the `DESTINATION` column first. It says what happens next, and it is the hand-off from the listener stage to the route stage. The `0.0.0.0:80` line with `App: http/1.1,h2c` hands off to `Route: 80`, which is the name you query at the route stage. The `kube-dns` line on port 53 hands straight to a cluster and has no route stage: Envoy forwards that traffic as plain TCP bytes, with no HTTP routing.
 
@@ -77,7 +83,7 @@ The `MATCH` column is the rule. `Trans: raw_buffer; App: http/1.1,h2c` means "pl
 
 ## PassthroughCluster is not an error
 
-`PassthroughCluster` appears twice above. It is the mesh's default for traffic that has no configuration: forward the bytes to the original destination, unchanged, with no routing and no policy. Its opposite, `BlackHoleCluster`, drops such traffic instead.
+`PassthroughCluster` appears in the second line for port `80` above. It is the mesh's default for traffic that has no configuration: forward the bytes to the original destination, unchanged, with no routing and no policy. Its opposite, `BlackHoleCluster`, drops such traffic instead.
 
 Which one you get depends on the mesh-wide setting `outboundTrafficPolicy.mode`: `ALLOW_ANY` (passthrough, the default) or `REGISTRY_ONLY` (drop). `REGISTRY_ONLY` allows only destinations Istio knows about, that is Kubernetes Services and hosts added with a `ServiceEntry`. A `ServiceEntry` is the Istio resource that adds an outside host to the mesh's service registry. The setting matters for diagnosis:
 
@@ -102,15 +108,21 @@ istioctl proxy-config listener deploy/notification-service-v1 -n proxycfg-demo -
 You should see something like:
 
 ```text
-ADDRESSES  PORT  MATCH                                     DESTINATION
-0.0.0.0    80    Trans: raw_buffer; App: http/1.1,h2c      Route: 80
-0.0.0.0    80    ALL                                       PassthroughCluster
-
-ADDRESSES  PORT   MATCH                                    DESTINATION
-0.0.0.0    15006  Addr: *:8084                             Cluster: inbound|8084||
+ADDRESSES PORT MATCH                                DESTINATION
+0.0.0.0   80   Trans: raw_buffer; App: http/1.1,h2c Route: 80
+0.0.0.0   80   ALL                                  PassthroughCluster
+ADDRESSES PORT  MATCH                                                                                           DESTINATION
+0.0.0.0   15006 Addr: *:15006                                                                                   Non-HTTP/Non-TCP
+0.0.0.0   15006 Trans: tls; App: istio-http/1.0,istio-http/1.1,istio-h2                                         InboundPassthroughCluster
+0.0.0.0   15006 Trans: raw_buffer; App: http/1.1,h2c                                                            InboundPassthroughCluster
+0.0.0.0   15006 Trans: tls; App: TCP TLS                                                                        InboundPassthroughCluster
+0.0.0.0   15006 Trans: raw_buffer                                                                               InboundPassthroughCluster
+0.0.0.0   15006 Trans: tls                                                                                      InboundPassthroughCluster
+0.0.0.0   15006 Trans: tls; App: istio,istio-peer-exchange,istio-http/1.0,istio-http/1.1,istio-h2; Addr: *:8084 Cluster: inbound|8084||
+0.0.0.0   15006 Trans: raw_buffer; Addr: *:8084                                                                 Cluster: inbound|8084||
 ```
 
-The `tester` listener on port 80 is **outbound**: `tester` is a client, so it has a listener for a destination it might call. The `notification-service-v1` listener on 15006 is **inbound**: it matches on the original destination port `8084` and hands off to a cluster, not a route.
+The `tester` listener on port 80 is **outbound**: `tester` is a client, so it has a listener for a destination it might call. The `notification-service-v1` listener on 15006 is **inbound**, and it holds many filter chains. The last two lines match on the original destination port `8084`, one for mutual TLS from another sidecar (`Trans: tls`) and one for plain text (`Trans: raw_buffer`), and both hand off to the cluster `inbound|8084||`, not to a route. The lines above them catch connections to any other port and pass them to `InboundPassthroughCluster`, which forwards them unchanged.
 
 ## What a missing listener means
 

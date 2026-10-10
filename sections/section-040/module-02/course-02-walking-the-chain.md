@@ -15,7 +15,9 @@ istioctl analyze -n fivezerothree-demo
 You should see something like:
 
 ```text
-Error [IST0101] (VirtualService notification.fivezerothree-demo) Referenced host+subset in destinationrule not found: "notification-service+v2"
+Error [IST0101] (VirtualService fivezerothree-demo/notification) Referenced host+subset in destinationrule not found: "notification-service+v2"
+Error: Analyzers found issues when analyzing namespace: fivezerothree-demo.
+See https://istio.io/v1.30/docs/reference/config/analysis for more information about causes and resolutions.
 ```
 
 The code `IST0101` means a referenced resource does not exist. The message names both halves of the problem: the `VirtualService` refers to `notification-service+v2`, and no `DestinationRule` defines that subset. That is the same statement the `NC` flag made from the proxy's side, reached on its own from the configuration.
@@ -52,8 +54,8 @@ istioctl proxy-config cluster deploy/tester -n fivezerothree-demo | grep notific
 You should see something like:
 
 ```text
-notification-service.fivezerothree-demo.svc.cluster.local   80  -    outbound  EDS  notification.fivezerothree-demo
-notification-service.fivezerothree-demo.svc.cluster.local   80  v1   outbound  EDS  notification.fivezerothree-demo
+notification-service.fivezerothree-demo.svc.cluster.local      80        -          outbound      EDS              notification.fivezerothree-demo
+notification-service.fivezerothree-demo.svc.cluster.local      80        v1         outbound      EDS              notification.fivezerothree-demo
 ```
 
 There are two clusters: the one without a subset, and `v1`. There is no `v2` row. The route names a destination that does not exist in this proxy's configuration at all, which is what `NC` said, now confirmed from the configuration side. The last column names the `DestinationRule` that would have had to define it. At this point the diagnosis is complete. The endpoint stage is still worth checking once, because it teaches the difference the choice of fix depends on.
@@ -72,13 +74,12 @@ istioctl proxy-config endpoints deploy/tester -n fivezerothree-demo \
 You should see something like:
 
 ```text
-ENDPOINT   STATUS   OUTLIER CHECK   CLUSTER
-
-ENDPOINT             STATUS      OUTLIER CHECK     CLUSTER
-10.244.0.12:8084     HEALTHY     OK                outbound|80|v1|notification-service...
+ENDPOINT     STATUS     OUTLIER CHECK     CLUSTER
+ENDPOINT            STATUS      OUTLIER CHECK     CLUSTER
+10.244.0.8:8084     HEALTHY     OK                outbound|80|v1|notification-service.fivezerothree-demo.svc.cluster.local
 ```
 
-`v2` returns an empty table, but read *why* it is empty: there is no such cluster to have endpoints. `v1` has a healthy pod that has been waiting there all along. Nothing was ever wrong with the workload; the route named a destination that does not exist. The output looks the same for two different states, and telling them apart matters:
+`v2` returns only the header line, but read *why* it is empty: there is no such cluster to have endpoints. `v1` has a healthy pod that has been waiting there all along. Nothing was ever wrong with the workload; the route named a destination that does not exist. The output looks the same for two different states, and telling them apart matters:
 
 | State | Listed by `proxy-config cluster`? | Endpoints | Flag |
 | --- | --- | --- | --- |

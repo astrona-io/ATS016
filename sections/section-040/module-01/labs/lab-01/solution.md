@@ -132,16 +132,16 @@ The HTTP chain hands off to `Route: 80`. The second entry is the fallback for tr
 
 ```sh
 istioctl proxy-config route deploy/tester -n proxycfg-demo --name 80 -o json \
-  | grep -E '"exact_match"|"cluster"' | head
+  | grep -E '"exact"|"cluster": "outbound\|80\|v'
 ```
 
 ```text
-"exact_match": "true",
-"cluster": "outbound|80|v2|notification-service.proxycfg-demo.svc.cluster.local",
-"cluster": "outbound|80|v1|notification-service.proxycfg-demo.svc.cluster.local",
+                                        "exact": "true"
+                            "cluster": "outbound|80|v2|notification-service.proxycfg-demo.svc.cluster.local",
+                            "cluster": "outbound|80|v1|notification-service.proxycfg-demo.svc.cluster.local",
 ```
 
-The header match is attached to `v2`, and `v1` follows as the catch-all, in the order you wrote them.
+The `grep` keeps the value of the header match (`stringMatch.exact` in the JSON) and the subset clusters. The header match is attached to `v2`, and `v1` follows as the catch-all, in the order you wrote them.
 
 **Cluster**: read the four fields of each name, `direction|port|subset|fqdn`. Both subset clusters appeared in Step 2.
 

@@ -48,22 +48,28 @@ Run the four client-side stages in order, and write down the name each stage giv
 ```sh
 istioctl proxy-config listener deploy/tester -n proxycfg-demo --port 80
 istioctl proxy-config route deploy/tester -n proxycfg-demo --name 80 -o json \
-  | grep -E '"name"|"exact_match"|"prefix"|"cluster"' | head -20
+  | grep -E '"name"|"prefix"|"cluster"' | head -20
 ```
 
 You should see something like:
 
 ```text
-ADDRESSES  PORT  MATCH                                     DESTINATION
-0.0.0.0    80    Trans: raw_buffer; App: http/1.1,h2c      Route: 80
-0.0.0.0    80    ALL                                       PassthroughCluster
-
-  "name": "80",
-        "name": "testing",
-            "exact_match": "true",
-        "cluster": "outbound|80|v1|notification-service.proxycfg-demo.svc.cluster.local",
-        "cluster": "outbound|80|v1|notification-service.proxycfg-demo.svc.cluster.local",
+ADDRESSES PORT MATCH                                DESTINATION
+0.0.0.0   80   Trans: raw_buffer; App: http/1.1,h2c Route: 80
+0.0.0.0   80   ALL                                  PassthroughCluster
+        "name": "80",
+                "name": "istio-egressgateway.istio-system.svc.cluster.local:80",
+...
+                "name": "notification-service.proxycfg-demo.svc.cluster.local:80",
+                            "prefix": "/",
+                                    "name": "testing",
+                            "cluster": "outbound|80|v1|notification-service.proxycfg-demo.svc.cluster.local",
+                                        "name": "envoy.retry_host_predicates.previous_hosts",
+                            "prefix": "/"
+                            "cluster": "outbound|80|v1|notification-service.proxycfg-demo.svc.cluster.local",
 ```
+
+The output is shortened: the lines for the gateway virtual hosts are replaced by `...`.
 
 The listener hands off to `Route: 80`, and both rules in that route name the cluster `outbound|80|v1|notification-service.proxycfg-demo.svc.cluster.local`. Copy that name exactly, because the next two stages need it. Check that the cluster exists, then ask what it resolves to:
 
@@ -77,12 +83,11 @@ istioctl proxy-config endpoint deploy/tester -n proxycfg-demo \
 You should see something like:
 
 ```text
-SERVICE FQDN                                              PORT  SUBSET  DIRECTION   TYPE  DESTINATION RULE
-notification-service.proxycfg-demo.svc.cluster.local      80    -       outbound    EDS   notification.proxycfg-demo
-notification-service.proxycfg-demo.svc.cluster.local      80    v1      outbound    EDS   notification.proxycfg-demo
-
-ENDPOINT             STATUS      OUTLIER CHECK     CLUSTER
-10.244.0.12:8084     HEALTHY     OK                outbound|80|v1|notification-service.proxycfg-demo.svc.cluster.local
+SERVICE FQDN                                             PORT     SUBSET     DIRECTION     TYPE     DESTINATION RULE
+notification-service.proxycfg-demo.svc.cluster.local     80       -          outbound      EDS      notification.proxycfg-demo
+notification-service.proxycfg-demo.svc.cluster.local     80       v1         outbound      EDS      notification.proxycfg-demo
+ENDPOINT            STATUS      OUTLIER CHECK     CLUSTER
+10.244.0.8:8084     HEALTHY     OK                outbound|80|v1|notification-service.proxycfg-demo.svc.cluster.local
 ```
 
 The `v1` cluster exists, and it has one `HEALTHY` endpoint that this proxy has not removed. Every link in the chain holds, which is what a working proxy looks like.
@@ -94,7 +99,7 @@ The response flag in the access log points straight at a stage. Together with th
 | Symptom | Most likely stage | Because |
 | --- | --- | --- |
 | traffic works but no metrics, no policy | **1, listener** | it was never captured, or it fell to passthrough |
-| `404`, flag `NR` | **2, route** | no virtual host or rule matched |
+| `404`, flag `NR` | **2, route** | a virtual host matched, but none of its rules |
 | the wrong version answers | **2, route** | a rule matched, but not the one you meant |
 | `503`, flag `NC` | **3, cluster** | the route named a cluster that does not exist |
 | `503`, flag `UH` | **4, endpoint** | the cluster exists with nothing usable behind it |

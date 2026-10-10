@@ -66,10 +66,10 @@ kubectl -n metrics-demo exec deploy/notification-service-v1 -c istio-proxy -- \
 You should see something like:
 
 ```text
-istio_requests_total{reporter="destination",source_workload="tester",source_workload_namespace="metrics-demo",destination_workload="notification-service-v1",destination_service_name="notification-service",request_protocol="http",response_code="200",response_flags="-",connection_security_policy="mutual_tls"} 1
+istio_requests_total{reporter="destination",source_workload="tester",source_canonical_service="tester",source_canonical_revision="latest",source_workload_namespace="metrics-demo",source_principal="spiffe://cluster.local/ns/metrics-demo/sa/default",source_app="tester",source_version="unknown",source_cluster="Kubernetes",destination_workload="notification-service-v1",destination_workload_namespace="metrics-demo",destination_principal="spiffe://cluster.local/ns/metrics-demo/sa/default",destination_app="notification-service",destination_version="v1",destination_service="notification-service.metrics-demo.svc.cluster.local",destination_canonical_service="notification-service",destination_canonical_revision="v1",destination_service_name="notification-service",destination_service_namespace="metrics-demo",destination_cluster="Kubernetes",request_protocol="http",response_code="200",grpc_response_status="",response_flags="-",connection_security_policy="mutual_tls"} 1
 ```
 
-One line holds the caller, the callee, the protocol, the result, the response flag and whether the connection was encrypted. Every edge Kiali draws and every Grafana panel is built from lines like this one.
+The real line is long, because Istio adds a label for every part of both identities, such as `source_principal` and `destination_canonical_service`. Find the labels from the table in it: one line holds the caller, the callee, the protocol, the result, the response flag and whether the connection was encrypted. Every edge Kiali draws and every Grafana panel is built from lines like this one.
 
 `pilot-agent request GET` reads the sidecar proxy's administration page from inside the `istio-proxy` container. That is the second step of the path. It works with or without Prometheus, which makes it the right first check when a dashboard is empty.
 
@@ -106,14 +106,14 @@ You should see something like:
 
 ```text
 istio_request_duration_milliseconds_bucket{...,le="0.5"} 0
-istio_request_duration_milliseconds_bucket{...,le="1"} 1
-istio_request_duration_milliseconds_bucket{...,le="5"} 1
-istio_request_duration_milliseconds_bucket{...,le="10"} 1
-istio_request_duration_milliseconds_bucket{...,le="25"} 1
-istio_request_duration_milliseconds_bucket{...,le="50"} 1
+istio_request_duration_milliseconds_bucket{...,le="1"} 0
+istio_request_duration_milliseconds_bucket{...,le="5"} 0
+istio_request_duration_milliseconds_bucket{...,le="10"} 0
+istio_request_duration_milliseconds_bucket{...,le="25"} 0
+istio_request_duration_milliseconds_bucket{...,le="50"} 0
 ```
 
-The counts stop changing after `le="1"`. Every request so far finished in under a millisecond, so every larger bucket holds the same total. If you add a 500ms delay to some requests, the low buckets stay where they are and the counts only climb from `le="500"` upwards.
+The labels are shortened to `...` here. Each line is one bucket of one series, and the proxy keeps one series for every combination of labels, so the series you see first can differ. In this run all six counts are `0`: no request in this series finished within 50 milliseconds, so every one sits in a larger bucket. In another series the count may jump at a low bucket such as `le="1"` and then stay the same. Either way, a count that stays the same from one bucket to the next means no request finished between those two edges. If you add a 500ms delay to some requests, the low buckets stay where they are and the counts only climb from `le="500"` upwards.
 
 ## Querying Prometheus without a browser
 

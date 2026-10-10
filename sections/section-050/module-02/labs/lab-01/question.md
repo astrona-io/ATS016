@@ -6,7 +6,7 @@ Solve this question on: `terminal`
 
 ## Scenario
 
-Every request between the two workloads in the namespace `mtlsfail-demo` returns `503`. Both pods are `2/2 Running`. The destination's application log is empty, and so, the on-call engineer reports, is its **proxy** log.
+Every request between the two workloads in the namespace `mtlsfail-demo` returns `503`. Both pods are `2/2 Running`. The destination's application log is empty, and the on-call engineer reports that its **proxy** log shows no request either.
 
 ```sh
 kubectl -n mtlsfail-demo exec deploy/tester -- \
@@ -19,7 +19,7 @@ The security team set this namespace to `STRICT` mutual TLS (mTLS) last week, an
 
 In the namespace `mtlsfail-demo`:
 
-1. Read the access log on **both** proxies and write down the signature: the response flag, whether an upstream address is present, and which side logged nothing.
+1. Read the access log on **both** proxies and write down the signature: the response flag, whether an upstream address is present, and what each side logged.
 2. Find out what each end of the connection is configured to do. Read the *effective* mTLS mode of the destination, not a single object.
 3. Fix the mismatch, and prove the traffic is **encrypted**, not just working.
 

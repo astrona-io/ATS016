@@ -48,6 +48,7 @@ The `demo` profile already logs for the whole mesh, so the playground does not n
 kubectl -n accesslog-demo get telemetry access-logs -o yaml | sed -n '/^spec:/,$p'
 kubectl -n accesslog-demo exec deploy/tester -- \
   curl -s -o /dev/null -X POST http://notification-service/notify
+sleep 2
 kubectl -n accesslog-demo logs deploy/tester -c istio-proxy --tail=1
 ```
 
@@ -58,12 +59,12 @@ spec:
   accessLogging:
   - providers:
     - name: envoy
-[2026-09-27T10:02:11.401Z] "POST /notify HTTP/1.1" 200 - via_upstream - "-" 0 14 3 2 "-" "curl/8.4.0" "9c41..." "notification-service" "10.244.0.12:8084" outbound|80||notification-service.accesslog-demo.svc.cluster.local ...
+[2026-10-09T22:25:21.259Z] "POST /notify HTTP/1.1" 200 - via_upstream - "-" 0 9 6 5 "-" "curl/8.22.0" "3bc88af5-9463-9465-8763-bf38174c73de" "notification-service" "10.244.0.8:8084" outbound|80||notification-service.accesslog-demo.svc.cluster.local 10.244.0.9:51990 10.96.92.93:80 10.244.0.9:57726 - default
 ```
 
 `envoy` is the name of the built-in provider for the standard text access log. Providers are defined in `meshConfig.extensionProviders`, and the same `Telemetry` object can point at another provider, such as an OpenTelemetry collector, without any change to the workloads.
 
-The one request produced one line, written by the `tester` pod's **own** sidecar proxy. That is the `istio-proxy` container of the pod that sent the request, not of the pod that received it. This detail decides which `kubectl logs` command you run. It also becomes a diagnostic tool of its own once you compare both sides of a request.
+The `sleep 2` matters: each proxy writes its access log in short batches, so the line for a request can appear about a second after the response. Without the pause, `--tail=1` can show the previous request. The one request produced one line, written by the `tester` pod's **own** sidecar proxy. That is the `istio-proxy` container of the pod that sent the request, not of the pod that received it. This detail decides which `kubectl logs` command you run. It also becomes a diagnostic tool of its own once you compare both sides of a request.
 
 ## Turning it off again, for a smaller scope
 

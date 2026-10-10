@@ -21,7 +21,7 @@ kubectl -n istio-system get pods -l app.kubernetes.io/name=grafana
 
 All are `Running`. Kiali stores nothing: it reads Istio objects from the API server and metrics from Prometheus. So an empty graph means one of two things: Prometheus is missing, or there is no traffic. "The mesh is down" is neither of them.
 
-The graph is built from `istio_requests_total` over a time window. **No requests in the window means no edges, and a node with no edges is not drawn.** An idle service is invisible. Start a background load loop in the `tester` pod, about ten requests a second, and wait:
+The graph is built from `istio_requests_total` over a time window. **No requests in the window means no edges, and a node with no edges is not drawn.** An idle service is invisible. Start a background load loop in the `tester` pod that sends a request about every 0.1 seconds, and wait:
 
 ```sh
 kubectl -n obscapstone-demo exec deploy/tester -- sh -c \
@@ -50,24 +50,18 @@ About `0.4`: a number, not "it fails sometimes". `=~` is a regular-expression ma
 Group the rate by reporter and response code, then group the client-side errors by response flag:
 
 ```sh
-prom_query 'sum(rate(istio_requests_total{destination_workload="notification-service-v1"}[1m])) by (reporter, response_code)'
+prom_query 'sum(rate(istio_requests_total{destination_service_name="notification-service"}[1m])) by (reporter, response_code)'
 prom_query 'sum(rate(istio_requests_total{reporter="source",response_code=~"5.."}[1m])) by (response_flags)'
 ```
 
-```text
-{"reporter":"destination","response_code":"200"} 6.0
-{"reporter":"source","response_code":"200"}      6.0
-{"reporter":"source","response_code":"503"}      3.9
-```
-
-**The missing fourth series is the finding.** There is no `destination` line for `503`: the server never received those requests. Every request is counted twice, once by each proxy, and the difference between the two views is the diagnosis:
+Filter on the Service, `destination_service_name`, not on `destination_workload`. The client's proxy aborts the failing requests before it picks a pod, so they never carry a destination workload, and a filter on the workload hides them completely. The first query returns three series: `200` from both reporters, and `503` from `reporter="source"` only. **The missing fourth series is the finding.** There is no `destination` line for `503`: the server never received those requests. Every request is counted twice, once by each proxy, and the difference between the two views is the diagnosis:
 
 | Pattern | Conclusion |
 | --- | --- |
 | errors in `source` only | never arrived — client-side configuration, connectivity, or the client's own limits |
 | errors in both | arrived and failed there — destination policy or the application |
 
-The output above shows only the first query. The second query groups the same errors by `response_flags` and names `FI`, the Envoy flag for a request aborted by fault injection. So the fault is in the client's proxy configuration, not in the service everyone blames.
+The second query groups the same errors by `response_flags` and names `FI`, the Envoy flag for a request aborted by fault injection. So the fault is in the client's proxy configuration, not in the service everyone blames.
 
 ## Step 4: Find every configuration fault
 

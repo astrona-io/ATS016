@@ -12,21 +12,24 @@ echo '--- destination ---'
 kubectl -n mtlsfail-demo logs deploy/notification-service-v1 -c istio-proxy --tail=3
 ```
 
+The output looks something like this (shortened to the access log lines; the other lines are start-up messages of the proxy):
+
 ```text
-[...] "POST /notify HTTP/1.1" 503 UF upstream_reset_before_response_started{connection_termination} - "-" 0 95 3 - ... "10.244.0.12:8084" outbound|80||notification-service...
+[2026-10-09T22:26:48.133Z] "POST /notify HTTP/1.1" 503 UC upstream_reset_before_response_started{connection_termination} - "-" 0 95 1 - "-" "curl/8.22.0" "56fd0f76-70e7-9135-a60e-66799df83b62" "notification-service" "10.244.0.8:8084" outbound|80||notification-service.mtlsfail-demo.svc.cluster.local 10.244.0.9:45690 10.96.172.178:80 10.244.0.9:36914 - default
 --- destination ---
+[2026-10-09T22:26:48.133Z] "- - -" 0 NR filter_chain_not_found - "-" 0 0 0 - "-" "-" "-" "-" "-" - - 10.244.0.8:8084 10.244.0.9:45690 - -
 ```
 
-Four details together are the whole diagnosis:
+If the client's newest line is older than your request, wait two seconds and read the logs again: the proxy writes its access log in short batches. Four details together are the whole diagnosis:
 
 | Observation | Means |
 | --- | --- |
-| flag `UF` | upstream connection failure: the proxy could not set up a usable connection |
-| details `upstream_reset_before_response_started` | the connection was closed before any response began |
-| upstream host `10.244.0.12:8084` | an **address**, so the destination was found and reached |
-| destination logged **nothing** | the request never became a request there |
+| client flag `UC` | upstream connection termination: the connection was set up, then the other side closed it |
+| details `upstream_reset_before_response_started{connection_termination}` | the connection was closed before any response began |
+| upstream host `10.244.0.8:8084` | an **address**, so the destination was found and reached |
+| destination line `"- - -" 0 NR filter_chain_not_found` | a connection-level line, not a request: no filter chain on the inbound listener accepted the connection |
 
-The last row is evidence, not a gap. A proxy writes an access log line when a *request* completes. A handshake rejected at the transport layer happens one level below HTTP. So the failure is **below HTTP, on the receiving side**. That separates it from `NC` and `UH`, where the upstream host field would be `-`.
+The last row says where it failed. A proxy writes a request line when an HTTP request completes. Here the destination's inbound listener found no filter chain for a plain-text connection, because with `STRICT` every chain requires TLS, so it closed the connection one level below HTTP. So the failure is **below HTTP, on the receiving side**. That separates it from `NC` and `UH`, where the upstream host field would be `-`.
 
 ## Step 2: Rule out the look-alike first
 
@@ -96,23 +99,15 @@ kubectl -n mtlsfail-demo exec deploy/notification-service-v1 -c istio-proxy -- \
   | grep -o 'connection_security_policy="[^"]*"' | sort | uniq -c
 ```
 
-```text
-   4 connection_security_policy="mutual_tls"
-```
+Each output line is a count followed by one value of the label. After the fix, every series reports `connection_security_policy="mutual_tls"`. The first line may be an `INFO GOMEMLIMIT` message from `pilot-agent`; ignore it. The label means something on the **destination**: the receiving proxy is the one that knows how the connection was secured. `none` here would mean working, unencrypted traffic and a fix on the wrong end.
 
-The label means something on the **destination**: the receiving proxy is the one that knows how the connection was secured. `none` here would mean working, unencrypted traffic and a fix on the wrong end.
-
-Finally, read the log that was empty:
+Finally, read the destination's log again:
 
 ```sh
 kubectl -n mtlsfail-demo logs deploy/notification-service-v1 -c istio-proxy --tail=3
 ```
 
-```text
-[...] "POST /notify HTTP/1.1" 200 - via_upstream - ... inbound|8084|| ...
-```
-
-Requests now arrive and are served against the `inbound|8084||` cluster. Their absence was the signature; their presence is the proof.
+The newest line is now an HTTP request line, `"POST /notify HTTP/1.1" 200 - via_upstream`, served against the `inbound|8084||` cluster. During the failure there was only the `filter_chain_not_found` line; request lines are the proof that the connection now completes.
 
 Submit again. All three checks should pass:
 
@@ -123,7 +118,7 @@ astrona submit -c sections/section-050/module-02/labs/lab-01
 ## Common mistakes
 
 - Relaxing the `PeerAuthentication` to `PERMISSIVE` to make the error go away. That hides a client misconfiguration and weakens security for every caller.
-- Looking only at the destination. Its log is empty, and that emptiness is the clue.
+- Looking only at one side. The client's `UC` and the destination's `filter_chain_not_found` line only make sense together.
 - Forgetting that with no `tls` setting in a `DestinationRule`, the client uses mesh mTLS by default, so *adding* one can only make things worse here.
 - Confusing this with a caller outside the mesh. Check whether the client has a sidecar before you edit policy.
 - Deleting the `DestinationRule` instead of removing its TLS setting.

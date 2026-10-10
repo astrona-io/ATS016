@@ -11,6 +11,7 @@ Send one `POST`, then read the newest access log line of the client's proxy and 
 ```sh
 kubectl -n accesslog-demo exec deploy/tester -- \
   curl -s -o /dev/null -w '%{http_code}\n' -X POST http://notification-service/notify
+sleep 2
 echo '--- client ---'
 kubectl -n accesslog-demo logs deploy/tester -c istio-proxy --tail=1
 echo '--- destination ---'
@@ -72,6 +73,7 @@ Send twenty `POST` requests at the same time, then count the response flags in t
 ```sh
 kubectl -n accesslog-demo exec deploy/tester -- sh -c \
   'for i in $(seq 1 20); do curl -s -o /dev/null -X POST http://notification-service/notify & done; wait'
+sleep 2
 kubectl -n accesslog-demo logs deploy/tester -c istio-proxy --tail=20 \
   | awk '{print $6}' | sort | uniq -c | sort -rn
 ```

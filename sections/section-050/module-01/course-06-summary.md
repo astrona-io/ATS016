@@ -8,7 +8,7 @@ The access log is switched on for the whole mesh with `meshConfig.accessLogFile:
 
 A line in the default format has about twenty fields without labels. Six of them carry the diagnosis: the status and the response flag, the response code details, the duration against the upstream service time, the authority, the upstream host, and the upstream cluster. `via_upstream` in the details means the application answered. An upstream host of `-` means the proxy never made a connection. The request id is the same on both proxies' lines, so you can find one request on both sides.
 
-The flags form a model. `U` flags are about the upstream, `D` flags about the client, and `N` flags mean the proxy could not decide where to go. From `NR` and `NC` through `UH`, `UO` and `UF` to `UC` and `UT`, each flag marks how far the request got. A `-` with an error status points at the application, not at Istio. The upstream cluster shows which proxy wrote a line: `outbound|…` on the client and `inbound|…` on the destination.
+The flags form a model. `U` flags are about the upstream, `D` flags about the client, and `N` flags mean the proxy could not decide where to go. From `NR` and `NC` through `UH`, `UO` and `UF` to `UC` and `UT`, each flag marks how far the request got. Each proxy writes its access log in short batches, so wait a moment after a request before you read its line. A `-` with an error status points at the application, not at Istio. The upstream cluster shows which proxy wrote a line: `outbound|…` on the client and `inbound|…` on the destination.
 
 The client's proxy decides timeouts, circuit breaker rejections and routing misses, while the destination's proxy decides authorization. The key facts to remember are these:
 

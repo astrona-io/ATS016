@@ -39,19 +39,15 @@ Then check the result. Send one request to `/slow` and read the `tester` pod's n
 ```sh
 kubectl -n accesslog-demo exec deploy/tester -- \
   curl -s -o /dev/null -w '%{http_code}\n' -X POST http://notification-service/slow
+sleep 2
 kubectl -n accesslog-demo logs deploy/tester -c istio-proxy --tail=1
 ```
 
-You should see something like:
-
-```text
-504
-[...] "POST /slow HTTP/1.1" 504 UT response_timeout - "-" 0 24 1000 - ... "notification-service" "10.244.0.12:8084" outbound|80||notification-service.accesslog-demo.svc.cluster.local ...
-```
+The request returns `504`, and the newest line in the `tester` pod's log is the `POST /slow` request, with the status `504`, the flag `UT` and the details `response_timeout`.
 
 Three fields tell the whole story. The status is `504`, not `503`, because a timeout has its own status code. The flag is `UT`, with the details `response_timeout`. And the duration is about `1000` milliseconds: **the timeout, not the five-second wait**, because the client's proxy gave up after one second. The upstream host is an address, because the request did reach the destination; the client's proxy simply stopped waiting for the answer. The destination's proxy also writes a line for this request, usually with the flag `DC`, because the client's proxy closed the connection first.
 
-You may have seen a timeout example built with fault injection instead: a `fault.delay` of five seconds and a `timeout` of one second on the same route rule. Fault injection is a `VirtualService` feature that makes the proxy delay or fail requests on purpose. That combination does not produce `UT`. In Envoy, the fault filter runs **before** the router, and the router starts the route timeout only when the request reaches it. So the delay is over before the timeout clock starts. The authors of this course measured exactly that: the result was a `200` with the flag `DI` (delay injected) after about five seconds, and no `UT`. A slow upstream behind the route, as in this example, is what produces `UT`.
+You may have seen a timeout example built with fault injection instead: a `fault.delay` of five seconds and a `timeout` of one second on the same route rule. Fault injection is a `VirtualService` feature that makes the proxy delay or fail requests on purpose. That combination does not produce `UT`. In Envoy, the fault filter runs **before** the router, and the router starts the route timeout only when the request reaches it. So the delay is over before the timeout clock starts, and the request ends with the flag `DI` (delay injected) instead of `UT`. A slow upstream behind the route, as in this example, is what produces `UT`.
 
 ## UO: a circuit breaker
 
@@ -95,18 +91,12 @@ Then check the result. Send thirty requests at the same time, count the `UO` lin
 ```sh
 kubectl -n accesslog-demo exec deploy/tester -- sh -c \
   'for i in $(seq 1 30); do curl -s -o /dev/null -X POST http://notification-service/notify & done; wait'
+sleep 2
 kubectl -n accesslog-demo logs deploy/tester -c istio-proxy --tail=30 | grep -c ' UO '
 kubectl -n accesslog-demo logs deploy/tester -c istio-proxy --tail=30 | grep ' UO ' | head -1
 ```
 
-You should see something like:
-
-```text
-12
-[...] "POST /notify HTTP/1.1" 503 UO upstream_overflow - "-" 0 81 0 - ... "-" outbound|80||notification-service...
-```
-
-Some of the thirty requests were rejected. The exact number depends on timing and changes from run to run, which is normal for a limit on requests at the same time. Look at the duration, `0` milliseconds, and the upstream host, `-`. The `tester` pod's proxy refused the request at once, without contacting the destination. That is how you tell `UO` apart from a real upstream problem on a latency graph.
+The first command prints how many of the last thirty lines carry `UO`, and the second prints one of them: a `503` with the flag `UO` and the details `upstream_overflow`. Some of the thirty requests were rejected. The exact number depends on timing and changes from run to run, which is normal for a limit on requests at the same time. Look at the duration, `0` milliseconds, and the upstream host, `-`. The `tester` pod's proxy refused the request at once, without contacting the destination. That is how you tell `UO` apart from a real upstream problem on a latency graph.
 
 The three `connectionPool` fields do different jobs. `maxConnections` limits the number of open TCP (Transmission Control Protocol) connections to the destination. `http1MaxPendingRequests` limits the requests that wait in a queue for a free connection. `maxRequestsPerConnection` sets how many requests one connection carries before the proxy closes it. Set to `1`, they make the limit easy to reach; in production they are a deliberate way to shed load.
 
@@ -145,6 +135,7 @@ Then check the result. Send one request to `/notify` and read the newest line:
 ```sh
 kubectl -n accesslog-demo exec deploy/tester -- \
   curl -s -o /dev/null -w '%{http_code}\n' -X POST http://notification-service/notify
+sleep 2
 kubectl -n accesslog-demo logs deploy/tester -c istio-proxy --tail=1
 ```
 
@@ -152,7 +143,7 @@ You should see something like:
 
 ```text
 404
-[...] "POST /notify HTTP/1.1" 404 NR route_not_found - "-" 0 0 0 - "-" "curl/8.4.0" "..." "notification-service" "-" - - ...
+[2026-10-09T22:25:26.047Z] "POST /notify HTTP/1.1" 404 NR route_not_found - "-" 0 0 0 - "-" "curl/8.22.0" "dfcc5add-1517-9864-b6b5-ddccd8150d28" "notification-service" "-" - - 10.96.92.93:80 10.244.0.9:57964 - -
 ```
 
 The status is `404`, not `503`, and the difference matters. The proxy's listener accepted the connection, and only the routing step failed, so there was no upstream that could be unavailable. The upstream host and the upstream cluster are both `-`, because the proxy never chose a destination.

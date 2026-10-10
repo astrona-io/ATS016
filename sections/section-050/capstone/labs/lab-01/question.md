@@ -17,7 +17,7 @@ There are **two** independent faults, and the second one hides behind the first:
 
 ## Your task
 
-1. Read the access log on **both** proxies and write down the first signature: the response flag, whether an upstream address is present, and which side logged nothing.
+1. Read the access log on **both** proxies and write down the first signature: the response flag, whether an upstream address is present, and what each side logged.
 2. Fix the first fault, then repeat step 1. The signature will have changed; read the new one, including the response code details.
 3. Fix the second fault so the documented intent holds.
 

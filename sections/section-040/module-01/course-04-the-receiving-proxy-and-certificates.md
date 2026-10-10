@@ -31,21 +31,22 @@ The receiving side is simpler than the sending side. There is one inbound listen
 <!-- astrona:playground:renew -->
 
 ```sh
-istioctl proxy-config listener deploy/notification-service-v1 -n proxycfg-demo --port 15006 | head -5
+istioctl proxy-config listener deploy/notification-service-v1 -n proxycfg-demo --port 15006 | grep -E 'PORT|8084'
 istioctl proxy-config cluster deploy/notification-service-v1 -n proxycfg-demo | grep inbound
 ```
 
 You should see something like:
 
 ```text
-ADDRESSES  PORT   MATCH                                                    DESTINATION
-0.0.0.0    15006  Addr: *:8084                                             Cluster: inbound|8084||
-
-SERVICE FQDN   PORT  SUBSET  DIRECTION  TYPE          DESTINATION RULE
-               8084  -       inbound    ORIGINAL_DST
+ADDRESSES PORT  MATCH                                                                                           DESTINATION
+0.0.0.0   15006 Trans: tls; App: istio,istio-peer-exchange,istio-http/1.0,istio-http/1.1,istio-h2; Addr: *:8084 Cluster: inbound|8084||
+0.0.0.0   15006 Trans: raw_buffer; Addr: *:8084                                                                 Cluster: inbound|8084||
+                                                               8084      -          inbound       ORIGINAL_DST     
 ```
 
-The inbound cluster is named `inbound|8084||`. It uses the same four-field naming as outbound clusters, with no FQDN and no subset, because the destination is this pod's own application. Its type is `ORIGINAL_DST`: it sends the connection on to the address it was first sent to, which is how one listener serves every application port. The `MATCH` value `Addr: *:8084` is the filter chain match on that recorded destination port.
+The `grep` keeps the header line of the listener table and the filter chains for port `8084`; the 15006 listener also holds chains for every other port, which pass traffic to `InboundPassthroughCluster`. The second command prints the inbound cluster line without its header: the `SERVICE FQDN` column is empty, the port is `8084`, the direction is `inbound` and the type is `ORIGINAL_DST`.
+
+The inbound cluster is named `inbound|8084||`. It uses the same four-field naming as outbound clusters, with no FQDN and no subset, because the destination is this pod's own application. Its type is `ORIGINAL_DST`: it sends the connection on to the address it was first sent to, which is how one listener serves every application port. The `Addr: *:8084` part of each `MATCH` value is the filter chain match on that recorded destination port. One chain takes mutual TLS from other sidecars (`Trans: tls`), the other takes plain text (`Trans: raw_buffer`).
 
 A missing `inbound|<port>||` cluster is a clear finding: traffic arrives at the pod and never reaches the container. The usual causes are a Service that does not expose that port, or a port whose protocol could not be worked out.
 
@@ -56,7 +57,21 @@ istioctl proxy-config listener deploy/notification-service-v1 -n proxycfg-demo \
   --port 15006 -o json | grep -E '"name": "envoy\.filters' | sort -u
 ```
 
-The list shows the network and HTTP filters this proxy runs on inbound connections. When an `AuthorizationPolicy` selects the workload, Istio adds the authorization filter `envoy.filters.http.rbac` to these chains; this playground has no `AuthorizationPolicy`, so do not expect it here. The TLS settings that carry out mTLS are part of the same filter chains. When a destination refuses a connection because of an mTLS mismatch, this listener is the object doing the refusing.
+You should see something like:
+
+```text
+                                    "name": "envoy.filters.http.cors",
+                                    "name": "envoy.filters.http.fault",
+                                    "name": "envoy.filters.http.grpc_stats",
+                                    "name": "envoy.filters.http.router",
+                        "name": "envoy.filters.network.http_connection_manager",
+                        "name": "envoy.filters.network.tcp_proxy",
+                "name": "envoy.filters.listener.http_inspector",
+                "name": "envoy.filters.listener.original_dst",
+                "name": "envoy.filters.listener.tls_inspector",
+```
+
+The list shows the listener, network and HTTP filters this proxy runs on inbound connections. `original_dst` reads the recorded destination, `tls_inspector` and `http_inspector` detect the protocol, `http_connection_manager` handles HTTP, and `router` sends the request on. When an `AuthorizationPolicy` selects the workload, Istio adds the authorization filter `envoy.filters.http.rbac` to these chains; this playground has no `AuthorizationPolicy`, so do not expect it here. The TLS settings that carry out mTLS are part of the same filter chains. When a destination refuses a connection because of an mTLS mismatch, this listener is the object doing the refusing.
 
 ## Certificates
 
@@ -69,9 +84,9 @@ istioctl proxy-config secret deploy/tester -n proxycfg-demo
 You should see something like:
 
 ```text
-RESOURCE NAME     TYPE           STATUS     VALID CERT     SERIAL NUMBER    NOT AFTER                NOT BEFORE
-default           Cert Chain     ACTIVE     true           2f1a...          2026-09-28T09:14:22Z     2026-09-27T09:12:22Z
-ROOTCA            CA             ACTIVE     true           7c04...          2036-09-24T08:50:11Z     2026-09-26T08:50:11Z
+RESOURCE NAME     TYPE           STATUS     VALID CERT     SERIAL NUMBER                        NOT AFTER                NOT BEFORE
+default           Cert Chain     ACTIVE     true           0bf42fc131ddcc3b09b89bc411bec754     2026-10-10T22:22:23Z     2026-10-09T22:20:23Z
+ROOTCA            CA             ACTIVE     true           6c048900534eb2b2991ab9a59cbbd9a2     2036-10-06T22:22:07Z     2026-10-09T22:22:07Z
 ```
 
 `default` is this workload's own certificate. It is valid for only about **24 hours**: `istiod` signs short-lived workload certificates, and the Istio agent in the pod renews them before they expire. `ROOTCA` is the mesh root certificate, valid for years. `VALID CERT: false`, a `NOT AFTER` time in the past, or an empty list is a definite answer, not a hint.

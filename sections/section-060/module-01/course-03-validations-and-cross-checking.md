@@ -51,14 +51,15 @@ Then check the result with the analyzer:
 istioctl analyze -n kiali-demo
 ```
 
-You should see something like this (shortened to the two messages):
+You should see something like this (shortened to the messages):
 
 ```text
-Error [IST0101] (VirtualService broken.kiali-demo) Referenced gateway not found: "does-not-exist"
-Error [IST0101] (VirtualService broken.kiali-demo) Referenced host+subset in destinationrule not found: "notification-service+nonexistent"
+Error [IST0101] (VirtualService kiali-demo/broken) Referenced gateway not found: "does-not-exist"
+Error [IST0101] (VirtualService kiali-demo/broken) Referenced host+subset in destinationrule not found: "notification-service+nonexistent"
+Warning [IST0132] (VirtualService kiali-demo/broken) one or more host [notification-service] defined in VirtualService kiali-demo/broken not found in Gateway kiali-demo/does-not-exist.
 ```
 
-There are two messages, both `IST0101` on the object `broken`. In Kiali's Istio Config view the same two appear as a red validation icon on `broken`, each linking to the field at fault. When Kiali and the analyzer agree, you also learn something useful: Kiali is reading the cluster you think it is reading.
+There are three messages, all on the object `broken`. The two `IST0101` errors are the broken references. The `IST0132` warning follows from the first one: the `VirtualService` binds to a gateway, and that gateway does not list the host, because it does not exist. In Kiali's Istio Config view the two errors appear as a red validation icon on `broken`, each linking to the field at fault. When Kiali and the analyzer agree, you also learn something useful: Kiali is reading the cluster you think it is reading.
 
 The `broken` object does not conflict with the fault-injection `VirtualService` named `notification`, even though both name the host `notification-service`. `broken` binds only to the gateway `does-not-exist`, so it does not apply to the sidecar proxies, and the analyzer's host-conflict check (`IST0109`) only compares objects that apply to the sidecar proxies.
 
@@ -81,10 +82,10 @@ kubectl -n kiali-demo exec deploy/notification-service-v1 -c istio-proxy -- \
 You should see something like:
 
 ```text
-   2 connection_security_policy="mutual_tls"
+   1 connection_security_policy="mutual_tls"
 ```
 
-The value is `mutual_tls`, on the **destination's** own metrics. That is where the label means something: the receiving proxy knows how the connection was secured. On the caller's side, Istio sets this label to `unknown`, because the client proxy cannot fill it in reliably. The padlock in the Kiali page and this output are the same fact, one drawn and one raw.
+The number in front counts the metric series that carry this value; every series on this proxy says `mutual_tls`. The value is `mutual_tls`, on the **destination's** own metrics. That is where the label means something: the receiving proxy knows how the connection was secured. On the caller's side, Istio sets this label to `unknown`, because the client proxy cannot fill it in reliably. The padlock in the Kiali page and this output are the same fact, one drawn and one raw.
 
 ## Cross-checking, as a habit
 
@@ -117,8 +118,8 @@ istioctl analyze -n kiali-demo
 You should see something like:
 
 ```text
-virtualservice.networking.istio.io "broken" deleted
-virtualservice.networking.istio.io "notification" deleted
+virtualservice.networking.istio.io "broken" deleted from kiali-demo namespace
+virtualservice.networking.istio.io "notification" deleted from kiali-demo namespace
 200
 ✔ No validation issues found when analyzing namespace: kiali-demo.
 ```

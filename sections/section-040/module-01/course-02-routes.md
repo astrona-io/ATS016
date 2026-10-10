@@ -25,7 +25,7 @@ There is one route configuration per port, and inside it there are many **virtua
 
 Envoy picks the virtual host by matching the request's `Host` header (or the HTTP/2 `:authority` header) against each virtual host's `domains` list. It does **not** pick by the IP address the connection went to.
 
-A concrete case shows the effect. A client connects to `notification-service` but sets `Host: nosuchhost.local`. No virtual host has that domain, so the client's sidecar proxy answers `404` with the response flag `NR` (no route), even though the packets went to the right address. A response flag is the short code Envoy writes in its access log to say why a request ended the way it did. The general rule is simple: **change the `Host` header and you change the routing.**
+A concrete case shows the effect. A client connects to `notification-service` but sets `Host: nosuchhost.local`. No virtual host for a Service has that domain, so the request does not reach `notification-service`'s rules, even though the packets went to the right address. With the default `outboundTrafficPolicy` of `ALLOW_ANY`, the route configuration also holds a catch-all virtual host named `allow_any` that matches every domain and passes the request to `PassthroughCluster`, unchanged and without routing. A request ends with `404` and the response flag `NR` (no route) when a virtual host matched but none of its rules did, for example when a `VirtualService` matches only some paths. A response flag is the short code Envoy writes in its access log to say why a request ended the way it did. The general rule is simple: **change the `Host` header and you change the routing.**
 
 Istio builds the `domains` list for you. It holds the short name, the name with the namespace, the fully qualified domain name (FQDN), and the ClusterIP. That is why `curl http://notification-service/` works from inside the same namespace: the short name is one of the domains.
 
@@ -42,11 +42,14 @@ istioctl proxy-config route deploy/tester -n proxycfg-demo --name 80
 You should see something like:
 
 ```text
-NAME  VHOST NAME                                              DOMAINS                                    MATCH     VIRTUAL SERVICE
-80    notification-service.proxycfg-demo.svc.cluster.local:80  notification-service, 10.96.x.x           /*        notification.proxycfg-demo
+NAME     VHOST NAME                                                  DOMAINS                                                                                                 MATCH     VIRTUAL SERVICE
+80       istio-egressgateway.istio-system.svc.cluster.local:80       istio-egressgateway.istio-system.svc.cluster.local., istio-egressgateway.istio-system + 1 more...       /*        
+80       istio-ingressgateway.istio-system.svc.cluster.local:80      istio-ingressgateway.istio-system.svc.cluster.local., istio-ingressgateway.istio-system + 1 more...     /*        
+80       notification-service.proxycfg-demo.svc.cluster.local:80     notification-service.proxycfg-demo.svc.cluster.local., notification-service + 2 more...                 /*        notification.proxycfg-demo
+80       notification-service.proxycfg-demo.svc.cluster.local:80     notification-service.proxycfg-demo.svc.cluster.local., notification-service + 2 more...                 /*        notification.proxycfg-demo
 ```
 
-There are five columns, and the last one is the one to read first. `VIRTUAL SERVICE` names the Istio object that produced this route. An **empty** value there means Istio built a default route from the Service alone. That is a fast, exact way to find out that your `VirtualService` does not apply to this host, without reading any YAML.
+The table has one line per rule, so the `notification-service` virtual host appears twice: once for each rule in its `VirtualService`. The two gateway lines are other Services on port 80 that this proxy also knows about. There are five columns, and the last one is the one to read first. `VIRTUAL SERVICE` names the Istio object that produced this route. An **empty** value there means Istio built a default route from the Service alone. That is a fast, exact way to find out that your `VirtualService` does not apply to this host, without reading any YAML.
 
 `--name 80` picks the route configuration by the name the listener gave you. Without it you get every route configuration the proxy holds. `--name` also accepts the inbound form (`inbound|8084||`). On a gateway the names are different again, for example `http.8080`, because they follow the gateway's server blocks rather than plain ports.
 
@@ -54,20 +57,25 @@ The `MATCH` column shows `/*` for almost every route, and that is not the whole 
 
 ```sh
 istioctl proxy-config route deploy/tester -n proxycfg-demo --name 80 -o json \
-  | grep -E '"name"|"exact_match"|"prefix"|"cluster"' | head -20
+  | grep -E '"name"|"prefix"|"cluster"' | head -20
 ```
 
-You should see something like:
+You should see something like this (shortened: the lines for the gateway virtual hosts are replaced by `...`):
 
 ```text
-  "name": "80",
-        "name": "testing",
-            "exact_match": "true",
-        "cluster": "outbound|80|v1|notification-service.proxycfg-demo.svc.cluster.local",
-        "cluster": "outbound|80|v1|notification-service.proxycfg-demo.svc.cluster.local",
+        "name": "80",
+                "name": "istio-egressgateway.istio-system.svc.cluster.local:80",
+...
+                "name": "notification-service.proxycfg-demo.svc.cluster.local:80",
+                            "prefix": "/",
+                                    "name": "testing",
+                            "cluster": "outbound|80|v1|notification-service.proxycfg-demo.svc.cluster.local",
+                                        "name": "envoy.retry_host_predicates.previous_hosts",
+                            "prefix": "/"
+                            "cluster": "outbound|80|v1|notification-service.proxycfg-demo.svc.cluster.local",
 ```
 
-There are two routes, in the order your `VirtualService` declared them. The first is guarded by an exact match on the `testing` header; the second has no condition. This is the view in which a shadowed rule becomes visible. A shadowed rule is one listed below a rule with no condition: Envoy checks rules in order and stops at the first match, so the shadowed rule can never be reached.
+Inside the `notification-service` virtual host there are two routes, in the order your `VirtualService` declared them. The first has a header condition named `testing`; its value sits a few lines further down in the JSON, under `stringMatch.exact`. The second has no condition, only the prefix `/`. The line `envoy.retry_host_predicates.previous_hosts` belongs to the retry settings Istio adds to every route, and you can ignore it here. This is the view in which a shadowed rule becomes visible. A shadowed rule is one listed below a rule with no condition: Envoy checks rules in order and stops at the first match, so the shadowed rule can never be reached.
 
 For anything more than a quick `grep`, pipe `-o json` into `jq`. The route list is at `.[].dynamicRouteConfigs[].routeConfig.virtualHosts[].routes[]`, and pulling `{match, route: {cluster}}` from each entry gives you the rule list in a readable shape.
 
@@ -79,7 +87,8 @@ That separation is why each failure looks different, and why it pays to check th
 
 | At the route stage | Symptom |
 | --- | --- |
-| no virtual host matched the `Host` header | `404`, flag `NR` |
+| no Service virtual host matched the `Host` header | passed to `PassthroughCluster` (with `ALLOW_ANY`) |
+| a virtual host matched, but none of its rules | `404`, flag `NR` |
 | a rule matched, but the wrong one | the wrong version answers; a `200` from the wrong place |
 | the rule you wrote is never checked (shadowed) | your rule has no effect at all |
 | the named cluster does not exist | `503`, but that failure belongs to the cluster stage |

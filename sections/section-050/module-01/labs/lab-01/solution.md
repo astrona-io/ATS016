@@ -109,6 +109,7 @@ Send one request and read the newest access log line of the `tester` pod's proxy
 ```sh
 kubectl -n accesslog-demo exec deploy/tester -- \
   curl -s -o /dev/null -w '%{http_code}\n' -X POST http://notification-service/notify
+sleep 2
 kubectl -n accesslog-demo logs deploy/tester -c istio-proxy --tail=1
 ```
 

@@ -15,7 +15,7 @@ The first module teaches that line: how to switch logging on, how to read the fi
 - Producing a timeout, a circuit breaker rejection, a routing miss and an authorization denial on purpose.
 - Why an `AuthorizationPolicy` denial is only explained on the destination's proxy, in the response code details.
 - The two objects that set up mTLS (`PeerAuthentication` for the server, `DestinationRule` for the client) and which combinations fail.
-- The signature of `UF` on the client's proxy with nothing on the destination's proxy, and why the destination logs nothing.
+- The signature of `UC` on the client's proxy with `filter_chain_not_found` on the destination's proxy, and why the destination logs no request.
 - Why no `DestinationRule` at all is the safe default for traffic inside the mesh.
 - Proving traffic is encrypted, not only working, with `connection_security_policy`.
 

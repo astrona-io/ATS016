@@ -18,9 +18,9 @@ You should see something like:
 
 ```text
 503
-NAME                                      READY   STATUS    RESTARTS   AGE
-notification-service-v1-6c9f8b7d5-x2kqp   2/2     Running   0          6m
-tester-6d9f7b8c5-hj4kz                    2/2     Running   0          6m
+NAME                                       READY   STATUS    RESTARTS   AGE
+notification-service-v1-54dd46d4b6-nz8f7   2/2     Running   0          10s
+tester-69699fd775-4fwhz                    2/2     Running   0          10s
 ```
 
 The request fails with `503`, and the destination is `2/2 Running` with no restarts. That rules out the obvious causes: the application is up, it has a sidecar proxy, and nothing has crashed and restarted. Whatever refused this request did it somewhere between the two pods, or before the request left the first one. The `2/2` matters here. A `1/1` pod would mean the destination has no sidecar proxy at all, so it could not take part in mesh routing, and that is a different investigation.
@@ -63,11 +63,17 @@ The client proxy's access log is that proxy's own record of the request. Read th
 kubectl -n fivezerothree-demo logs deploy/tester -c istio-proxy --tail=5
 ```
 
-You should see something like this (the line is shortened):
+You should see something like:
 
 ```text
-[2026-09-27T09:31:44.812Z] "POST /notify HTTP/1.1" 503 NC cluster_not_found - "-" ... "curl/8.4.0" "b1f0..." "notification-service" "-" - - 10.96.44.31:80 10.244.0.9:41234 - default
+2026-10-09T22:23:47.850294Z	info	cache	returned workload trust anchor from cache	ttl=23h59m59.149709307s
+2026-10-09T22:23:47.850441Z	info	cache	returned workload trust anchor from cache	ttl=23h59m59.149558848s
+2026-10-09T22:23:48.025271Z	info	Readiness succeeded in 280.949789ms
+2026-10-09T22:23:48.025490Z	info	Envoy proxy is ready
+[2026-10-09T22:23:56.668Z] "POST /notify HTTP/1.1" 503 NC cluster_not_found - "-" 0 0 0 - "-" "curl/8.22.0" "45585c55-a0d3-9fee-9965-0f467034a873" "notification-service" "-" - - 10.96.187.226:80 10.244.0.9:56710 - -
 ```
+
+The first four lines are the proxy's own start-up messages. The last line, in square brackets, is the access log line for your request.
 
 Read it from left to right and stop at the field after the status code:
 
@@ -76,7 +82,7 @@ Read it from left to right and stop at the field after the status code:
    the request              status   FLAG     response code details        upstream host
 ```
 
-`NC` says the proxy produced this `503`, and names the reason: the route named a cluster that the proxy does not have. Two more fields on the line carry weight. The **response code details** (`cluster_not_found` here) are Envoy's explanation in words, and for some failures, such as authorization, they are the whole answer. The **upstream host** field is `-`, which means no connection was ever attempted. On a successful request it holds an address such as `10.244.0.12:8084`, which proves the proxy connected to a pod.
+`NC` says the proxy produced this `503`, and names the reason: the route named a cluster that the proxy does not have. Two more fields on the line carry weight. The **response code details** (`cluster_not_found` here) are Envoy's explanation in words, and for some failures, such as authorization, they are the whole answer. The **upstream host** field is `-`, which means no connection was ever attempted. On a successful request it holds an address such as `10.244.0.8:8084`, which proves the proxy connected to a pod.
 
 ## The log that stays empty
 

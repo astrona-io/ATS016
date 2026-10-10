@@ -35,9 +35,9 @@ istioctl proxy-config cluster deploy/tester -n proxycfg-demo \
 You should see something like:
 
 ```text
-SERVICE FQDN                                              PORT  SUBSET  DIRECTION   TYPE  DESTINATION RULE
-notification-service.proxycfg-demo.svc.cluster.local      80    -       outbound    EDS   notification.proxycfg-demo
-notification-service.proxycfg-demo.svc.cluster.local      80    v1      outbound    EDS   notification.proxycfg-demo
+SERVICE FQDN                                             PORT     SUBSET     DIRECTION     TYPE     DESTINATION RULE
+notification-service.proxycfg-demo.svc.cluster.local     80       -          outbound      EDS      notification.proxycfg-demo
+notification-service.proxycfg-demo.svc.cluster.local     80       v1         outbound      EDS      notification.proxycfg-demo
 ```
 
 Both the cluster without a subset and the `v1` subset cluster exist. The last column names the `DestinationRule` behind each one. An empty value there means the cluster was built from the Service alone, with default settings, just as an empty `VIRTUAL SERVICE` column does at the route stage. `--fqdn` is what makes this command usable: without it you get every cluster the proxy knows, which on a real cluster is hundreds of rows. `--port` and `--subset` narrow it further.
@@ -67,8 +67,8 @@ istioctl proxy-config endpoint deploy/tester -n proxycfg-demo \
 You should see something like:
 
 ```text
-ENDPOINT             STATUS      OUTLIER CHECK     CLUSTER
-10.244.0.12:8084     HEALTHY     OK                outbound|80|v1|notification-service.proxycfg-demo.svc.cluster.local
+ENDPOINT            STATUS      OUTLIER CHECK     CLUSTER
+10.244.0.8:8084     HEALTHY     OK                outbound|80|v1|notification-service.proxycfg-demo.svc.cluster.local
 ```
 
 There is one healthy endpoint, on the **container** port 8084 rather than the Service port 80. That is not a mistake. The sidecar proxy connects straight to the pod, so the Service port appears only in the cluster *name*, while the connection goes to the target port. `kube-proxy` plays no part here: the sidecar proxy holds the endpoint list and picks the pod itself.

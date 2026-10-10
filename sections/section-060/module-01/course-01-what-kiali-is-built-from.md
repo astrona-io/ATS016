@@ -34,10 +34,9 @@ You should see something like:
 
 ```text
 NAME                     READY   STATUS    RESTARTS   AGE
-kiali-5d7f8b6c4-t9wqx    1/1     Running   0          8m
-
+kiali-59dc8c5495-cj9wb   1/1     Running   0          61s
 NAME                          READY   STATUS    RESTARTS   AGE
-prometheus-7c9b8d5f4-k3m2p    2/2     Running   0          8m
+prometheus-6447557fdc-t55l9   2/2     Running   0          62s
 ```
 
 Both must be `Running`. A running Kiali with no Prometheus shows an empty graph and no useful error. That is the most common "Kiali is broken" report, and Kiali is not the broken part.
@@ -91,10 +90,10 @@ kubectl -n kiali-demo exec deploy/tester -c istio-proxy -- \
 You should see something like:
 
 ```text
-istio_requests_total{reporter="source",source_workload="tester",destination_workload="notification-service-v1",response_code="200",...} 98
+istio_requests_total{reporter="source",source_workload="tester",...,destination_workload="notification-service-v1",...,response_code="200",...,connection_security_policy="unknown"} 98
 ```
 
-That one line is one edge of the graph, before Kiali has drawn anything: a source workload, a destination workload, a response code and a count. `pilot-agent request GET stats/prometheus` asks the sidecar proxy for its metrics page from inside the `istio-proxy` container. Five requests a second is plenty, because the graph draws a rate, not a total; it needs traffic that keeps going, not a lot of it.
+The output is shortened: the real line carries many more labels, shown here as `...`. That one line is one edge of the graph, before Kiali has drawn anything: a source workload, a destination workload, a response code and a count. `pilot-agent request GET stats/prometheus` asks the sidecar proxy for its metrics page from inside the `istio-proxy` container. Five requests a second is plenty, because the graph draws a rate, not a total; it needs traffic that keeps going, not a lot of it.
 
 This number came from the proxy directly, not from Prometheus. The proxy is where the number starts. Prometheus collects it about every 15 seconds, and Kiali then asks Prometheus. Each step adds a delay, so new traffic takes a moment to show up in the graph. Leave the loop running, because the graph needs it; you stop it when you clean up.
 

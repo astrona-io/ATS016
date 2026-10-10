@@ -19,12 +19,13 @@ This is a **playground**, not a lab. It starts a fresh cluster, installs Istio a
 
 ## Helpers
 
-Paste these once in each new terminal. `send_request` sends one `POST` to the path you name (default `/notify`) from the `tester` pod and prints the status code. `client_log` and `destination_log` print the newest access log lines of the `tester` pod's proxy and of the destination's proxy; the argument is the number of lines and defaults to `1`. `count_flags` counts the response flags in the `tester` pod's last 100 lines.
+Paste these once in each new terminal. `send_request` sends one `POST` to the path you name (default `/notify`) from the `tester` pod and prints the status code. `client_log` and `destination_log` print the newest access log lines of the `tester` pod's proxy and of the destination's proxy; the argument is the number of lines and defaults to `1`. `count_flags` counts the response flags in the `tester` pod's last 100 access log lines. Each proxy writes its access log in short batches, and `send_request` waits two seconds after the request so the next log read shows it.
 
 ```sh
 send_request() {
   kubectl -n accesslog-demo exec deploy/tester -- \
     curl -s -o /dev/null -w '%{http_code}\n' -X POST "http://notification-service${1:-/notify}"
+  sleep 2
 }
 client_log() {
   kubectl -n accesslog-demo logs deploy/tester -c istio-proxy --tail="${1:-1}"
@@ -34,7 +35,7 @@ destination_log() {
 }
 count_flags() {
   kubectl -n accesslog-demo logs deploy/tester -c istio-proxy --tail=100 \
-    | awk '{print $6}' | sort | uniq -c | sort -rn
+    | grep '^\[' | awk '{print $6}' | sort | uniq -c | sort -rn
 }
 ```
 

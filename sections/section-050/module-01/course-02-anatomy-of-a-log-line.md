@@ -79,6 +79,7 @@ Now read the same fields from a line on your own cluster. Send one request, prin
 ```sh
 kubectl -n accesslog-demo exec deploy/tester -- \
   curl -s -o /dev/null -X POST http://notification-service/notify
+sleep 2
 kubectl -n accesslog-demo logs deploy/tester -c istio-proxy --tail=1 \
   | awk '{print "status:   " $5 "\nflag:     " $6 "\ndetails:  " $7 "\nduration: " $12}'
 kubectl -n accesslog-demo logs deploy/tester -c istio-proxy --tail=1
@@ -90,8 +91,8 @@ You should see something like:
 status:   200
 flag:     -
 details:  via_upstream
-duration: 3
-[2026-09-27T10:04:55.118Z] "POST /notify HTTP/1.1" 200 - via_upstream - "-" 0 14 3 2 ...
+duration: 6
+[2026-10-09T22:25:21.259Z] "POST /notify HTTP/1.1" 200 - via_upstream - "-" 0 9 6 5 "-" "curl/8.22.0" "3bc88af5-9463-9465-8763-bf38174c73de" "notification-service" "10.244.0.8:8084" outbound|80||notification-service.accesslog-demo.svc.cluster.local 10.244.0.9:51990 10.96.92.93:80 10.244.0.9:57726 - default
 ```
 
 The `awk` field numbers count spaces, so the request field ② takes three of them (`"POST`, `/notify` and `HTTP/1.1"`). That is why the status, field ③, is `$5` in `awk`. `via_upstream` in the details field is the healthy case: the response came from the upstream service, not from the proxy. A response the proxy made itself, such as `no_healthy_upstream`, `response_timeout` or `rbac_access_denied…`, never reached your application.

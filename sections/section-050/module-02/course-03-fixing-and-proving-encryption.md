@@ -21,25 +21,31 @@ You have two objects in conflict: the server's `PeerAuthentication` set to `STRI
 
 Removing it is better for a reason that applies everywhere: the default is already correct. Setting it in configuration adds something that can drift, be copied, or disagree with a future server change. Delete the override, and keep the rest of the `DestinationRule`, which was written for something else.
 
-Remove exactly one path from the `DestinationRule` with a JSON Patch, then send a request again:
+A JSON Patch `remove` deletes exactly one path from an object. Try to remove only the `tls` block from the `DestinationRule`:
 
 <!-- astrona:playground:renew -->
 
 ```sh
 kubectl -n mtlsfail-demo patch destinationrule notification --type json \
   -p '[{"op":"remove","path":"/spec/trafficPolicy/tls"}]'
-kubectl -n mtlsfail-demo exec deploy/tester -- \
-  curl -s -o /dev/null -w '%{http_code}\n' -X POST http://notification-service/notify
 ```
 
 You should see something like:
 
 ```text
-destinationrule.networking.istio.io/notification patched
-200
+Error from server: admission webhook "validation.istio.io" denied the request: configuration is invalid: traffic policy must have at least one field
 ```
 
-A JSON Patch `remove` deletes one path, so the `DestinationRule` still exists and still governs everything else it was written for. Istio's default takes over: `istiod` attaches Istio's certificates to the `tester` proxy's outbound cluster for this host. It sends the new cluster configuration to the proxy over its running connection, a CDS (Cluster Discovery Service) push, so the handshake succeeds within a second and nothing restarts.
+`istiod`'s validating webhook refused the patch. In this playground, `tls` is the only field in `trafficPolicy`, and removing it would leave an empty `trafficPolicy`, which Istio does not accept. The object is unchanged, so the failure is still there. When `trafficPolicy` holds other settings, such as a connection pool, removing `/spec/trafficPolicy/tls` works and keeps them. Here, remove the whole `trafficPolicy`, then send a request again:
+
+```sh
+kubectl -n mtlsfail-demo patch destinationrule notification --type json \
+  -p '[{"op":"remove","path":"/spec/trafficPolicy"}]'
+kubectl -n mtlsfail-demo exec deploy/tester -- \
+  curl -s -o /dev/null -w '%{http_code}\n' -X POST http://notification-service/notify
+```
+
+`kubectl` reports that the `DestinationRule` was patched, and the request now returns `200`. The `DestinationRule` still exists and still governs everything else it was written for. Istio's default takes over: `istiod` attaches Istio's certificates to the `tester` proxy's outbound cluster for this host. It sends the new cluster configuration to the proxy over its running connection, a CDS (Cluster Discovery Service) push, so the handshake succeeds within a second and nothing restarts.
 
 ## Working is not the same as encrypted
 
@@ -61,35 +67,23 @@ kubectl -n mtlsfail-demo exec deploy/notification-service-v1 -c istio-proxy -- \
   | grep istio_requests_total | grep -o 'connection_security_policy="[^"]*"' | sort | uniq -c
 ```
 
-You should see something like:
+Each output line is a count followed by one value of the label, for example `connection_security_policy="mutual_tls"`. After the fix, every counted series reports `mutual_tls`. The first line of the output may be an `INFO GOMEMLIMIT` message from `pilot-agent` itself; it is not part of the statistics. `pilot-agent request GET` reads the sidecar proxy's administration interface from inside the container, which is how you read a proxy's statistics when there is no Prometheus in the cluster. If this had printed `none`, the traffic would be working and unencrypted, and the fix would have gone on the wrong end.
 
-```text
-   4 connection_security_policy="mutual_tls"
-```
+## The destination logs requests again
 
-Every counted series reports `mutual_tls`. `pilot-agent request GET` reads the sidecar proxy's administration interface from inside the container, which is how you read a proxy's statistics when there is no Prometheus in the cluster. If this had printed `none`, the traffic would be working and unencrypted, and the fix would have gone on the wrong end.
-
-## The log that was empty
-
-The most direct confirmation is the destination proxy's access log. During the failure it logged nothing, because the connection was closed before any request existed. Now it should log every request:
+The most direct confirmation is the destination proxy's access log. During the failure it wrote only a connection-level line with `filter_chain_not_found`, because the connection was closed before any request existed. Now it should log every request:
 
 ```sh
 kubectl -n mtlsfail-demo logs deploy/notification-service-v1 -c istio-proxy --tail=3
 ```
 
-You should see something like:
-
-```text
-[...] "POST /notify HTTP/1.1" 200 - via_upstream - "-" 0 14 1 1 "-" "curl/8.4.0" "..." "notification-service" "10.244.0.12:8084" inbound|8084|| ...
-```
-
-Requests arrive and are served, logged against the `inbound|8084||` cluster. The absence of exactly these lines was the signature of the failure, and their presence is the cleanest proof that the handshake now completes.
+The newest line is now an HTTP request line: `"POST /notify HTTP/1.1" 200 - via_upstream`, logged against the `inbound|8084||` cluster. The absence of exactly these lines was half the signature of the failure, and their presence is the cleanest proof that the handshake now completes.
 
 So there are three confirmations, and each answers a different question. The `200` says it works. `connection_security_policy` says it is encrypted. The destination's log says the request arrived. A fix that cannot show all three is not finished.
 
 ## The variant with a caller outside the mesh
 
-The same `UF` signature appears in a second situation, with a completely different fix: a workload **outside the mesh** calling a `STRICT` workload. With no sidecar proxy, the caller sends plain text and cannot present a certificate, so the destination closes the connection the same way.
+The same `filter_chain_not_found` line on the destination appears in a second situation, with a completely different fix: a workload **outside the mesh** calling a `STRICT` workload. With no sidecar proxy, the caller sends plain text and cannot present a certificate, so the destination closes the connection the same way.
 
 You can tell this variant apart in three ways. There is no client-side access log to read, because the caller has no proxy to write one. The calling pod shows `1/1` instead of `2/2`, because it has no `istio-proxy` container. And the caller does not appear in `istioctl proxy-status`, which lists every proxy connected to `istiod`.
 
@@ -100,7 +94,8 @@ The fix is to bring the caller into the mesh, **not** to relax the server. Relax
 Work these steps in order:
 
 ```text
-   1. Flag UF + upstream address + silent destination?   -> this class of failure
+   1. UC + upstream address on the client, and
+      NR filter_chain_not_found on the destination?    -> this class of failure
    2. Is the caller in the mesh?  (2/2, proxy-status)
           no  -> bring the caller into the mesh. Do not touch the server.
           yes -> continue
@@ -120,7 +115,7 @@ You can now fix an mTLS mismatch on the right end: keep the server `STRICT` and 
 > - **Relaxing the server to `PERMISSIVE` to make it work.** It removes the failure and the guarantee together, for every client of that workload.
 > - **Trusting a `200` as proof of encryption.** Check `connection_security_policy` on the destination's proxy; `PERMISSIVE` serves plain text with a healthy status code.
 > - **Adding `ISTIO_MUTUAL` when removing the block would do.** The default is already correct, and an explicit setting is one more thing to drift.
-> - **Deleting the whole `DestinationRule`.** It was probably written for load balancing or connection pooling. Remove the `tls` path only.
+> - **Deleting the whole `DestinationRule`.** It was probably written for load balancing or connection pooling. Remove the `tls` path only, or `trafficPolicy` when `tls` is its only field.
 > - **Fixing the server when the caller has no sidecar proxy.** Same symptom, different cause: bring the caller into the mesh, or limit an exemption with `portLevelMtls`.
 > - **Stopping at one confirmation.** Working, encrypted and arriving are three separate claims.
 

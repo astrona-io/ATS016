@@ -66,11 +66,15 @@ You should see something like:
 ```text
     mtls:
       mode: STRICT
+kind: List
+metadata:
       tls:
         mode: DISABLE
+kind: List
+metadata:
 ```
 
-You only see the contradiction because you read both objects at once. The server requires mTLS, and the client is told to send plain text. Each object is valid and makes sense on its own, and neither mentions the other. That is how this configuration got written and reviewed without anyone noticing.
+The `kind: List` and `metadata:` lines come from the end of each list that `kubectl get -o yaml` prints; `grep -A3` keeps them because they follow the match. You only see the contradiction because you read both objects at once. The server requires mTLS, and the client is told to send plain text. Each object is valid and makes sense on its own, and neither mentions the other. That is how this configuration got written and reviewed without anyone noticing.
 
 ## What the settings become
 
@@ -96,12 +100,12 @@ Both objects end up as Envoy configuration inside the proxies, and each one sets
 
 ```sh
 istioctl proxy-config cluster deploy/tester -n mtlsfail-demo \
-  --fqdn notification-service.mtlsfail-demo.svc.cluster.local -o json | grep -i -A3 transport_socket
+  --fqdn notification-service.mtlsfail-demo.svc.cluster.local -o json | grep -A3 '"transportSocket'
 ```
 
-With `tls.mode: DISABLE`, this command prints nothing, because the cluster has no transport socket: the client's proxy sends plain text. Run it again after the fix, and Istio's TLS settings appear.
+In the JSON that `istioctl` prints, field names are in camel case, so the transport socket appears as `transportSocket` (and `transportSocketMatches` when auto mTLS picks the socket per endpoint). With `tls.mode: DISABLE`, the cluster for this host carries no transport socket, so the client's proxy sends plain text. Run the command again after the fix and compare the two results.
 
-## Why the failure is a handshake failure
+## Why the destination closes the connection
 
 Put the plain-text client and the server that accepts only TLS together, and the mechanism follows:
 
@@ -112,14 +116,14 @@ sequenceDiagram
     C->>S: TCP connect
     S-->>C: accepted
     C->>S: plain HTTP bytes
-    Note over S: expects TLS hello
+    Note over S: no filter chain matches
     S-->>C: connection closed
-    Note over C: 503, flag UF
+    Note over C: 503, flag UC
 ```
 
 The diagram shows the `tester` pod's proxy connecting, sending plain text, and the destination's proxy closing the connection before any request exists.
 
-The TCP (Transmission Control Protocol) connection succeeds. What fails is the first thing that happens on it: the destination's proxy expects the first message of a TLS handshake and gets plain HTTP instead. It closes the connection before it has read an HTTP request, so it has nothing to write an access log line about. The client's proxy reports an upstream connection failure: a `503` with the flag `UF`. That is the whole signature of this failure: a failure on the client's side, and silence on the server's side.
+The TCP (Transmission Control Protocol) connection succeeds. What fails is the first thing that happens on it. With `STRICT`, every filter chain on the destination proxy's inbound listener matches only TLS connections, and a plain-text connection matches none of them. The destination's proxy closes the connection before it has read an HTTP request. It still writes one access log line for the connection, at the TCP level, with the response flag `NR` and the details `filter_chain_not_found`. The client's proxy sees the connection closed before any response, and reports a `503` with the flag `UC` (upstream connection termination). That pair is the whole signature of this failure: `UC` on the client's side, and `filter_chain_not_found` on the server's side.
 
 You now know that the server's mode comes from `PeerAuthentication`, the client's mode comes from `DestinationRule`, and nothing compares the two. You know which combinations fail, and that no `DestinationRule` at all is the safe default. The open question is how to recognise this failure on a live cluster, where the only symptom is a `503`.
 

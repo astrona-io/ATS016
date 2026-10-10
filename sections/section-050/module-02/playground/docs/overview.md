@@ -42,7 +42,7 @@ Use them like this: `send_request`, `both_logs`, `security_policy`.
 
 ## Practice tasks
 
-- Run `send_request` and `both_logs` before you change anything, and confirm that the destination's proxy wrote no line. Explain why from the flag and the upstream host on the client's line.
+- Run `send_request`, wait two seconds, and run `both_logs` before you change anything. Confirm that the destination's proxy wrote only a `filter_chain_not_found` line and no request line. Explain why from the flag and the upstream host on the client's line.
 - Fix it from the wrong end: set the `PeerAuthentication` to `PERMISSIVE` and leave the `DestinationRule` alone. Run `send_request` and `security_policy`, and explain why the traffic works but is not encrypted. Set it back to `STRICT`.
 - Delete the `DestinationRule` completely and confirm with `security_policy` that the traffic still uses mTLS.
 - Reverse the mismatch: set the `PeerAuthentication` to `DISABLE` and the client to `tls.mode: ISTIO_MUTUAL`. Compare the flags and both logs with the original failure.
