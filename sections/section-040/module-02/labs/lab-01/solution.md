@@ -38,7 +38,7 @@ istioctl analyze -n fivezerothree-demo
 ```
 
 ```text
-Error [IST0101] (VirtualService notification.fivezerothree-demo) Referenced host+subset in destinationrule not found: "notification-service+v2"
+Error [IST0101] (VirtualService fivezerothree-demo/notification) Referenced host+subset in destinationrule not found: "notification-service+v2"
 ```
 
 That is often the whole answer. Walk the chain anyway: it is the skill that still works when no analyzer covers the case.

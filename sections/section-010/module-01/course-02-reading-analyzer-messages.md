@@ -7,7 +7,7 @@
 Every analyzer message has the same shape. If you read it field by field, a wall of text becomes a list of tasks:
 
 ```text
-Error      [IST0101]   (VirtualService notification.analyze-demo)   Referenced host+subset ... not found: "notification-service+v3"
+Error      [IST0101]   (VirtualService analyze-demo/notification)   Referenced host+subset ... not found: "notification-service+v3"
 └ severity └ code      └ origin: the object it blames               └ message
 ```
 

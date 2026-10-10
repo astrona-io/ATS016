@@ -12,17 +12,19 @@ Run the analyzer on the namespace:
 istioctl analyze -n audit-demo
 ```
 
-You should see something like this (shortened; the order can differ):
+You should see something like this (the last line is shortened, and the two closing lines of the output are left out):
 
 ```text
-Error   [IST0101] (VirtualService notification.audit-demo) Referenced gateway not found: "audit-gateway"
-Error   [IST0101] (VirtualService notification.audit-demo) Referenced host+subset in destinationrule not found: "notification-service+v3"
-Info    [IST0102] (Namespace audit-demo) The namespace is not enabled for Istio injection...
+Error [IST0101] (VirtualService audit-demo/notification) Referenced gateway not found: "audit-gateway"
+Error [IST0101] (VirtualService audit-demo/notification) Referenced host+subset in destinationrule not found: "notification-service+v3"
+Warning [IST0127] (AuthorizationPolicy audit-demo/notification-post-only) No matching workloads for this resource with the following labels: app=notifications
+Warning [IST0132] (VirtualService audit-demo/notification) one or more host [notification-service] defined in VirtualService audit-demo/notification not found in Gateway audit-demo/audit-gateway.
+Info [IST0102] (Namespace audit-demo) The namespace is not enabled for Istio injection. ...
 ```
 
 Read all the way to the bottom. The `Info` line is the expensive one here. A namespace without the injection label gets no sidecar proxies, so **every Istio policy in the namespace applies to nothing**. Notice that there is no `IST0103` for the pods yet: the analyzer only checks pods for a missing proxy in namespaces that have injection switched on.
 
-## Step 2: Find the fault the analyzer does not report
+## Step 2: Confirm the policy that selects nothing
 
 Compare the policy's selector with the labels the pods really carry:
 
@@ -40,7 +42,7 @@ notification-service-v1-...   notification-service
 notification-service-v1-...   app=notification-service,version=v1
 ```
 
-The policy selects `app=notifications`, but the pods carry `app=notification-service`. The selector matches nothing, so the policy is valid, applied, and enforced on zero workloads. No analyzer reports this, which is why the task asks you to read the effective state instead of the intent.
+The policy selects `app=notifications`, but the pods carry `app=notification-service`. The selector matches nothing, so the policy is valid, applied, and enforced on zero workloads. The analyzer reports it only as `Warning [IST0127]`, a line that is easy to skip between the `Error`s, so confirm it from the labels before you change anything.
 
 ## Step 3: Label the namespace and recreate the pods
 
@@ -144,7 +146,7 @@ astrona submit -c sections/section-010/capstone/labs/lab-01
 | Pod without a proxy | `Warning` (`IST0103`), only once the namespace is labelled | that workload is outside the mesh entirely |
 | Subset reference that points at nothing | `Error` | `503` on every request |
 | Gateway reference that points at nothing | `Error` | the object binds to nothing |
-| Selector matching no pod | **not reported** | an authorization control that exists on paper only |
+| Selector matching no pod | `Warning` (`IST0127`) | an authorization control that exists on paper only |
 
 ## Common mistakes
 

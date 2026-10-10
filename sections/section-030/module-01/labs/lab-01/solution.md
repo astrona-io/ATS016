@@ -32,9 +32,10 @@ kubectl -n istio-system scale deploy istiod --replicas=1
 kubectl -n istio-system rollout status deploy istiod --timeout=180s
 ```
 
-Nothing needs to be applied again afterwards. A control plane outage delays changes; it does not lose them. That includes the invalid object: once `istiod` is back, it sends it to the proxies as it is. Send the request again:
+Nothing needs to be applied again afterwards. A control plane outage delays changes; it does not lose them. That includes the invalid object: once `istiod` is back, it sends it to the proxies as it is. The proxies reconnect on their own retry timer, which can take up to a minute, so wait for that before you send the request again:
 
 ```sh
+sleep 60
 kubectl -n cphealth-demo exec deploy/tester -- \
   curl -s -o /dev/null -w '%{http_code} %{redirect_url}\n' -X POST http://notification-service/notify
 ```
@@ -43,7 +44,7 @@ kubectl -n cphealth-demo exec deploy/tester -- \
 301 http://notification-service/v2
 ```
 
-The request that returned `200` a minute ago now gets a redirect to `/v2`, which nobody configured on purpose.
+The request that returned `200` before now gets a redirect to `/v2`, which nobody configured on purpose.
 
 Submit now to see your progress. The `istiod` check should pass, and the check for the invalid object still fails:
 
@@ -119,9 +120,9 @@ kubectl -n cphealth-demo exec deploy/tester -- \
 ```
 
 ```text
-NAME                                       CLUSTER      CDS           ECDS      EDS           LDS           RDS           ISTIOD                    VERSION
-notification-service-v1-...cphealth-demo   Kubernetes   SYNCED (1m)   IGNORED   SYNCED (1m)   SYNCED (1m)   SYNCED (1m)   istiod-7d4c9b8f4-q8r2n    1.30.5
-tester-...cphealth-demo                    Kubernetes   SYNCED (1m)   IGNORED   SYNCED (1m)   SYNCED (1m)   SYNCED (1m)   istiod-7d4c9b8f4-q8r2n    1.30.5
+NAME                                                       CLUSTER        CDS             ECDS        EDS              LDS             RDS             ISTIOD                      VERSION
+notification-service-v1-54dd46d4b6-5gx5h.cphealth-demo     Kubernetes     SYNCED (0s)     IGNORED     SYNCED (47s)     SYNCED (0s)     SYNCED (0s)     istiod-7dc9684c55-bzfh6     1.30.5
+tester-69699fd775-2gdqt.cphealth-demo                      Kubernetes     SYNCED (0s)     IGNORED     SYNCED (62s)     SYNCED (0s)     SYNCED (0s)     istiod-7dc9684c55-bzfh6     1.30.5
 ✔ No validation issues found when analyzing namespace: cphealth-demo.
 200
 ```
