@@ -13,10 +13,13 @@ time kubectl -n accesslog-demo exec deploy/tester -- \
 
 ```text
 200
-real    0m5.2s
+
+real	0m10.088s
+user	0m0.028s
+sys	0m0.018s
 ```
 
-A `200` after several seconds. Nothing is failing, and that is the point: a wait with no limit is the caller's problem, not the server's.
+A `200` after about ten seconds. Nothing is failing, and that is the point: a wait with no limit is the caller's problem, not the server's.
 
 Look at the `VirtualService` that already exists for the Service. A `VirtualService` tells the sidecar proxies how to route requests for a host:
 

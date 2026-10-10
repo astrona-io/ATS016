@@ -61,6 +61,7 @@ The server requires mutual TLS (mTLS); the client is told to send plain text. `S
 ```sh
 kubectl -n logcapstone-demo patch destinationrule notification --type json \
   -p '[{"op":"remove","path":"/spec/trafficPolicy/tls"}]'
+sleep 5
 kubectl -n logcapstone-demo exec deploy/tester -- \
   curl -s -o /dev/null -w '%{http_code}\n' -X POST http://notification-service/notify
 ```

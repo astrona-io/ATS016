@@ -68,11 +68,11 @@ prom_query 'histogram_quantile(0.50, sum(rate(istio_request_duration_millisecond
 ```
 
 ```text
-{"metric":{},"value":[...,"650"]}
-{"metric":{},"value":[...,"480"]}
+{"status":"success","data":{"resultType":"vector","result":[{"metric":{},"value":[1791622751.309,"589.9999999999976"]}]}}
+{"status":"success","data":{"resultType":"vector","result":[{"metric":{},"value":[1791622751.373,"5"]}]}}
 ```
 
-`le`, the bucket edge label, **must survive the aggregation**. Drop it and `histogram_quantile` returns an empty result with only a warning that the bucket label `le` is missing, and no error. Read these as "about half a second": a percentile is an estimate between bucket edges, not a measurement.
+`le`, the bucket edge label, **must survive the aggregation**. Drop it and `histogram_quantile` returns an empty result with only a warning that the bucket label `le` is missing, and no error. The p99 is about 590 ms: the slowest requests carry the injected 500 ms delay. The p50 is about 5 ms, because the delay hits only half of the requests, so the median request is still a fast one. Read both as estimates between bucket edges, not measurements, and expect your numbers to differ.
 
 ## Step 5: Find and remove the cause
 

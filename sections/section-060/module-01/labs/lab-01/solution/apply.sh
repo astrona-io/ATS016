@@ -38,3 +38,9 @@ for _ in $(seq 1 60); do
   sleep 2
 done
 sleep 8
+
+# Task 1: the graph is empty because no requests have flowed. Send some, as a
+# learner does, so the tester proxy holds istio_requests_total series.
+kubectl -n kiali-demo exec deploy/tester -- sh -c \
+  'for i in $(seq 1 20); do curl -s -o /dev/null -X POST http://notification-service/notify; done'
+sleep 3

@@ -74,12 +74,14 @@ kubectl -n obscapstone-demo get virtualservice \
 ```
 
 ```text
-Error [IST0101] (VirtualService notification-canary.obscapstone-demo) Referenced host+subset in destinationrule not found: "notification-service+canary"
-Error [IST0109] (VirtualService notification.obscapstone-demo) The VirtualServices ... associated with mesh gateway define the same host notification-service which can lead to undefined behavior. ...
-
-NAME                    HOSTS                     GATEWAYS
-notification            [notification-service]    <none>
-notification-canary     [notification-service]    <none>
+Error [IST0101] (VirtualService obscapstone-demo/notification-canary) Referenced host+subset in destinationrule not found: "notification-service+canary"
+Error [IST0109] (VirtualService obscapstone-demo/notification-canary) The VirtualServices obscapstone-demo/notification,obscapstone-demo/notification-canary associated with mesh gateway define the same host */notification-service.obscapstone-demo.svc.cluster.local which can lead to undefined behavior. This can be fixed by merging the conflicting VirtualServices into a single resource.
+Error [IST0109] (VirtualService obscapstone-demo/notification) The VirtualServices obscapstone-demo/notification,obscapstone-demo/notification-canary associated with mesh gateway define the same host */notification-service.obscapstone-demo.svc.cluster.local which can lead to undefined behavior. This can be fixed by merging the conflicting VirtualServices into a single resource.
+NAME                  HOSTS                    GATEWAYS
+notification          [notification-service]   <none>
+notification-canary   [notification-service]   <none>
+Error: Analyzers found issues when analyzing namespace: obscapstone-demo.
+See https://istio.io/v1.30/docs/reference/config/analysis for more information about causes and resolutions.
 ```
 
 The analyzer output is shortened. `IST0109` is an `Error`, and the analyzer reports it once for each `VirtualService` in the conflict, so you see it on both `notification` and `notification-canary`.

@@ -131,6 +131,7 @@ kubectl -n fivezerothree-demo exec deploy/tester -- sh -c \
   'for i in $(seq 1 10); do curl -s -o /dev/null -w "%{http_code} " -X POST http://notification-service/notify; done; echo'
 istioctl proxy-config routes deploy/tester -n fivezerothree-demo -o json | grep '"cluster"' | grep notification
 istioctl analyze -n fivezerothree-demo
+sleep 2
 kubectl -n fivezerothree-demo logs deploy/tester -c istio-proxy --tail=1
 ```
 
