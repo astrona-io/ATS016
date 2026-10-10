@@ -50,7 +50,7 @@ The second half of webhook health is whether `istiod` answered. If it did not, t
 kubectl -n noinject-demo describe replicaset -l app=reporting-service | tail -20
 ```
 
-A `failed calling webhook "sidecar-injector.istio.io"` line there is a complete diagnosis. It points at the control plane, not at your labels. In the playground there is no such line, because `istiod` is healthy.
+A `failed calling webhook "namespace.sidecar-injector.istio.io"` line there is a complete diagnosis. It points at the control plane, not at your labels. In the playground there is no such line, because `istiod` is healthy.
 
 ## Revision mismatch
 

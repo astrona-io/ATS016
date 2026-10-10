@@ -21,7 +21,7 @@ Each job has a clear task:
 
 1. **xDS server.** xDS is the family of discovery protocols `istiod` uses to push configuration to proxies while they run. `istiod` turns your Istio objects into Envoy configuration and sends it over port `15012`.
 2. **Certificate authority (CA).** `istiod` signs each workload's certificate, also over port `15012`. The istio-agent next to each proxy asks for the certificate and proves the pod's identity with its service account token.
-3. **Injection webhook.** A webhook is a service the API server calls while it handles a write. The mutating admission webhook `sidecar-injector.istio.io` adds the `istio-proxy` container to new pods. `istiod` serves it on port `15017`.
+3. **Injection webhook.** A webhook is a service the API server calls while it handles a write. The mutating admission webhook adds the `istio-proxy` container to new pods; its entries have names such as `namespace.sidecar-injector.istio.io`. `istiod` serves it on port `15017`.
 4. **Validation webhook.** The validating admission webhook `validation.istio.io` rejects Istio objects that are clearly invalid when you apply them. It is also served on port `15017`.
 
 Look at the direction of each connection. Jobs 1 and 2 are started by the proxy: each proxy opens a long-lived connection to `istiod` and keeps it open. Jobs 3 and 4 are started by the API server: it calls `istiod` and waits for an answer while your write request is on hold. That difference explains why the failures look so different. A proxy that cannot reach `istiod` keeps the configuration it has and carries on. An API server that cannot reach `istiod` has a write waiting, and must decide what to do with it.

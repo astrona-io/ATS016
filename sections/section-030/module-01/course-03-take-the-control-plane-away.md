@@ -78,16 +78,19 @@ kubectl -n cphealth-demo get pods
 kubectl -n cphealth-demo get events --field-selector reason=FailedCreate
 ```
 
-You should see something like this for the first two commands:
+You should see something like:
 
 ```text
 deployment.apps/notification-service-v1 restarted
 NAME                                       READY   STATUS    RESTARTS   AGE
-notification-service-v1-54dd46d4b6-flm8c   2/2     Running   0          13s
-tester-69699fd775-96h4j                    2/2     Running   0          13s
+notification-service-v1-54dd46d4b6-pfdqz   2/2     Running   0          22s
+tester-69699fd775-vvvcf                    2/2     Running   0          22s
+LAST SEEN   TYPE      REASON         OBJECT                                         MESSAGE
+0s          Warning   FailedCreate   replicaset/notification-service-v1-bd74d6669   Error creating: Internal error occurred: failed calling webhook "namespace.sidecar-injector.istio.io": failed to call webhook: Post "https://istiod.istio-system.svc:443/inject?timeout=10s": context deadline exceeded
+0s          Warning   FailedCreate   replicaset/notification-service-v1-bd74d6669   Error creating: Internal error occurred: failed calling webhook "namespace.sidecar-injector.istio.io": failed to call webhook: Post "https://istiod.istio-system.svc:443/inject?timeout=10s": dial tcp 10.96.88.251:443: connect: connection refused
 ```
 
-The pod list has no new `notification-service-v1` pod. The old pod is still `Running` and still answering; that was the `200` you just saw. The new pod was **never created at all**. The last command lists a `Warning` event with the reason `FailedCreate` on the new ReplicaSet. Its message says that the API server failed calling the webhook `sidecar-injector.istio.io`, and the event explains why. The ReplicaSet controller asked the API server to create the pod. The API server tried to call the injection webhook `sidecar-injector.istio.io`, could not reach it, and the webhook's `failurePolicy: Fail` turned that into a refusal of the whole pod. A write of any Istio object fails in the same way now, because the validation webhook also has `failurePolicy: Fail` once `istiod` has started.
+The pod list has no new `notification-service-v1` pod. The old pod is still `Running` and still answering; that was the `200` you just saw. The new pod was **never created at all**. The last command lists a `Warning` event with the reason `FailedCreate` on the new ReplicaSet. Its message says that the API server failed calling the webhook `namespace.sidecar-injector.istio.io`, and the event explains why. The ReplicaSet controller asked the API server to create the pod. The API server tried to call the injection webhook `namespace.sidecar-injector.istio.io`, could not reach it, and the webhook's `failurePolicy: Fail` turned that into a refusal of the whole pod. A write of any Istio object fails in the same way now, because the validation webhook also has `failurePolicy: Fail` once `istiod` has started.
 
 The `failurePolicy` is a real design choice with two defensible answers, and Istio's default for injection is the safer one:
 
