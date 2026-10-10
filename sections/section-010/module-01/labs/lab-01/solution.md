@@ -25,14 +25,19 @@ istioctl analyze -n analyze-demo
 ```
 
 ```text
-Error [IST0101] (VirtualService notification.analyze-demo) Referenced host+subset in destinationrule not found: "notification-service+v3"
-Error [IST0101] (VirtualService notification.analyze-demo) Referenced gateway not found: "missing-gateway"
+Error [IST0101] (VirtualService analyze-demo/notification) Referenced gateway not found: "missing-gateway"
+Error [IST0101] (VirtualService analyze-demo/notification) Referenced host+subset in destinationrule not found: "notification-service+v3"
+Warning [IST0132] (VirtualService analyze-demo/notification) one or more host [notification-service] defined in VirtualService analyze-demo/notification not found in Gateway analyze-demo/missing-gateway.
+Error: Analyzers found issues when analyzing namespace: analyze-demo.
+See https://istio.io/v1.30/docs/reference/config/analysis for more information about causes and resolutions.
 ```
 
 There are two `IST0101` findings, both on the same object, and both are references that point at nothing:
 
 - the route names subset `v3`, which no `DestinationRule` defines;
-- the object binds to a `Gateway` named `missing-gateway`, which does not exist.
+- the object lists a `Gateway` named `missing-gateway`, which does not exist.
+
+The `IST0132` warning follows from the same missing gateway. The object also lists `mesh`, so the sidecar proxies use its route to `v3`, which is why requests fail.
 
 Both are mistakes **between objects**. That is why the API server accepted them: its validating webhook only ever sees the one document being filed.
 
@@ -134,4 +139,4 @@ astrona submit -c sections/section-010/module-01/labs/lab-01
 
 - Break a `Gateway` reference on purpose and predict the message code before you run analyze.
 - Run `istioctl analyze --failure-threshold Warning` and compare the exit code with the default threshold.
-- Compare `istioctl validate -f` and `istioctl analyze --use-kube=false` on the same broken file, and explain why only one of them finds the subset error.
+- Compare `istioctl validate -f`, `istioctl analyze --use-kube=false` and `istioctl analyze -n analyze-demo` on the same broken file, and explain why only the last one finds the subset error.

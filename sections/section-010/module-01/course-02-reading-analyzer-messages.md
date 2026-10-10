@@ -57,12 +57,13 @@ istioctl analyze -n analyze-demo
 You should see something like this (the last line, a link to the documentation, is left out):
 
 ```text
-Error [IST0101] (VirtualService notification.analyze-demo) Referenced host+subset in destinationrule not found: "notification-service+v3"
-Error [IST0101] (VirtualService notification.analyze-demo) Referenced gateway not found: "missing-gateway"
+Error [IST0101] (VirtualService analyze-demo/notification) Referenced gateway not found: "missing-gateway"
+Error [IST0101] (VirtualService analyze-demo/notification) Referenced host+subset in destinationrule not found: "notification-service+v3"
+Warning [IST0132] (VirtualService analyze-demo/notification) one or more host [notification-service] defined in VirtualService analyze-demo/notification not found in Gateway analyze-demo/missing-gateway.
 Error: Analyzers found issues when analyzing namespace: analyze-demo.
 ```
 
-There are two messages, with one code, on one object, about two different references that point at nothing. Notice what is missing as well. There is no `IST0102`, because this namespace has the injection label. There is no `IST0103`, because both pods have a sidecar proxy. When the analyzer says nothing about a problem, it has checked for it and found none.
+There are three messages, all on one object. The two `Error`s share one code, `IST0101`, for two different references that point at nothing. The `Warning`, `IST0132`, follows from the same missing gateway, so fixing the gateway reference clears it too. The origin names the object as `<namespace>/<name>`. Notice what is missing as well. There is no `IST0102`, because this namespace has the injection label. There is no `IST0103`, because both pods have a sidecar proxy. When the analyzer says nothing about a problem, it has checked for it and found none.
 
 ## Machine-readable output
 
@@ -74,17 +75,17 @@ Ask for JSON output:
 istioctl analyze -n analyze-demo -o json
 ```
 
-You should see something like this (shortened to one message):
+You should see something like this (shortened to one of the three messages):
 
 ```text
 [
-  {
-    "code": "IST0101",
-    "documentationUrl": "https://istio.io/v1.30/docs/reference/config/analysis/ist0101/",
-    "level": "Error",
-    "message": "Referenced host+subset in destinationrule not found: \"notification-service+v3\"",
-    "origin": "VirtualService notification.analyze-demo"
-  }
+	{
+		"code": "IST0101",
+		"documentationUrl": "https://istio.io/v1.30/docs/reference/config/analysis/ist0101/?ref=istioctl-analyze",
+		"level": "Error",
+		"message": "Referenced host+subset in destinationrule not found: \"notification-service+v3\"",
+		"origin": "VirtualService analyze-demo/notification"
+	}
 ]
 ```
 
@@ -104,11 +105,11 @@ istioctl analyze -n analyze-demo --failure-threshold Info >/dev/null 2>&1; echo 
 You should see something like:
 
 ```text
-default threshold exit: 1
-Info threshold exit: 1
+default threshold exit: 79
+Info threshold exit: 79
 ```
 
-Both exit codes are `1` here, because this namespace has real `Error`s. The useful comparison comes after you fix them. With the `Error`s gone, the default threshold returns `0`, and a lower threshold may still return `1`. Choosing the threshold means deciding how much "valid but probably wrong" configuration you allow into the cluster.
+Both exit codes are `79` here. `istioctl analyze` uses that code when it finds messages at or above the threshold, and this namespace has real `Error`s. The useful comparison comes after you fix them. With the `Error`s gone, the default threshold returns `0`, and a lower threshold still returns `79` if the namespace has a `Warning` or an `Info` message left. Choosing the threshold means deciding how much "valid but probably wrong" configuration you allow into the cluster.
 
 > [!TIP]
 > Choose the threshold on purpose instead of keeping the default. A common choice is `Warning` in a build pipeline and `Error` for a quick check by hand before a deploy.

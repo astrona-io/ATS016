@@ -15,7 +15,7 @@ This is a **playground**, not a lab. It starts a fresh cluster, installs Istio a
 
 - **Four Istio objects that all apply to `notification-service`:** a namespace-wide `PeerAuthentication` named `default` in `STRICT` mode, a `DestinationRule` named `notification` with the subset `v1`, a `VirtualService` named `notification` that routes to it, and an `AuthorizationPolicy` named `notification-post-only` that allows only `POST`.
 - Nothing is broken. A `POST` to `http://notification-service/notify` returns `200`, and a `GET` returns `403`.
-- Every sidecar proxy starts with all Envoy log scopes at `warning`.
+- Every sidecar proxy starts with its Envoy log scopes at `warning`, except `misc`, which is at `error`.
 
 ## Helpers
 

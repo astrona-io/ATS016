@@ -24,19 +24,19 @@ You should see something like:
 
 ```text
 NAME                                              GATEWAYS   HOSTS                      AGE
-virtualservice.networking.istio.io/notification              ["notification-service"]   5m
+virtualservice.networking.istio.io/notification              ["notification-service"]   1s
 
 NAME                                               HOST                   AGE
-destinationrule.networking.istio.io/notification   notification-service   5m
+destinationrule.networking.istio.io/notification   notification-service   1s
 
-NAME                                          MODE     AGE
-peerauthentication.security.istio.io/default  STRICT   5m
+NAME                                           MODE     AGE
+peerauthentication.security.istio.io/default   STRICT   1s
 
-NAME                                                            AGE
-authorizationpolicy.security.istio.io/notification-post-only    5m
+NAME                                                           ACTION   AGE
+authorizationpolicy.security.istio.io/notification-post-only   ALLOW    1s
 ```
 
-There are four objects, and nothing shows which pod they apply to, in what combination, or what the combination allows. Each kind finds its targets in a different way, which is why no `kubectl` view can join them up.
+The ages will differ on your cluster. There are four objects, and nothing shows which pod they apply to, in what combination, or what the combination allows. Each kind finds its targets in a different way, which is why no `kubectl` view can join them up.
 
 ## Three ways an object finds its target
 
@@ -80,13 +80,14 @@ Both rules are calculations over several objects. In `describe` output, "effecti
 | Section | The question it answers |
 | --- | --- |
 | `Pod` | Is this pod in the mesh, and which sidecar revision runs in it? |
-| `Pod Ports` | Which ports does the container open? |
+| `Pod Ports` | Which ports does the application container open? |
 | `Service` | Which Service selects this pod, and how does its port map to the container port? |
-| `Exposed on Ingress` | Does anything outside the mesh reach this workload through a gateway? |
+| `Exposed on Ingress` | Does anything outside the mesh reach this workload through a gateway? (shown only when it does) |
+| `DestinationRule` | Which subsets match this pod, and which traffic policy applies to requests for it? |
+| `VirtualService` | Which `VirtualService` routes traffic to it, and how many HTTP routes it has |
 | `RBAC policies` | Which `AuthorizationPolicy` rules select this workload? |
-| `VirtualService` | Which routing rules match traffic to it, and which route applies? |
-| `DestinationRule` | Which subsets and traffic policies apply to requests for it? |
 | `Effective PeerAuthentication` | The mTLS mode in force after the precedence rules above |
+| `Applied PeerAuthentication` | Which `PeerAuthentication` objects went into that result |
 
 The `x` in the command stands for `experimental`, and `istioctl experimental describe` is the long form. The command is widely used, but the prefix is still required in Istio 1.30. Ask for the summary of the `notification-service` pod:
 
@@ -97,24 +98,28 @@ istioctl x describe pod $POD -n describe-demo
 You should see something like:
 
 ```text
-Pod: notification-service-v1-6c9f8b7d5-x2kqp
+Pod: notification-service-v1-54dd46d4b6-7cfkk
    Pod Revision: default
-   Pod Ports: 8084 (notification-service), 15090 (istio-proxy)
+   Pod Ports: 8084 (notification-service)
 --------------------
 Service: notification-service
    Port: http 80/HTTP targets pod port 8084
+DestinationRule: notification for "notification-service"
+   Matching subsets: v1
+   No Traffic Policy
+VirtualService: notification
+   1 HTTP route(s)
 RBAC policies: ns[describe-demo]-policy[notification-post-only]-rule[0]
 --------------------
 Effective PeerAuthentication:
    Workload mTLS mode: STRICT
---------------------
-VirtualService: notification
-   Route to host "notification-service" subset "v1"
-DestinationRule: notification for "notification-service"
-   Matching subsets: v1
+Applied PeerAuthentication:
+   default.describe-demo
 ```
 
-Read `Effective PeerAuthentication` as the result of the precedence rules, not as a copy of one `PeerAuthentication` object. Here the two agree, because only one policy exists. The `RBAC policies` line names the exact rule that applies to requests, in the `ns[...]-policy[...]-rule[N]` form Envoy uses internally. The same string appears in the proxy's `rbac` log when a rule matches, which is how you tie a live decision back to a YAML file.
+The pod name differs on your cluster. `Matching subsets: v1` says that this pod's labels match the `v1` subset of the `DestinationRule`, and `No Traffic Policy` says the rule sets no connection or load-balancing settings. `1 HTTP route(s)` is a count, not the route itself; `istioctl proxy-config routes` shows the route.
+
+Read `Effective PeerAuthentication` as the result of the precedence rules, not as a copy of one `PeerAuthentication` object. `Applied PeerAuthentication` lists the objects that went into it, written as `<name>.<namespace>`. Here only one policy exists, `default` in `describe-demo`, so the result is its mode. The `RBAC policies` line names the exact rule that applies to requests, in the `ns[...]-policy[...]-rule[N]` form Envoy uses internally. The same string appears in the proxy's `rbac` log when a rule matches, which is how you tie a live decision back to a YAML file.
 
 ## The consequence you can send a request to
 

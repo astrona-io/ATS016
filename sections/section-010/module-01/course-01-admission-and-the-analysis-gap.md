@@ -33,51 +33,48 @@ That rule splits Istio mistakes into classes, and each class is found in a diffe
 
 | Class | Example | Caught at admission? |
 | --- | --- | --- |
-| **Inside one object** | `weight: 60` twice, so the route weights add up to 120 | **Yes**: the webhook has everything it needs |
+| **Inside one object** | one HTTP rule with both `redirect` and `route` | **Yes**: the webhook has everything it needs |
 | **Inside one object** | a misspelled field, a bad enum value, an invalid duration | Yes, usually at stage 3 |
 | **Between objects** | a `VirtualService` naming `subset: v3` that no `DestinationRule` defines | **No**: the `DestinationRule` is a different object |
 | **Between objects** | a `gateways:` entry naming a `Gateway` that does not exist | No |
 | **Environment** | a namespace with Istio configuration but no sidecar injection label | No |
 
-It is worth seeing the webhook reject a mistake inside one object once. It proves the webhook really runs. The `VirtualService` below sends traffic to two destinations with a weight of 60 each, so the weights add up to 120 instead of 100.
+It is worth seeing the webhook reject a mistake inside one object once. It proves the webhook really runs. The `VirtualService` below has one HTTP rule that both redirects the request and routes it to a destination. A rule can do one or the other, never both, and the webhook can see that from this one document alone.
 
 <!-- astrona:playground:renew -->
 
-Save this as `virtualservice-bad-weights.yaml`:
+Save this as `virtualservice-redirect-and-route.yaml`:
 
 ```yaml
 apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
-  name: bad-weights
+  name: redirect-and-route
   namespace: analyze-demo
 spec:
   hosts:
     - notification-service
   http:
-    - route:
+    - redirect:
+        uri: /v2
+      route:
         - destination:
             host: notification-service
-          weight: 60
-        - destination:
-            host: notification-service
-          weight: 60
 ```
 
 Apply it:
 
 ```sh
-kubectl apply -f virtualservice-bad-weights.yaml
+kubectl apply -f virtualservice-redirect-and-route.yaml
 ```
 
 You should see something like:
 
 ```text
-Error from server: error when creating "STDIN": admission webhook "validation.istio.io" denied the request:
-configuration is invalid: total destination weight 120 != 100
+Error from server: error when creating "virtualservice-redirect-and-route.yaml": admission webhook "validation.istio.io" denied the request: configuration is invalid: HTTP route cannot contain both route and redirect
 ```
 
-This output was captured with the YAML sent on standard input, so it says `"STDIN"`. When you apply the file, your file name appears there instead. The message names the component that refused the object: `admission webhook "validation.istio.io"`, which is `istiod` at stage 4. Everything it needed for that decision was inside the one document.
+The message names the component that refused the object: `admission webhook "validation.istio.io"`, which is `istiod` at stage 4. Everything it needed for that decision was inside the one document. Not every mistake you might expect is refused, though. Route weights that add up to more than 100, for example, are accepted in Istio 1.30.5.
 
 Now look at the opposite case. The namespace already holds a `VirtualService` that names a subset no `DestinationRule` defines, and all four stages accepted it. List the two objects, then send a request from the `tester` pod to the `notification-service` Service:
 
@@ -90,11 +87,11 @@ kubectl -n analyze-demo exec deploy/tester -- \
 You should see something like:
 
 ```text
-NAME                                              GATEWAYS              HOSTS                      AGE
-virtualservice.networking.istio.io/notification   ["missing-gateway"]   ["notification-service"]   4m
+NAME                                              GATEWAYS                     HOSTS                      AGE
+virtualservice.networking.istio.io/notification   ["mesh","missing-gateway"]   ["notification-service"]   99s
 
 NAME                                               HOST                   AGE
-destinationrule.networking.istio.io/notification   notification-service   4m
+destinationrule.networking.istio.io/notification   notification-service   99s
 
 503
 ```
@@ -138,13 +135,14 @@ istioctl analyze -n analyze-demo
 You should see something like:
 
 ```text
-Error [IST0101] (VirtualService notification.analyze-demo) Referenced host+subset in destinationrule not found: "notification-service+v3"
-Error [IST0101] (VirtualService notification.analyze-demo) Referenced gateway not found: "missing-gateway"
+Error [IST0101] (VirtualService analyze-demo/notification) Referenced gateway not found: "missing-gateway"
+Error [IST0101] (VirtualService analyze-demo/notification) Referenced host+subset in destinationrule not found: "notification-service+v3"
+Warning [IST0132] (VirtualService analyze-demo/notification) one or more host [notification-service] defined in VirtualService analyze-demo/notification not found in Gateway analyze-demo/missing-gateway.
 Error: Analyzers found issues when analyzing namespace: analyze-demo.
 See https://istio.io/v1.30/docs/reference/config/analysis for more information about causes and resolutions.
 ```
 
-Two commands ago you had a `503` and no idea which object caused it. Now the analyzer names the object, the fields and the exact values that do not resolve. Both findings are references between objects, the kind that stage 4 can never check.
+Two commands ago you had a `503` and no idea which object caused it. Now the analyzer names the object, the fields and the exact values that do not resolve. The two `Error` lines are references between objects, the kind that stage 4 can never check. The third line, `IST0132`, is a follow-on from the missing gateway: the analyzer cannot find the host in a `Gateway` that does not exist.
 
 You now know where each kind of mistake is caught. The API server and the validating webhook check one document at a time, so a reference to another object always gets through. `istiod` sees the whole set but reports nothing, and `istioctl analyze` gives you the same complete view on demand. The open question is how to read what the analyzer reports, because on a real cluster the list is long.
 

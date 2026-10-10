@@ -111,7 +111,7 @@ Run the analyzer, read the effective configuration of the `notification-service`
 ```sh
 istioctl analyze -n audit-demo
 export POD=$(kubectl -n audit-demo get pod -l app=notification-service -o jsonpath='{.items[0].metadata.name}')
-istioctl x describe pod $POD -n audit-demo | grep -iE 'RBAC|VirtualService|mTLS'
+istioctl x describe pod $POD -n audit-demo | grep -E '^(RBAC policies|VirtualService):'
 for M in POST GET; do
   kubectl -n audit-demo exec deploy/tester -- \
     curl -s -o /dev/null -w "$M %{http_code}\n" -X $M http://notification-service/notify
@@ -120,8 +120,8 @@ done
 
 ```text
 ✔ No validation issues found when analyzing namespace: audit-demo.
-RBAC policies: ns[audit-demo]-policy[notification-post-only]-rule[0]
 VirtualService: notification
+RBAC policies: ns[audit-demo]-policy[notification-post-only]-rule[0]
 POST 200
 GET 403
 ```

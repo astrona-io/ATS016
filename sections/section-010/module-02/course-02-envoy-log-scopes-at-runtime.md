@@ -53,14 +53,18 @@ kubectl -n describe-demo exec deploy/tester -- \
 kubectl -n describe-demo logs $POD -c istio-proxy --tail=30 | grep -i rbac
 ```
 
-You should see something like:
+You should see something like this (shortened: the first command prints the level of every scope, and long lines are cut):
 
 ```text
-[... debug envoy rbac] checking request: requestedServerName: outbound_.80_._.notification-service.describe-demo.svc.cluster.local, sourceIP: 10.244.0.9:49182, ...
-[... debug envoy rbac] enforced denied, matched policy none
+notification-service-v1-54dd46d4b6-7cfkk.describe-demo:
+active loggers:
+  rbac: debug
+[2026-10-09T22:49:10.613Z] "GET /notify HTTP/1.1" 403 - rbac_access_denied_matched_policy[none] - "-" 0 19 0 - "-" "curl/8.22.0" ...
+2026-10-09T22:49:11.332052Z	debug	envoy rbac external/envoy/source/extensions/filters/http/rbac/rbac_filter.cc:266	checking request: requestedServerName: outbound_.80_.v1_.notification-service.describe-demo.svc.cluster.local, sourceIP: 10.244.0.9:59898, ...
+2026-10-09T22:49:11.332250Z	debug	envoy rbac external/envoy/source/extensions/filters/http/rbac/rbac_filter.cc:233	enforced denied, matched policy none	thread=29
 ```
 
-The IP addresses, timestamps and pod name differ on your cluster. `enforced denied, matched policy none` is the whole answer. *Enforced* means this was a real decision, not a dry run. *Denied* is the result. *Matched policy none* means an `ALLOW` policy selects this workload, the request matched none of its rules, and so the proxy refused it.
+The IP addresses, timestamps and pod name differ on your cluster. Setting a level prints the new level of every scope, and `rbac` now shows `debug`. The `grep` also keeps the access log line for the `GET`, because its details field, `rbac_access_denied_matched_policy[none]`, contains `rbac`. The two `debug` lines below it come from the `rbac` scope you raised. If they do not appear, wait two seconds and read the log again: the proxy writes its log in short batches. `enforced denied, matched policy none` is the whole answer. *Enforced* means this was a real decision, not a dry run. *Denied* is the result. *Matched policy none* means an `ALLOW` policy selects this workload, the request matched none of its rules, and so the proxy refused it.
 
 Two details in that output are worth knowing. `requestedServerName` is the Server Name Indication (SNI) value of the connection: the name the client proxy put in the TLS handshake to say which service it wants. It becomes important later, when an mTLS or gateway problem makes it the wrong value. And when a rule *does* match, the same log prints the policy name in the `ns[...]-policy[...]-rule[N]` form that `describe` shows under `RBAC policies`.
 
@@ -74,14 +78,22 @@ That is the intended way to introduce a strict policy on live traffic. Apply it 
 
 A raised level costs processor time and log volume for as long as it is set, and nothing reminds you. On a shared cluster, a proxy someone left at `debug` is a cost that outlives the incident. Run the command with no `--level`, and it reports the current levels instead of setting them. That is also how you check a proxy somebody else was debugging last week.
 
-Set `rbac` back to `warning`, the level every other scope uses, then list the levels:
+Set `rbac` back to `warning`, the level almost every other scope uses, then list the levels:
 
 ```sh
 istioctl proxy-config log $POD -n describe-demo --level rbac:warning
 istioctl proxy-config log $POD -n describe-demo | grep -E '(rbac|router|upstream):'
 ```
 
-All three lines should now read `warning`. A pod restart would have reset the level too, because it is runtime state. But restarting a pod to undo a diagnostic is heavier than the diagnostic was, and on a workload with one replica it is an outage.
+You should see something like this (shortened: the list of every scope that the first command prints is left out):
+
+```text
+  rbac: warning
+  router: warning
+  upstream: warning
+```
+
+All three lines read `warning` again. A pod restart would have reset the level too, because it is runtime state. But restarting a pod to undo a diagnostic is heavier than the diagnostic was, and on a workload with one replica it is an outage.
 
 > [!TIP]
 > Make putting the level back part of the same step as raising it. Before you close the terminal, run `istioctl proxy-config log` with no `--level` and check every scope you touched.

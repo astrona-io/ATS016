@@ -12,11 +12,11 @@ There are three ways to tell the analyzer what to read, and each one answers a d
 | B | `istioctl analyze -n <ns> file.yaml` | the objects in the cluster, with the objects in `file.yaml` laid on top | "Would this change be coherent?" This is the check before you merge |
 | C | `istioctl analyze --use-kube=false file.yaml` | only the objects in `file.yaml` | "Is this file coherent on its own?" This is the check in a build pipeline with no cluster |
 
-Form **B** is the most useful habit, and the one people discover last. When you are about to apply something, the real question is not "is this file complete on its own". It is "does this file make sense with what is already in the cluster". A new `VirtualService` that names a subset the cluster already defines passes form B and fails form C.
+Form **B** is the most useful habit, and the one people discover last. When you are about to apply something, the real question is not "is this file complete on its own". It is "does this file make sense with what is already in the cluster". Form B answers exactly that, because the analyzer sees your file together with the Services, pods and Istio objects that are already running.
 
-Form **C** runs where there is no cluster to ask. Its limit follows from the set it reads: any object the file correctly refers to, but that is defined somewhere else, looks missing to the analyzer. Expect false messages about hosts, gateways and secrets defined outside the file. So form C suits a complete bundle of manifests and misleads on a single fragment.
+Form **C** runs where there is no cluster to ask, and that is also its limit. The analyzer knows only what the file contains, so many checks have nothing to compare against. A missing object can be reported as missing, and a real problem can go unreported. Treat a clean form C run as a quick check, not as proof.
 
-The next file holds a complete pair, a `DestinationRule` and a `VirtualService`, so form C gives a real answer. The `DestinationRule` defines only the subset `v1`, and the `VirtualService` routes to `v3`.
+The next file holds a pair, a `DestinationRule` and a `VirtualService`. The `DestinationRule` defines only the subset `v1`, and the `VirtualService` routes to `v3`.
 
 <!-- astrona:playground:renew -->
 
@@ -50,7 +50,23 @@ spec:
             subset: v3
 ```
 
-Do not apply it. Analyse the file on its own, without the cluster:
+Do not apply it. Analyse the file on top of the cluster, which is form B:
+
+```sh
+istioctl analyze -n analyze-demo notification-routing-proposed.yaml
+```
+
+You should see something like:
+
+```text
+Error [IST0101] (VirtualService analyze-demo/notification notification-routing-proposed.yaml:24) Referenced host+subset in destinationrule not found: "notification-service+v3"
+Error: Analyzers found issues when analyzing namespace: analyze-demo.
+See https://istio.io/v1.30/docs/reference/config/analysis for more information about causes and resolutions.
+```
+
+It is the same `IST0101` that caused the `503` in the cluster, found before anything was applied. Look at the origin field: when the analyzer reads a file, it adds the file name and a **line number**, which it cannot do for an object stored in etcd. Notice also that the gateway message is gone. The `VirtualService` in the file replaces the one in the cluster for this run, and the file has no `gateways:` field.
+
+Now run form C on the same file, without the cluster:
 
 ```sh
 istioctl analyze --use-kube=false notification-routing-proposed.yaml
@@ -59,11 +75,10 @@ istioctl analyze --use-kube=false notification-routing-proposed.yaml
 You should see something like:
 
 ```text
-Error [IST0101] (VirtualService notification.analyze-demo /tmp/proposed.yaml:14) Referenced host+subset in destinationrule not found: "notification-service+v3"
-Error: Analyzers found issues when analyzing <file>.
+✔ No validation issues found when analyzing notification-routing-proposed.yaml.
 ```
 
-This output was captured with the file saved as `/tmp/proposed.yaml`, so your file name appears in its place. It is the same `IST0101` that caused the `503` in the cluster, found in a file with nothing deployed. Look at the origin field: when the analyzer reads a file, it adds a **line number**, which it cannot do for an object stored in etcd. Both objects are in the file, so this message is real and not caused by scope. Keep the file, because the next command uses it again.
+The same mistake goes unreported. In Istio 1.30.5 the subset check gives no result when the analyzer reads only this file, so form C passes a file that form B rejects. This is the limit described above, and the reason to run form B whenever a cluster is available. Keep the file, because the next command uses it again.
 
 ## analyze against validate
 
@@ -77,7 +92,7 @@ This output was captured with the file saved as `/tmp/proposed.yaml`, so your fi
 | Needs a cluster | No | Optional (`--use-kube=false` to skip it) |
 | Sees other objects | No | Yes |
 | Catches a misspelled field | Yes | Yes |
-| Catches weights adding up to 120 | Yes | Yes |
+| Catches a rule with both `redirect` and `route` | Yes | Yes |
 | Catches a missing subset | **No** | Yes |
 | Catches a namespace without injection | No | Yes |
 
@@ -90,10 +105,10 @@ istioctl validate -f notification-routing-proposed.yaml
 You should see something like:
 
 ```text
-validation succeed
+"notification-routing-proposed.yaml" is valid
 ```
 
-The file that just produced an `Error` is perfectly valid on its own terms. It is well-formed YAML for the right schema, with every field in place. That one line is the reason `analyze` exists as a separate command.
+The file that form B just rejected with an `Error` is perfectly valid on its own terms. It is well-formed YAML for the right schema, with every field in place. That one line is the reason `analyze` exists as a separate command.
 
 ## Fixing: which end of a broken reference to change
 
@@ -171,17 +186,17 @@ istioctl analyze --all-namespaces
 You should see something like:
 
 ```text
-✔ No validation issues found when analyzing all namespaces.
+Info [IST0102] (Namespace default) The namespace is not enabled for Istio injection. Run 'kubectl label namespace default istio-injection=enabled' to enable it, or 'kubectl label namespace default istio-injection=disabled' to explicitly mark it as not needing injection.
 ```
 
-On a real cluster this report is rarely empty, and that is fine. The goal is not zero messages. The goal is to know which messages you have decided to accept. Any message you cannot explain is still an open question.
+The output is shortened to the message. `analyze-demo` is now clean, and the one message left is about the `default` namespace, which runs nothing in this playground. It is an `Info` message, so the exit code stays `0`. On a real cluster this report is rarely empty, and that is fine. The goal is not zero messages. The goal is to know which messages you have decided to accept. Any message you cannot explain is still an open question.
 
 You can now choose what the analyzer reads: the cluster, a file on top of the cluster, or a file alone. You know that `validate` checks one document and `analyze` checks the set. You also know how to fix a broken reference in the direction that matches what is deployed, and how to prove the fix with both the analyzer and a request. A clean analyze run still does not prove that the configuration reached the sidecar proxies. When it is clean and requests still fail, the next question is whether every proxy holds the latest configuration, which `istioctl proxy-status` answers.
 
 ## Common pitfalls
 
 > [!WARNING]
-> - **Expecting `--use-kube=false` to be quiet on a fragment.** With no cluster to ask, correct references to objects defined elsewhere are reported as missing. Use that form for complete bundles.
+> - **Trusting a clean `--use-kube=false` run.** With no cluster to compare against, the analyzer can miss a real problem, such as the missing subset in this module, and can report objects defined elsewhere as missing. Run form B whenever a cluster is available.
 > - **Using `validate` where you needed `analyze`.** `validate` cannot see a second object, so it passes every mistake between objects in this module.
 > - **Fixing a broken reference by creating the target without checking the pods.** A subset that matches no pods swaps a clear failure for a `503` with `UH`.
 > - **Fixing several messages in one apply.** When the symptom clears, you will not know which change mattered.

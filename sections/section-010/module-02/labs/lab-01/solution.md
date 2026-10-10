@@ -23,6 +23,7 @@ The lines that matter (the output is shortened):
 
 ```text
 RBAC policies: ns[describe-demo]-policy[notification-post-only]-rule[0]
+--------------------
 Effective PeerAuthentication:
    Workload mTLS mode: STRICT
 ```
@@ -36,12 +37,17 @@ The sidecar proxy in the `notification-service` pod was left at `rbac:debug`, so
 ```sh
 kubectl -n describe-demo exec deploy/tester -- \
   curl -s -o /dev/null -X GET http://notification-service/notify
+sleep 2
 kubectl -n describe-demo logs $POD -c istio-proxy --tail=20 | grep -i rbac
 ```
 
+The `sleep 2` gives the proxy time to write its log, which it does in short batches. Among the lines you get, the one that matters ends like this (shortened):
+
 ```text
-[... debug envoy rbac] enforced denied, matched policy none
+... debug	envoy rbac ... enforced denied, matched policy none	thread=...
 ```
+
+The `grep` also keeps the access log line of the `GET`, whose details field is `rbac_access_denied_matched_policy[none]`.
 
 `matched policy none` means an `ALLOW` policy selects the workload and the request matched none of its rules. An `ALLOW` policy **denies everything it does not name**, so a policy that lists only `POST` refuses `GET` without ever mentioning it.
 
@@ -108,8 +114,12 @@ istioctl x describe pod $POD -n describe-demo | grep -i -A2 'Effective PeerAuthe
 GET 200
 POST 200
 DELETE 403
+Effective PeerAuthentication:
    Workload mTLS mode: STRICT
+Applied PeerAuthentication:
 ```
+
+`grep -A2` prints the matching line and the two lines after it, so the last line is the heading of the next section.
 
 `DELETE` still being refused proves you widened the policy instead of removing it.
 

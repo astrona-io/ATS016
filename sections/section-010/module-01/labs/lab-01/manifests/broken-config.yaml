@@ -20,6 +20,8 @@ spec:
   hosts:
     - notification-service
   gateways:
+    # mesh makes the sidecar proxies use this object.
+    - mesh
     # This gateway does not exist.
     - missing-gateway
   http:
