@@ -85,12 +85,13 @@ istioctl analyze -n noinject-demo
 The first line now lists `istio-proxy` after `init:`. The rest looks like this:
 
 ```text
+reporting-service  init: istio-init istio-proxy
 reporting-service-...noinject-demo   Kubernetes   SYNCED (30s)   IGNORED   SYNCED (30s)   SYNCED (30s)   SYNCED (30s)   ...
 200
 ✔ No validation issues found when analyzing namespace: noinject-demo.
 ```
 
-If the first command prints only `reporting-service`, the proxy runs as a native sidecar; read `.spec.initContainers[*].name` as well. The grader checks both lists. Since Istio 1.27, plain `istioctl proxy-status` shows no per-type sync state, so use `-v 1`.
+The first line shows the application container, then the init containers: `istio-init`, which sets up the traffic redirection, and `istio-proxy`, which runs as a native sidecar on this cluster. The grader checks both lists. Since Istio 1.27, plain `istioctl proxy-status` shows no per-type sync state, so use `-v 1`.
 
 The `200` matters as much as the sidecar. Joining the mesh means the traffic is now intercepted, and interception is where two hidden problems appear: a Service port with no protocol name, and an application listening only on `127.0.0.1`. Both work without a sidecar and break the moment one arrives.
 

@@ -109,7 +109,7 @@ astrona submit
 
 ## Step 5: Prove the proxies caught up, not just traffic
 
-List the proxies with their sync state, run the analyzer, and send a real request from the `tester` pod:
+List the proxies with their sync state, run the analyzer, and send a real request from the `tester` pod. The proxies reconnect to `istiod` on their own retry timer, which can take up to a minute after `istiod` is back. If the `proxy-status` table shows only its header line, wait 30 seconds and run it again:
 
 ```sh
 istioctl proxy-status -v 1 | grep -E '^NAME|cphealth-demo'

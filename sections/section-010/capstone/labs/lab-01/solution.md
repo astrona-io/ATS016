@@ -54,7 +54,7 @@ kubectl -n audit-demo rollout status deployment/tester --timeout=180s
 kubectl -n audit-demo get pods -o custom-columns='POD:.metadata.name,CONTAINERS:.spec.containers[*].name'
 ```
 
-Both new pods now carry an `istio-proxy` sidecar. On Kubernetes 1.28 and later the sidecar can be listed under `initContainers` with `restartPolicy: Always` instead of under `containers`, so the custom columns above may not show it. `kubectl -n audit-demo get pods` then shows `2/2` in the `READY` column. Without this step every later fix is for show: a policy on a pod with no proxy enforces nothing.
+Both new pods now carry an `istio-proxy` sidecar. The old pods take a few seconds to terminate after `rollout status` returns. Until they are gone, `istioctl analyze` still reports `IST0103` for them, so run `kubectl -n audit-demo get pods` until only the two new pods are listed. On Kubernetes 1.28 and later the sidecar can be listed under `initContainers` with `restartPolicy: Always` instead of under `containers`, so the custom columns above may not show it. `kubectl -n audit-demo get pods` then shows `2/2` in the `READY` column. Without this step every later fix is for show: a policy on a pod with no proxy enforces nothing.
 
 ## Step 4: Fix the two references that point at nothing
 
