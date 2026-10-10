@@ -1,11 +1,11 @@
 # Reference solution for ats-016-lab-030-01.
 #
 # The invalid object may be removed outright; this is the alternative correct
-# end state — the same VirtualService with weights that actually sum to 100.
+# end state - the same VirtualService with only the route, no redirect.
 apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
-  name: bad-weights
+  name: bad-redirect
   namespace: cphealth-demo
 spec:
   hosts:
@@ -14,4 +14,3 @@ spec:
     - route:
         - destination:
             host: notification-service
-          weight: 100

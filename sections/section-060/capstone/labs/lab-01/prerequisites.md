@@ -12,8 +12,8 @@ The lab environment builds itself before the task begins:
 
 - A single-node `kind` Kubernetes cluster, with `kubectl` already pointed at it.
 - **Istio 1.30.5**, installed with the `demo` profile, and `istioctl` on your PATH.
-- The **Prometheus and Kiali and Grafana** addon(s) in `istio-system`.
-- The namespace(s) **`obscapstone-demo`**, prepared as the task describes.
+- The **Prometheus**, **Kiali** and **Grafana** add-ons in `istio-system`.
+- The namespace **`obscapstone-demo`**, prepared as the task describes.
 
 Nothing the task asks you to create has been created for you.
 

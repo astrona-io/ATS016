@@ -1,4 +1,4 @@
-# Diagnose Config Sync With proxy-status — Playground
+# Diagnose Configuration Sync With proxy-status — Playground
 
 - **ID:** PLAYGROUND
 - **Slug:** ats-016-playground-030-02
@@ -18,7 +18,7 @@ astrona destroy ats-016-playground-030-02
 ```
 
 `astrona destroy` takes the environment name (`metadata.name` = `ats-016-playground-030-02`), not
-the config path. `astrona submit` and `astrona test` do not apply — there is no
+the configuration path. `astrona submit` and `astrona test` do not apply — there is no
 grading.
 
 ## Layout

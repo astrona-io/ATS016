@@ -1,137 +1,129 @@
-# Part 3 — Capturing A Cluster With bug-report
+# Capturing A Cluster With bug-report
 
-> Prerequisite: [Part 2 — Making A Proxy Narrate One Decision](./course-02-envoy-log-scopes-at-runtime.md). Next: [the module landing page](./course.md), then [section 020](../../section-020/module-01/course.md).
+`istioctl x describe pod` and a raised log level both answer a question while you watch. Some problems do not allow that. They come and go, they sit in `istiod` instead of in one proxy, the cluster is about to be rebuilt, or the person who can fix the problem has no access to the cluster. `istioctl bug-report` is for those cases. It stops asking questions and starts recording: it collects the state of the control plane and of selected proxies into one archive that someone can read later.
 
-Every tool so far answers a question while you watch. Some problems do not allow that: they are intermittent, they are in `istiod` rather than in one proxy, the cluster is about to be rebuilt, or the person who can fix it has no access. `istioctl bug-report` is for those — it stops asking and starts recording.
+## What it collects
 
-## What it actually does
+`bug-report` is not one call. It walks the cluster and collects, for each selected target, the same things you would gather by hand, and writes them into a file named `bug-report.tar.gz`. Inside the archive, everything sits under a `bug-report/` folder with this layout in Istio 1.30:
 
-`bug-report` is not a single API call. It walks the cluster and collects, for each selected target, the same artefacts you would gather by hand:
+| Path in the archive | What it holds |
+| --- | --- |
+| `versions` | The `istioctl` version and the Istio versions running in the cluster |
+| `cluster/` | Cluster context, Kubernetes version, nodes, pods, events, the Istio custom resources (`crs`), the names of Secrets, and the Kubernetes resources of the included namespaces |
+| `istio/<namespace>/<istiod pod>/` | The `istiod` log (`discovery.log`) and the output of `istiod`'s debug endpoints, such as `debug/syncz` and `debug/configz` |
+| `proxies/<namespace>/<pod>/` | For each selected sidecar: its log (`istio-proxy.log`), its full Envoy configuration (`config_dump?include_eds`), and its `clusters`, `listeners`, `certs` and `stats/prometheus` |
+| `analyze/` | The output of `istioctl analyze`, run at the end of the capture |
 
-```text
-  for the control plane:
-      istiod logs                  (kubectl logs, including --previous where available)
-      istiod's own config and env
-      the Istio custom resources   (every VirtualService, DestinationRule, policy, ...)
-      cluster events
+The most important item is the **configuration dump**. It is the complete Envoy configuration of that proxy at the moment of capture, read from the proxy's administration port on `localhost:15000`. It is the same data `istioctl proxy-config` shows you piece by piece.
 
-  for each selected proxy:
-      the full Envoy config dump   (localhost:15000/config_dump — Part 2's admin port)
-      the proxy's stats
-      the istio-proxy container log
-      the pod spec
+A dump captured during an incident can be read later, at your own pace. You cannot get that by running a command afterwards, because by then the configuration may have changed and the evidence is gone. That is the real case for the tool: it freezes state you cannot get back any other way.
 
-  plus:
-      cluster version and node information
-```
+## The flags that keep it usable
 
-The important entry is the **config dump**. It is the complete, live Envoy configuration for that proxy at the moment of capture — the same data [section 040](../../section-040/module-01/course.md) teaches you to query in pieces with `istioctl proxy-config`. Captured during the incident, it can be read afterwards at leisure, which is the one thing you cannot do by re-running a command later: by then the configuration has converged and the evidence is gone.
-
-That is the real argument for the tool. It is not a convenience wrapper; it is a way to freeze state that is otherwise unrecoverable.
-
-## The flags that decide whether it is usable
-
-Run bare, `bug-report` targets every proxy in the mesh. On a cluster with several hundred sidecars that is a long wait and an archive nobody can open. Three flags keep it proportionate:
+Run with no flags, `bug-report` targets every proxy in the mesh. On a cluster with several hundred sidecar proxies, that is a long wait and an archive nobody can open. Three flags keep it in proportion:
 
 | Flag | Effect | Use it for |
 | --- | --- | --- |
-| `--include` | restrict to matching namespaces / deployments / pods | the namespace you are investigating |
-| `--exclude` | drop matching targets (applied after `--include`) | a noisy sidecar in an otherwise relevant namespace |
-| `--since` | limit how far back logs are collected | a known incident window |
+| `--include` | Collect only from matching namespaces, Deployments, pods, labels, annotations or containers | the workloads you are investigating |
+| `--exclude` | Drop matching targets, applied after `--include` | a noisy sidecar in an otherwise relevant namespace |
+| `--duration` | Collect only log lines from this far back, for example `10m` | a known incident window |
 
-`--include` and `--exclude` take a slash-separated selector — `<namespace>/<deployment>/<pod>/<label>/<annotation>/<container>` — with trailing parts optional, so `--include describe-demo` means the whole namespace and `--include describe-demo/notification-service-v1` narrows to one deployment.
+`--include` and `--exclude` take a selector with up to six fields separated by slashes, in this order: namespace, Deployment, pod, label, annotation, container. Each field can hold a comma-separated list, and empty fields at the end can be left out. So `--include describe-demo` selects the whole namespace, and `--include describe-demo/notification-service-v1` selects one Deployment in it. Be careful with more than one `--include` flag: in Istio 1.30.5, `bug-report` joins repeated `--include` selectors with AND, so two flags that name different namespaces match nothing, and the archive holds no proxy data. The `include:` line at the top of the output shows how the filter was read. To select workloads in two namespaces, use one selector with lists: `describe-demo,istio-system/notification-service-v1,istiod` selects the Deployment `notification-service-v1` or `istiod` in the namespace `describe-demo` or `istio-system`.
 
-`--since` is the one people forget. Without it you get the full retained log history of every selected pod, which is usually hours of unrelated traffic wrapped around the ten seconds that matter.
+The include filter also decides whether `istiod` is collected. `istiod` runs in `istio-system`, so a capture limited to `describe-demo` contains no control plane data. Add `istio-system` and `istiod` to the same selector when the problem might sit in the control plane. `--duration` is the flag people forget. Without it you get the full stored log of every selected container, which is usually hours of unrelated traffic around the ten seconds that matter.
 
-> [!TIP]
-> **Try it — a scoped capture, and what is inside it**
->
-> This takes a minute or two even scoped, because it contacts every selected proxy's admin interface in turn.
->
-> ```sh
-> istioctl bug-report --include describe-demo --since 10m
-> tar tzf bug-report.tar.gz | head -20
-> ```
->
-> Expect something like:
->
-> ```text
-> bug-report/cluster-context.txt
-> bug-report/istio-system/pods/istiod-7d4c9b8f4-k2m8x/logs/discovery.log
-> bug-report/describe-demo/pods/notification-service-v1-6c9f8b7d5-x2kqp/proxy/config_dump.json
-> bug-report/describe-demo/pods/notification-service-v1-6c9f8b7d5-x2kqp/logs/istio-proxy.log
-> bug-report/describe-demo/events.yaml
-> ```
->
-> The layout mirrors the cluster: namespace, then pod, then artefact. Note that `istio-system` is present despite `--include describe-demo` — control plane state is always collected, because a data plane capture without the control plane that configured it is rarely enough to diagnose anything.
+## Taking a limited capture
+
+The command below captures both proxies in `describe-demo`, the Deployments `notification-service-v1` and `tester`, plus `istiod`, with the last ten minutes of logs. One selector lists both namespaces and all three Deployments. It takes a minute or two even when limited, because `istioctl` contacts each selected proxy's administration port in turn and runs `istioctl analyze` at the end.
+
+<!-- astrona:playground:renew -->
+
+Run it from a folder where you can write files:
+
+```sh
+istioctl bug-report --include describe-demo,istio-system/notification-service-v1,tester,istiod --duration 10m
+```
+
+The last line of the output names the file it wrote: `bug-report.tar.gz` in the current folder. The `--output-dir` flag writes it to another folder instead. Now list which pods the archive holds data for:
+
+```sh
+tar tzf bug-report.tar.gz | grep -E '^bug-report/(proxies|istio)/' | cut -d/ -f2-4 | sort -u
+```
+
+You should see three lines: `istio/istio-system/` followed by the `istiod` pod name, and `proxies/describe-demo/` followed by the `notification-service-v1` and `tester` pod names. The layout mirrors the cluster: namespace, then pod, then the files. No other namespace appears, because nothing else matched an `--include`.
 
 ## Reading an archive you did not create
 
-The layout above is the navigation guide. When an archive lands on you, the order that gets to an answer fastest is:
+When an archive lands on your desk, the layout is your map. This order gets you to an answer fastest:
 
-1. **`cluster-context.txt`** — versions and cluster shape. Establishes whether you are looking at the Istio version you assumed.
-2. **The proxy's `istio-proxy.log`** — access log lines with response flags ([section 050](../../section-050/module-01/course.md)), which name the failing layer.
-3. **`config_dump.json` for that proxy** — what it was actually configured to do at the time. Large; search it for the cluster or route name the log implicated rather than reading it.
-4. **`istiod` logs** — anything containing `reject`, plus push activity around the incident timestamp.
-5. **`events.yaml`** — restarts, evictions, failed webhook calls.
+1. **`versions`**: whether you are looking at the Istio version you assumed.
+2. **The proxy's `istio-proxy.log`**: the access log lines and their response flags. A response flag is a short Envoy code that says why a request failed, and it names the layer that failed.
+3. **The proxy's `config_dump?include_eds`**: what the proxy was told to do at that moment. It is large, so search it for the cluster or route name the log pointed at instead of reading it.
+4. **The `istiod` log**: anything containing `reject`, and push activity around the time of the incident.
+5. **`cluster/events`**: restarts, evictions and failed webhook calls.
 
-That is the same outside-in order as a live investigation, executed on frozen evidence.
+That is the same outside-in order as a live investigation, applied to frozen evidence. To see how large one proxy's configuration is, extract the archive into its own folder and measure each dump:
 
-> [!TIP]
-> **Try it — pulling one proxy's configuration out of the archive**
->
-> ```sh
-> tar tzf bug-report.tar.gz | grep config_dump
-> tar xzf bug-report.tar.gz --wildcards '*/config_dump.json'
-> find bug-report -name config_dump.json -exec sh -c 'echo "{}: $(wc -c < {}) bytes"' \;
-> ```
->
-> Expect something like:
->
-> ```text
-> bug-report/describe-demo/pods/notification-service-v1-6c9f8b7d5-x2kqp/proxy/config_dump.json
-> bug-report/describe-demo/pods/tester-6d9f7b8c5-hj4kz/proxy/config_dump.json
-> bug-report/describe-demo/pods/notification-service-v1-...-x2kqp/proxy/config_dump.json: 412873 bytes
-> ```
->
-> Several hundred kilobytes of JSON **per proxy**, for a namespace with two pods and almost no configuration. That number is the concrete reason `--include` matters: the same capture across a few hundred sidecars is an archive measured in gigabytes.
+```sh
+mkdir -p bug-report-extract
+tar xzf bug-report.tar.gz -C bug-report-extract
+find bug-report-extract -name 'config_dump*' -exec wc -c {} +
+```
+
+Each dump is often several hundred kilobytes of JSON, even for a namespace with two pods and almost no Istio configuration. That number is the concrete reason `--include` matters: the same capture across a few hundred sidecar proxies grows to gigabytes.
 
 ## Treat the archive as sensitive
 
-A bug report contains logs, full configurations and cluster metadata. Depending on your environment that can include:
+A bug report holds logs, full proxy configurations and cluster details. Depending on your environment, that includes your service layout and internal hostnames, and the workload identities in every certificate, which together show who talks to whom. It also includes request paths, headers and anything your applications logged during the window, and the environment variables and configuration references from pod specs. By default it records only the names of Secrets. The `--full-secrets` flag adds their contents, so never use it on an archive you plan to share.
 
-- your service topology and internal hostnames — a map of the system;
-- certificate subject names and SPIFFE identities (not private keys, but a complete list of who talks to whom);
-- request paths, headers and anything your applications logged during the capture window;
-- environment variables and mounted config references from pod specs.
+None of that is secret on purpose, and all of it helps someone who attacks the cluster. Before you attach an archive to a public issue tracker or a vendor ticket, look inside it.
 
-None of that is secret by intent, and all of it is useful to somebody attacking the cluster. Before attaching one to a public issue tracker or a vendor ticket, look inside it — and prefer `--since` and `--include` to keep the window and the blast radius small. A capture you have reviewed is a much easier thing to share than one you have not.
+> [!TIP]
+> Always pass `--include` and `--duration`, even when you are in a hurry. A small archive you have reviewed is much easier to share than a large one you have not.
 
-## When to reach for it
+## When to use it
 
-`bug-report` is the wrong first move and the right last one. Its cost is real — minutes of wall clock, load on every selected proxy's admin interface, an artefact that needs handling — so the trigger should be one of:
+`bug-report` is the wrong first step and the right last one. It costs minutes of waiting, load on every selected proxy's administration port, and a file that needs careful handling. Use it when you hand the problem over to a vendor, another team or the next shift. Use it when the evidence is about to disappear: the cluster is being rebuilt, the pod is about to be recreated, or logs are kept only briefly. Use it when a problem comes and goes, so you can capture during one occurrence and read afterwards. And use it to compare two moments: capture now, capture after a change, and compare the configuration dumps.
 
-- **You are handing the problem over.** To a vendor, to another team, to the next shift.
-- **The evidence is about to disappear.** The cluster is being rebuilt, the pod is about to be recreated, the log retention window is short.
-- **The problem is intermittent.** Capture during an occurrence, read afterwards.
-- **You need to compare two moments.** Capture now, capture after a change, diff the config dumps.
+For anything you can watch happening, `describe` and a scoped log level are faster and give you less to carry.
 
-For anything you can watch happening, `describe` and a scoped log level are faster and produce less to carry.
+You now know what `istioctl bug-report` collects and where each item sits in the archive. You know how `--include` and `--duration` keep the capture small, that `istiod` is only collected when an `--include` matches it, and that the archive must be reviewed before it is shared. Together with `describe` and a log scope, you have three tools for three situations: what applies, why one decision happened, and what the whole system looked like at one moment.
+
+## Common pitfalls
 
 > [!WARNING]
-> **Pitfalls with bug-report**
->
-> - **Running it unscoped.** Without `--include` it walks every proxy in the mesh: a long wait, heavy load, and an archive too large to hand anyone.
-> - **Omitting `--since`.** You collect the full retained history of every selected pod and bury the window that matters.
-> - **Sharing it without looking inside.** It contains topology, identities and whatever your applications logged. Review before attaching it to anything public.
-> - **Using it as a first diagnostic.** If you can reproduce the problem on demand, `describe` plus a scoped log level answers faster and costs nothing.
-> - **Forgetting it is a snapshot.** Nothing in the archive updates. A capture taken after the mesh reconverged shows a healthy system and proves nothing.
+> - **Running it without `--include`.** It walks every proxy in the mesh: a long wait, heavy load, and an archive too large to hand to anyone.
+> - **Leaving out `--duration`.** You collect the full stored log of every selected container and bury the window that matters.
+> - **Expecting `istiod` in a capture limited to one namespace.** Add `istio-system` and `istiod` to the selector when the control plane may be involved.
+> - **Passing `--include` twice.** Repeated selectors are joined with AND, so two namespaces in two flags match nothing. Put the lists in one selector.
+> - **Sharing it without looking inside, or with `--full-secrets`.** It holds your service layout, identities and whatever your applications logged.
+> - **Forgetting it is a snapshot.** Nothing in the archive updates. A capture taken after the problem cleared shows a healthy system and proves nothing.
 
-> *bug-report freezes the one thing you cannot go back for: every proxy's live configuration at the moment it was wrong.*
+## Your mission: Capture A Limited bug-report Archive
 
-## Reference
+You can now take a `bug-report` capture that holds exactly the workloads that matter, plus the control plane. The graded lab asks you to hand a platform team an archive of one failing workload and `istiod`, without the proxies of any other pod in the cluster.
 
-- `istioctl bug-report --help` — the selector syntax for `--include` / `--exclude`, plus `--timeout` and the output path flag.
-- [istioctl bug-report](https://istio.io/latest/docs/reference/commands/istioctl/#istioctl-bug-report) — the command reference, including the full list of collected artefacts.
-- [Reporting a bug](https://github.com/istio/istio/blob/master/CONTRIBUTING.md) — what the Istio maintainers expect an archive to be accompanied by; a good template even for an internal handover.
-- [Envoy config dump](https://www.envoyproxy.io/docs/envoy/latest/operations/admin#get--config_dump) — the structure of the largest file in the archive, worth skimming before you first open one.
+The lab runs in its own cluster, so first pause your playground. Nothing in it is lost:
+
+```sh
+astrona stop ats-016-playground-010-02
+```
+
+Then start the lab:
+
+```sh
+astrona run --git ssh://git@github.com/astrona-io/ATS016.git -c sections/section-010/module-02/labs/lab-02
+```
+
+The task is on the next page. Solve it on your own first. When you think you are done, send it for grading:
+
+```sh
+astrona submit -c sections/section-010/module-02/labs/lab-02
+```
+
+When the lab is done, remove it and start your playground again:
+
+```sh
+astrona destroy ats-016-lab-010-02-02
+astrona start ats-016-playground-010-02
+```

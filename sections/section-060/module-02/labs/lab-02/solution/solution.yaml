@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: findings
+  namespace: callers-demo
+data:
+  failing-caller: reports-client
+  reporter: source
+  response-flag: FI
+---
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: notification
+  namespace: callers-demo
+spec:
+  hosts:
+    - notification-service
+  http:
+    - route:
+        - destination:
+            host: notification-service

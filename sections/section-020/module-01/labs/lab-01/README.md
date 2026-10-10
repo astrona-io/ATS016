@@ -1,3 +1,7 @@
+---
+estimated_duration: 20m
+---
+
 # Debug Conflicting And Shadowed Routes
 
 - **ID:** LAB

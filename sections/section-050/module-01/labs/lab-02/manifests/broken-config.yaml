@@ -1,0 +1,35 @@
+# Two faults in one namespace, each decided by a different proxy.
+#
+# 1. The DENY policy is named for DELETE but lists POST, so the destination's
+#    proxy refuses every POST with 403 (flag "-", rbac_access_denied...).
+# 2. The connection pool allows one connection and one waiting request, so the
+#    client's proxy rejects bursts with 503 UO before they leave the pod.
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: block-delete
+  namespace: accesslog-demo
+spec:
+  selector:
+    matchLabels:
+      app: notification-service
+  action: DENY
+  rules:
+    - to:
+        - operation:
+            methods: ["POST"]
+---
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: notification
+  namespace: accesslog-demo
+spec:
+  host: notification-service
+  trafficPolicy:
+    connectionPool:
+      tcp:
+        maxConnections: 1
+      http:
+        http1MaxPendingRequests: 1
+        maxRequestsPerConnection: 1

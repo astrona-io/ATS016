@@ -1,10 +1,10 @@
 # Solution: The Mesh Works And Nothing Can Change
 
-## Step 1 — Trust the symptom, not the dashboards
+Three reports point at one component: `istiod`, Istio's control plane. This walkthrough checks the control plane, brings it back, finds the invalid object that was stored without validation, and proves the mesh has caught up.
 
-Traffic flowing proves nothing about the control plane. Each proxy serves from
-configuration it already holds and a certificate it already has. The useful test
-is whether anything can **change**:
+## Step 1: Trust the symptom, not the dashboards
+
+Working traffic proves nothing about the control plane. Each sidecar proxy serves with the configuration it already holds and a certificate it already has. The useful question is whether anything can **change**. Look at `istiod`:
 
 ```sh
 kubectl -n istio-system get pods -l app=istiod
@@ -17,67 +17,73 @@ NAME     READY   UP-TO-DATE   AVAILABLE   AGE
 istiod   0/0     0            0           31m
 ```
 
-`istiod` is scaled to zero. That single fact explains all three reports: the
-applied `VirtualService` was never pushed, the colleague's pods cannot be
-created because the injection webhook is unreachable, and existing traffic is
-unaffected because proxies are running on cached configuration.
+`istiod` is scaled to zero. That one fact explains all three reports:
 
-## Step 2 — Restore the control plane
+- Changes to the namespace are not sent to the proxies.
+- The colleague's new pods cannot be created, because the API server cannot reach the injection webhook.
+- Existing traffic is fine, because the proxies run on their stored configuration.
+
+## Step 2: Restore the control plane
+
+Scale `istiod` back to one replica and wait for it:
 
 ```sh
 kubectl -n istio-system scale deploy istiod --replicas=1
 kubectl -n istio-system rollout status deploy istiod --timeout=180s
 ```
 
+Nothing needs to be applied again afterwards. A control plane outage delays changes; it does not lose them. That includes the invalid object: once `istiod` is back, it sends it to the proxies as it is. The proxies reconnect on their own retry timer, which can take up to a minute, so wait for that before you send the request again:
+
+```sh
+sleep 60
+kubectl -n cphealth-demo exec deploy/tester -- \
+  curl -s -o /dev/null -w '%{http_code} %{redirect_url}\n' -X POST http://notification-service/notify
+```
+
+```text
+301 http://notification-service/v2
+```
+
+The request that returned `200` before now gets a redirect to `/v2`, which nobody configured on purpose.
+
+Submit now to see your progress. The `istiod` check should pass, and the check for the invalid object still fails:
+
 ```sh
 astrona submit
 ```
 
-Nothing needs re-applying afterwards — a control plane outage delays changes, it
-does not lose them.
+## Step 3: Find the object that was stored without validation
 
-## Step 3 — Find the object that will never be served
-
-With `istiod` back, look at what it makes of the namespace. `kubectl get` shows
-the object and `kubectl describe` shows no events, because Istio networking
-resources carry no status conditions to turn red. Two places hold the truth:
+With `istiod` back, ask what it makes of the namespace. `kubectl get` lists the object and `kubectl describe` shows no events, because Istio networking objects have no status field that reports a problem. `istiod` does not check a stored object again, so its log and metrics say nothing about it either. `istioctl analyze` is the tool that names it. The log and counter checks below are still worth running, because they would show the other case, a proxy that refused configuration:
 
 ```sh
 kubectl -n istio-system logs deploy/istiod --tail=200 | grep -i -E 'reject|invalid'
 kubectl -n istio-system exec deploy/istiod -- \
-  curl -s localhost:15014/metrics | grep -E 'pilot_total_xds_rejects|pilot_xds_push_errors'
+  curl -s localhost:15014/metrics | grep -E 'pilot_total_xds_rejects|pilot_total_xds_internal_errors'
 istioctl analyze -n cphealth-demo
 ```
 
-```text
-Error [IST0101] ... total destination weight 120 != 100
-```
+The analyzer reports an `Error` with the code `IST0106` (`SchemaValidationError`) on `VirtualService cphealth-demo/bad-redirect`, with the reason `HTTP route cannot contain both route and redirect`. Its one HTTP rule both redirects the request and routes it, which a rule may never do. It was stored in etcd only because both validating webhooks were skipped when it was applied; with the webhooks working, `kubectl apply` refuses it. `istiod` serves the rule as it is, and the redirect is what the proxies apply.
 
-The `bad-weights` `VirtualService` has two destinations at `weight: 60`. It
-reached etcd because the validating webhook was unavailable when it was applied;
-`istiod` refuses it every time it tries to build configuration from it.
+`pilot_total_xds_rejects` may be **missing** rather than zero. A counter that has never gone up is usually not shown at all, and a missing line there is good news.
 
-Note `pilot_total_xds_rejects` may be **absent** rather than zero — a Prometheus
-counter that has never incremented is usually not emitted at all, and absence
-there is good news.
+## Step 4: Remove or correct it
 
-## Step 4 — Remove or correct it
-
-Either is acceptable. Removing it is the honest choice if nobody wanted a
-weighted split:
+Either fix is accepted. Removing the object is the right choice if nobody needs it:
 
 ```sh
-kubectl -n cphealth-demo delete virtualservice bad-weights
+kubectl -n cphealth-demo delete virtualservice bad-redirect
 ```
 
-Correcting it, if the split was intended:
+If the route was intended, correct it instead, so the rule only routes.
 
-```sh
-kubectl apply -f - <<'EOF'
+Save this as `virtualservice-bad-redirect.yaml`:
+
+```yaml
 apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
-  name: bad-weights
+  name: bad-redirect
   namespace: cphealth-demo
 spec:
   hosts:
@@ -86,37 +92,46 @@ spec:
     - route:
         - destination:
             host: notification-service
-          weight: 100
-EOF
 ```
 
-With `istiod` healthy the webhook now enforces again, so an attempt to re-apply
-the original would be refused at `kubectl apply` time — which is the system
-working as designed.
+Apply it:
+
+```sh
+kubectl apply -f virtualservice-bad-redirect.yaml
+```
+
+With `istiod` healthy, the validation webhook checks Istio objects again. If you tried to apply the original object now, `kubectl apply` would refuse it at once. That is the system working as designed.
+
+Submit again:
 
 ```sh
 astrona submit
 ```
 
-## Step 5 — Verify convergence, not just traffic
+## Step 5: Prove the proxies caught up, not just traffic
+
+List the proxies with their sync state, run the analyzer, and send a real request from the `tester` pod. The proxies reconnect to `istiod` on their own retry timer, which can take up to a minute after `istiod` is back. If the `proxy-status` table shows only its header line, wait 30 seconds and run it again:
 
 ```sh
-istioctl proxy-status
+istioctl proxy-status -v 1 | grep -E '^NAME|cphealth-demo'
 istioctl analyze -n cphealth-demo
 kubectl -n cphealth-demo exec deploy/tester -- \
   curl -s -o /dev/null -w '%{http_code}\n' -X POST http://notification-service/notify
 ```
 
 ```text
-NAME                                       CDS      LDS      EDS      RDS
-notification-service-v1-...cphealth-demo   SYNCED   SYNCED   SYNCED   SYNCED
-tester-...cphealth-demo                    SYNCED   SYNCED   SYNCED   SYNCED
+NAME                                                       CLUSTER        CDS             ECDS        EDS              LDS             RDS             ISTIOD                      VERSION
+notification-service-v1-54dd46d4b6-5gx5h.cphealth-demo     Kubernetes     SYNCED (0s)     IGNORED     SYNCED (47s)     SYNCED (0s)     SYNCED (0s)     istiod-7dc9684c55-bzfh6     1.30.5
+tester-69699fd775-2gdqt.cphealth-demo                      Kubernetes     SYNCED (0s)     IGNORED     SYNCED (62s)     SYNCED (0s)     SYNCED (0s)     istiod-7dc9684c55-bzfh6     1.30.5
 ✔ No validation issues found when analyzing namespace: cphealth-demo.
 200
 ```
 
-`SYNCED` proves the proxies acknowledged what `istiod` sent. The `200` proves
-the result works. Neither alone is sufficient.
+Since Istio 1.27, plain `istioctl proxy-status` shows no per-type sync state, so use `-v 1`. `IGNORED` only means the proxy never asked for that type.
+
+`SYNCED` proves the proxies confirmed what `istiod` sent. The `200` proves the result works. You need both.
+
+Submit for the final grade:
 
 ```sh
 astrona submit
@@ -126,26 +141,20 @@ astrona submit
 
 | Shortcut | What happens |
 | --- | --- |
-| Re-apply the object because "nothing happened" | re-applying identical content does not retry a push; the rejection repeats |
-| Reinstall Istio | destroys the evidence and the mesh's existing state for an outage that needed one `scale` |
-| Restart the workload pods | with `istiod` down they never become ready; with it up they were never the problem |
-| Leave the webhook `failurePolicy` at `Ignore` | invalid configuration keeps being accepted silently |
+| Apply the object again because "nothing happened" | The same content does not retry a push; the rejection repeats |
+| Reinstall Istio | Destroys the evidence and the mesh's state, for an outage that needed one `scale` |
+| Restart the workload pods | With `istiod` down they cannot be created; with it up they were never the problem |
+| Set the validation webhook `failurePolicy` to `Ignore` | Invalid configuration keeps being stored without a check |
 
 ## Common mistakes
 
-- Concluding the mesh is fine because traffic still flows during an `istiod`
-  outage. Proxies are running on cached config.
-- Looking for a rejected configuration in `kubectl apply` output. It succeeded;
-  the rejection happened later, inside `istiod`.
-- Ignoring `istiod` restarts. An `OOMKilled` control plane produces intermittent,
-  hard-to-reproduce symptoms.
-- Restarting workloads while `istiod` is down — they will not get config and
-  will stay unready.
+- Deciding the mesh is fine because traffic still flows during an `istiod` outage. The proxies are running on stored configuration.
+- Looking for the rejection in the `kubectl apply` output. The apply succeeded; the rejection happened later, inside `istiod`.
+- Ignoring `istiod` restarts. A control plane killed for lack of memory causes problems that come and go.
+- Restarting workloads while `istiod` is down. Their new pods cannot be created.
 
 ## Practice variations
 
-- Lower the `istiod` memory limit until it is `OOMKilled` and observe the
-  mesh-wide symptoms.
-- Delete the validating webhook configuration and watch invalid config become
-  acceptable again.
+- Lower the `istiod` memory limit until it is `OOMKilled`, and watch the symptoms across the mesh.
+- Set the validation webhook's `failurePolicy` to `Ignore`, scale `istiod` to zero, and apply an invalid object to see it stored.
 - Run `istioctl bug-report` and look at what it collects from the control plane.

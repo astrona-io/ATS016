@@ -12,8 +12,8 @@ The lab environment builds itself before the task begins:
 
 - A single-node `kind` Kubernetes cluster, with `kubectl` already pointed at it.
 - **Istio 1.30.5**, installed with the `demo` profile, and `istioctl` on your PATH.
-- The **Prometheus and Kiali** addon(s) in `istio-system`.
-- The namespace(s) **`kiali-demo`**, prepared as the task describes.
+- The **Prometheus** and **Kiali** add-ons in `istio-system`.
+- The namespace **`kiali-demo`**, prepared as the task describes.
 
 Nothing the task asks you to create has been created for you.
 

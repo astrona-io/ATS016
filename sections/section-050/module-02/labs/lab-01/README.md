@@ -1,3 +1,7 @@
+---
+estimated_duration: 20m
+---
+
 # Debug A 503 Caused By An mTLS Mismatch
 
 - **ID:** LAB

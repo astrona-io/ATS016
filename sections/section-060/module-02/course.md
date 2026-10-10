@@ -1,57 +1,40 @@
 # Troubleshoot With Prometheus And Grafana
 
-<!-- astrona:playground -->
-> [!NOTE]
-> 🧪 **Hands-on playground for this module** — a clean, throwaway machine to explore on. No task, no grading. Folder: [`playground/`](https://github.com/astrona-io/ATS016/tree/main/sections/section-060/module-02/playground)
->
-> ```sh
-> astrona run --git ssh://git@github.com/astrona-io/ATS016.git -c sections/section-060/module-02/playground
-> astrona destroy ats-016-playground-060-02
-> ```
+A few `curl` commands tell you whether a service is broken right now. They cannot tell you that failures started at 14:05, that they hit 30% of requests and not all of them, that the client sees more errors than the server, or that the slow requests are slow by about half a second.
 
-Counting `curl` output tells you whether a service is broken right now. It cannot tell you that failures started at 14:05, that they affect 30% of requests rather than all of them, that the client sees more errors than the server does, or that the slow requests are slow by exactly half a second.
+Metrics answer those questions. Logs and `istioctl proxy-config` answer questions about **this request** and **this proxy**. Metrics answer questions about **all requests over time**: how many, how bad, how slow, since when, and for whom. Every sidecar proxy in the mesh counts the requests it handles, with no change to any application. Prometheus is the monitoring system that collects those counts and stores them as time series, and Grafana is the dashboard tool that draws them as graphs.
 
-That is the contrast this module turns on. Logs and `proxy-config` answer questions about **this request** and **this proxy**; metrics answer questions about **all requests over time** — how much, how bad, how slow, since when, and for whom. Istio's sidecars export the data for every workload in the mesh with no change to any application, and this module is the handful of metrics that matter, the labels that make them useful, and the queries worth knowing by heart.
-
-> Istio's standard metrics answer how much, how bad and how slow, split by source and destination, without touching the application.
-
-## How this module is organised
-
-1. **[Part 1 — The Metrics Pipeline](./course-01-the-metrics-pipeline.md)** — where the numbers come from, port 15090 and scraping, the metric and label inventory, and why counters and histograms are read differently.
-2. **[Part 2 — The reporter Label And PromQL Patterns](./course-02-reporter-and-promql.md)** — two independent observations of every request, what a disagreement between them proves, and the three query shapes that cover most troubleshooting.
-3. **[Part 3 — Measuring A Known Failure, And Grafana](./course-03-measuring-a-failure-and-grafana.md)** — injecting a known error rate and delay, measuring both with PromQL, reading the client/server asymmetry, and which bundled dashboard answers which question.
+The module has four parts. **The Metrics Pipeline** follows a number from the proxy to Prometheus and explains the metrics, the labels, and why counters and histograms are read differently. **The reporter Label And PromQL Patterns** shows that every request is counted twice, what a difference between the two counts proves, and the three query shapes that cover most troubleshooting. **Measuring A Known Failure** injects a known error rate and delay and checks each query against it; a graded lab follows it. **Grafana, Access Logs And Proving The Fix** covers the bundled dashboards, turns on access logs for one namespace with a `Telemetry` object, and proves that the fault is gone; a second graded lab follows it.
 
 ## Learning objectives
 
 After this module you can:
 
-- Describe how a proxy's metrics reach Prometheus, and what breaks the pipeline.
+- Describe how a proxy's metrics reach Prometheus, and what breaks that path.
 - Name Istio's standard request metrics and the questions each one answers.
-- Explain why a counter's absolute value is meaningless and what to read instead.
-- Use the `reporter` label to compare the client's view of traffic with the server's, and interpret a disagreement.
+- Explain why the raw value of a counter means nothing, and what to read instead.
+- Use the `reporter` label to compare the client's view of traffic with the server's, and explain a difference between them.
 - Write PromQL for a request rate, an error ratio and a latency percentile.
-- Explain why `le` must survive aggregation in a histogram query.
+- Explain why `le` must survive the aggregation in a histogram query.
 - Query Prometheus without a browser, and read the same numbers directly from a proxy.
-- Verify an injected failure against the percentage you injected.
-- Say which of Istio's four Grafana dashboards to open for a given question.
+- Check an injected failure against the percentage you injected, and find which caller it affects.
+- Say which of Istio's Grafana dashboards to open for a given question.
 
 ## Before you start
 
-You need [section 050](../../section-050/module-01/course.md) — response flags appear here as a metric label, and this module assumes you know what they mean. Some familiarity with PromQL helps but is not required; every query is explained as it appears.
+You need Kubernetes basics: namespaces, Deployments, Services, pod labels and `kubectl exec`. You also need two Istio basics. A sidecar proxy (Envoy) is a proxy container that Istio adds to each pod; all inbound and outbound traffic of the pod passes through it. A `VirtualService` is the Istio resource that tells the sidecar proxies how to route requests for a host.
 
-The playground gives you a single-node `kind` cluster with **Istio 1.30.5 already installed** (the `demo` profile), `istioctl` on your PATH, the **Prometheus and Grafana addons** in `istio-system`, and the injected namespace **`metrics-demo`** containing `notification-service-v1` behind a Service on port 80 and a `tester` client pod with `curl`.
+It helps to know response flags. When a request fails, the sidecar proxy writes a short Envoy code next to it in the access log, such as `UH` (no healthy upstream), `UF` (upstream connection failure), `UO` (upstream overflow, from a circuit breaker) or `UT` (upstream request timeout). In this module the same code appears as a metric label. PromQL, the Prometheus query language, is not needed in advance: every query is explained when it first appears.
 
-Prometheus and Grafana are web UIs, and reaching them from a browser needs a port-forward your browser can connect to — which depends on how you are connected to this playground. The checkpoints therefore query Prometheus over its HTTP API from inside the cluster: same data, same queries, no browser required.
+Your playground is one `kind` cluster with **Istio 1.30.5** installed with the `demo` profile, and `istioctl` on your PATH. The `istio-system` namespace also runs the **Prometheus** and **Grafana** add-ons, with Istio's bundled Grafana dashboards. The namespace **`metrics-demo`** has sidecar injection switched on and runs these workloads:
 
-Every command in every part runs against the playground cluster; `kubectl` is already pointed at it.
+| Workload | What it is |
+| --- | --- |
+| `notification-service-v1` | A Deployment behind the Service `notification-service` on port `80`. It answers `["EMAIL"]` |
+| `tester` | A client pod with `curl`. Every test request and every Prometheus query is sent from here |
 
-## Where this fits
+No traffic flows at startup, so every dashboard starts empty. Prometheus and Grafana are web pages, and whether your browser can reach them depends on how you are connected to the playground. So the hands-on steps query Prometheus over its HTTP interface from inside the cluster: the same data and the same queries, with no browser needed.
 
-Metrics answer a different class of question from everything else in this course:
+Launch your playground now, and keep it running next to you while you read the parts:
 
-- **Is this actually broken, or did you catch one bad request?** An error ratio settles it in one query.
-- **When did it start?** Counters have history; an access log tail does not.
-- **Who is affected?** `by (source_workload)` turns "the service is erroring" into a list of callers.
-- **Is it slow, or is it failing?** The duration histogram and the response-code counter are different questions, often confused.
-
-The natural order in an incident is: Grafana or Kiali to find *where*, metrics to establish *how much and since when*, then the access log and `proxy-config` to find *why*.
+<!-- astrona:playground -->

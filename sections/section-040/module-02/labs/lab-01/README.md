@@ -1,3 +1,7 @@
+---
+estimated_duration: 15m
+---
+
 # Debug A 503 Caused By A Missing Subset
 
 - **ID:** LAB
@@ -16,7 +20,7 @@ astrona destroy ats-016-lab-040-02
 ```
 
 `astrona destroy` takes the environment name (`metadata.name` = `ats-016-lab-040-02`), not
-the config path.
+the configuration path.
 
 ## Layout
 

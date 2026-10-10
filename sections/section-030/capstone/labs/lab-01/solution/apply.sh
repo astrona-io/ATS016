@@ -19,7 +19,7 @@ kubectl label namespace cpcapstone-legacy istio-injection=enabled
 kubectl -n cpcapstone-legacy rollout restart deployment billing-service
 kubectl -n cpcapstone-legacy rollout status deployment/billing-service --timeout=180s
 
-kubectl -n cpcapstone-demo delete virtualservice payments-split --ignore-not-found
+kubectl -n cpcapstone-demo delete virtualservice payments-redirect --ignore-not-found
 
 # Wait for the pods being replaced to actually go away. `rollout status` returns
 # as soon as the new pod is available, while the old one is still terminating -

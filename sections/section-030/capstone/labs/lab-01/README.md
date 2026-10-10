@@ -1,3 +1,7 @@
+---
+estimated_duration: 40m
+---
+
 # Capstone: Three Workloads, Three Different Control Plane Faults
 
 - **ID:** CAPSTONE
@@ -16,7 +20,7 @@ astrona destroy ats-016-capstone-030
 ```
 
 `astrona destroy` takes the environment name (`metadata.name` = `ats-016-capstone-030`), not
-the config path.
+the configuration path.
 
 ## Layout
 

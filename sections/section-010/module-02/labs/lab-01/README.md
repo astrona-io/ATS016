@@ -1,4 +1,8 @@
-# Summarise A Workload With describe And bug-report
+---
+estimated_duration: 15m
+---
+
+# Widen A Policy Without Weakening The Mesh
 
 - **ID:** LAB
 - **Slug:** ats-016-lab-010-02

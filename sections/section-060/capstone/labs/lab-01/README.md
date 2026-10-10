@@ -1,3 +1,7 @@
+---
+estimated_duration: 40m
+---
+
 # Capstone: Measure A Failure, Fix It, Prove It
 
 - **ID:** CAPSTONE
@@ -16,7 +20,7 @@ astrona destroy ats-016-capstone-060
 ```
 
 `astrona destroy` takes the environment name (`metadata.name` = `ats-016-capstone-060`), not
-the config path.
+the configuration path.
 
 ## Layout
 

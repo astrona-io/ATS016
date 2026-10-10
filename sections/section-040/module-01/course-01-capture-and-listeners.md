@@ -1,162 +1,145 @@
-# Part 1 — Capture And Listeners
+# Capture And Listeners
 
-> Prerequisite: [the module landing page](./course.md). Next: [Part 2 — Routes](./course-02-routes.md).
+An application in the mesh never sends its requests to the sidecar proxy on purpose. It connects to `notification-service:80` exactly as it did before Istio was installed. Yet before any Istio routing can apply, that connection has to pass through the sidecar proxy (Envoy). This part shows the mechanism that redirects the connection, and the first of the four stages that acts on it: the listener.
 
-Before any of Istio's routing applies, something has to make your application's traffic go through Envoy at all. Your code connects to `notification-service:80` exactly as it did before the mesh existed. This part is the mechanism that intercepts it, and the first of the four stages that acts on the result.
+## Capture: network rules inside the pod
 
-## Capture: iptables in the pod's network namespace
+When a pod joins the mesh, an init container named `istio-init` writes `iptables` rules into the pod before the application starts. `iptables` is the Linux packet-filtering tool, and these rules are the capture mechanism. They apply only inside the pod's own network namespace, which the application container and the proxy container share.
 
-[Module 030-03 Part 1](../../section-030/module-03/course-01-the-injection-webhook.md) mentioned that an init container installs `iptables` rules. Those rules are the capture mechanism, and they operate entirely inside the pod's own network namespace — which both containers share.
-
-```text
-   pod network namespace
-   ┌───────────────────────────────────────────────────────────┐
-   │                                                           │
-   │   app ──connect() to 10.96.44.31:80──┐                    │
-   │                                      │ iptables OUTPUT    │
-   │                                      │ REDIRECT           │
-   │                                      ▼                    │
-   │                            envoy :15001  (outbound)       │
-   │                                      │                    │
-   │                                      └──▶ out to the pod IP
-   │                                                           │
-   │   inbound traffic ──┐                                     │
-   │                     │ iptables PREROUTING REDIRECT        │
-   │                     ▼                                     │
-   │           envoy :15006  (inbound) ──▶ app :8084           │
-   └───────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    A["app"] -->|"connect to 10.96.44.31:80"| R1["iptables OUTPUT"]
+    R1 -->|"redirect"| O["envoy :15001"]
+    O -->|"to the pod IP"| N["other pod"]
+    I["inbound traffic"] -->|"arrives"| R2["iptables PREROUTING"]
+    R2 -->|"redirect"| IN["envoy :15006"]
+    IN -->|"forward"| APP["app :8084"]
 ```
 
-Three consequences worth carrying:
+The diagram shows both directions: connections the application opens are redirected to port 15001, and connections arriving for the application are redirected to port 15006 before Envoy passes them on to the application's own port 8084.
 
-- **The application is unmodified and unaware.** It dialled a Service IP; the connection was redirected before it left the namespace. No library, no proxy environment variable, no code change.
-- **The original destination survives the redirect.** The kernel records it, and Envoy recovers it — which is how a single listener on 15006 can serve many application ports, and why the `ORIGINAL_DST` cluster type in [Part 3](./course-03-clusters-and-endpoints.md) exists.
-- **Traffic that bypasses the redirect bypasses the mesh.** Rules can exclude ports or CIDRs (via annotations such as `traffic.sidecar.istio.io/excludeOutboundPorts`), and anything excluded gets no routing, no policy and no telemetry. That is a legitimate tool and an easy way to produce a workload that is "in the mesh" for some traffic only.
+Three facts follow from this, and all three matter when you debug. First, the application is unchanged and unaware: it connected to a Service address, and the connection was redirected before it left the pod. Second, the original destination survives the redirect. The Linux kernel records it, and Envoy reads it back, which is how one listener on 15006 can serve many application ports. Third, traffic that skips the redirect skips the mesh. Annotations such as `traffic.sidecar.istio.io/excludeOutboundPorts` can exclude ports or address ranges, and excluded traffic gets no routing, no policy and no telemetry.
 
 ## The ports you will see
 
+The sidecar proxy uses a fixed set of ports. You will not connect to most of them by hand, but you will see them in `proxy-config` output, so learn to recognise them:
+
 | Port | Direction | Purpose |
 | --- | --- | --- |
-| **15001** | outbound | the catch-all: everything the application sends leaves through here |
-| **15006** | inbound | the catch-all: everything arriving for the application enters here |
-| 15000 | — | Envoy's admin interface, localhost only ([module 010-02 Part 2](../../section-010/module-02/course-02-envoy-log-scopes-at-runtime.md)) |
-| 15020 / 15021 | — | health and readiness endpoints, merged application and proxy probes |
-| 15090 | — | Prometheus metrics, scraped from outside ([module 060-02](../../section-060/module-02/course.md)) |
-| 15012 | outbound | the xDS and certificate stream to `istiod` ([module 030-02](../../section-030/module-02/course-01-xds-and-acknowledgement.md)) |
+| **15001** | outbound | catch-all: every connection the application opens leaves through here |
+| **15006** | inbound | catch-all: every connection arriving for the application enters here |
+| 15000 | none | Envoy's administration interface, reachable only inside the pod |
+| 15020 | none | merged Prometheus metrics from the Istio agent, Envoy and the application |
+| 15021 | none | health checks |
+| 15090 | none | Envoy's own Prometheus metrics |
 
-The four in the middle are infrastructure and never appear in a request path. The two in bold are where this module starts.
+The proxy also connects out to port 15012 on `istiod`, where it receives configuration over xDS and its certificate. The ports in the middle of the table never appear in a request's path. The two in bold are where this part starts.
 
 ## What a listener is
 
-A **listener** is a socket Envoy accepts connections on, plus the chain of filters it applies to what arrives. In a sidecar, listeners are not your application's ports — the application still owns those. They are Istio's own, created to receive redirected traffic.
+A **listener** is a socket that Envoy accepts connections on, plus the chain of filters it applies to whatever arrives. In a sidecar, the listeners are not your application's ports, because the application still owns those. They are Istio's own, created to receive the redirected traffic.
 
-Alongside the two catch-alls you will see **per-service outbound listeners**, one for each port the proxy knows a destination on. That is a deliberate design: a listener bound to `0.0.0.0:80` with knowledge of which services live on port 80 can hand off to HTTP-aware routing, whereas the 15001 catch-all can only pass bytes along.
+Next to the two catch-alls you will see **outbound listeners per port**, one for each port on which the proxy knows a destination. A listener bound to `0.0.0.0:80` that knows which Services use port 80 can hand an HTTP request to routing. The 15001 catch-all can only pass bytes along. List the first lines of the `tester` proxy's listeners:
 
-> [!TIP]
-> **Try it — the ports this proxy is listening on**
->
-> ```sh
-> istioctl proxy-config listener deploy/tester -n proxycfg-demo | head
-> ```
->
-> Expect something like:
->
-> ```text
-> ADDRESSES     PORT  MATCH                                                             DESTINATION
-> 10.96.0.10    53    ALL                                                               Cluster: outbound|53||kube-dns.kube-system.svc.cluster.local
-> 0.0.0.0       80    Trans: raw_buffer; App: http/1.1,h2c                              Route: 80
-> 0.0.0.0       80    ALL                                                               PassthroughCluster
-> 0.0.0.0       15001 ALL                                                               PassthroughCluster
-> 0.0.0.0       15006 Addr: *:15006                                                     Inline Route: /*
-> ```
->
-> Read the `DESTINATION` column: it says what happens next, and it is the hand-off from stage one to stage two. The `0.0.0.0:80` line with `App: http/1.1,h2c` hands off to `Route: 80` — that name is what [Part 2](./course-02-routes.md) queries. The `kube-dns` line hands straight to a cluster, skipping routing entirely, because DNS over UDP has no HTTP layer to route on.
+<!-- astrona:playground:renew -->
 
-## Two listeners on port 80, and why
-
-The output above has **two** entries for `0.0.0.0:80`, with different `MATCH` values. That is not a duplicate. Envoy selects among **filter chains** on one listener using match criteria, and Istio installs two:
-
-```text
-   connection arrives on :80
-        │
-        ├── does it look like HTTP/1.1 or h2c?   ── yes ──▶ HTTP filter chain ──▶ Route: 80
-        │                                                    (full routing, headers, retries)
-        │
-        └── anything else                        ─────────▶ PassthroughCluster
-                                                             (bytes forwarded, no routing)
+```sh
+istioctl proxy-config listener deploy/tester -n proxycfg-demo | head
 ```
 
-The `MATCH` column is the criterion. `Trans: raw_buffer; App: http/1.1,h2c` means "plaintext transport, and the application protocol was detected as HTTP" — Istio sniffs the first bytes of the connection when a port's protocol has not been declared.
+You should see something like:
 
-This is where the protocol-naming rule from [module 010-02](../../section-010/module-02/course-01-what-describe-resolves.md) becomes concrete. A Service port named `http` tells Istio the protocol in advance and the HTTP chain is used with confidence. A port named `web` leaves it to sniffing, which works for plain HTTP and fails for anything that does not announce itself in the first bytes — server-first protocols such as MySQL, and TLS traffic Istio is not terminating. Those fall to the passthrough chain, and every routing rule you wrote silently stops applying.
+```text
+ADDRESSES    PORT  MATCH                                                   DESTINATION
+10.96.0.10   53    ALL                                                     Cluster: outbound|53||kube-dns.kube-system.svc.cluster.local
+0.0.0.0      80    Trans: raw_buffer; App: http/1.1,h2c                    Route: 80
+0.0.0.0      80    ALL                                                     PassthroughCluster
+10.96.0.1    443   ALL                                                     Cluster: outbound|443||kubernetes.default.svc.cluster.local
+10.96.118.41 443   ALL                                                     Cluster: outbound|443||istiod.istio-system.svc.cluster.local
+10.96.161.85 443   ALL                                                     Cluster: outbound|443||istiod-revision-tag-default.istio-system.svc.cluster.local
+10.96.24.221 443   ALL                                                     Cluster: outbound|443||istio-egressgateway.istio-system.svc.cluster.local
+10.96.95.84  443   ALL                                                     Cluster: outbound|443||istio-ingressgateway.istio-system.svc.cluster.local
+10.96.0.10   9153  Trans: raw_buffer; App: http/1.1,h2c                    Route: kube-dns.kube-system.svc.cluster.local:9153
+```
+
+The list is sorted by port, so the two catch-all listeners on 15001 and 15006 come after these first ten lines. The IP addresses on your cluster will differ.
+
+Read the `DESTINATION` column first. It says what happens next, and it is the hand-off from the listener stage to the route stage. The `0.0.0.0:80` line with `App: http/1.1,h2c` hands off to `Route: 80`, which is the name you query at the route stage. The `kube-dns` line on port 53 hands straight to a cluster and has no route stage: Envoy forwards that traffic as plain TCP bytes, with no HTTP routing.
+
+## Two filter chains on port 80
+
+The output above has **two** lines for `0.0.0.0:80`, with different `MATCH` values. That is not a duplicate. A listener can hold several **filter chains**, and Envoy picks one for each connection using match rules. Istio installs two here:
+
+```mermaid
+flowchart TB
+    C["connection on :80"] -->|"HTTP/1.1 or h2c"| H["HTTP filter chain"]
+    H -->|"full routing"| R["Route: 80"]
+    C -->|"anything else"| P["PassthroughCluster"]
+```
+
+The diagram shows that HTTP traffic gets full routing (header matches, retries and so on), while anything else is forwarded as raw bytes with no routing.
+
+The `MATCH` column is the rule. `Trans: raw_buffer; App: http/1.1,h2c` means "plain-text transport, and the application protocol was detected as HTTP". Envoy detects the protocol by reading the first bytes of the connection. This is where the protocol of a Service port matters. A Service port named `http` (or with `appProtocol: http`) tells Istio the protocol in advance. A port whose name declares no known protocol, such as `web`, leaves it to this automatic detection. Detection works for plain HTTP. It does not work for server-first protocols such as MySQL, where the server speaks first and the client sends nothing for Envoy to read. Istio's documentation says those protocols must be declared explicitly.
 
 ## PassthroughCluster is not an error
 
-`PassthroughCluster` appears twice above, and it is the mesh's default for traffic it has no configuration for: forward the bytes to the original destination, unchanged, without routing or policy. Its counterpart `BlackHoleCluster` drops such traffic instead.
+`PassthroughCluster` appears in the second line for port `80` above. It is the mesh's default for traffic that has no configuration: forward the bytes to the original destination, unchanged, with no routing and no policy. Its opposite, `BlackHoleCluster`, drops such traffic instead.
 
-Which one you get is the mesh-wide `outboundTrafficPolicy.mode` setting — `ALLOW_ANY` (passthrough, the default) or `REGISTRY_ONLY` (black hole). It matters for diagnosis:
+Which one you get depends on the mesh-wide setting `outboundTrafficPolicy.mode`: `ALLOW_ANY` (passthrough, the default) or `REGISTRY_ONLY` (drop). `REGISTRY_ONLY` allows only destinations Istio knows about, that is Kubernetes Services and hosts added with a `ServiceEntry`. A `ServiceEntry` is the Istio resource that adds an outside host to the mesh's service registry. The setting matters for diagnosis:
 
 | Mode | Unknown destination | Symptom |
 | --- | --- | --- |
-| `ALLOW_ANY` | forwarded as-is | calls to external hosts "just work" with no telemetry and no policy |
-| `REGISTRY_ONLY` | dropped | calls to anything without a `ServiceEntry` fail, often with a confusing `502` |
+| `ALLOW_ANY` | forwarded as-is | calls to outside hosts work, with no telemetry and no policy |
+| `REGISTRY_ONLY` | dropped | calls to anything without a `ServiceEntry` fail, often with a `502` |
 
-If you see traffic reaching an external endpoint that no `ServiceEntry` describes, `PassthroughCluster` is the explanation, and the absence of metrics for it is the consequence.
+If you see traffic reaching an outside address that no `ServiceEntry` describes, `PassthroughCluster` is the explanation, and the missing metrics for that traffic are the result.
 
 ## Filtering, and reading only what you need
 
-An unfiltered listener dump on a real cluster is hundreds of lines, because a sidecar knows about every Service in the mesh by default. Two flags make the command usable:
+An unfiltered listener dump on a real cluster runs to hundreds of lines, because by default a sidecar knows about every Service in the mesh. Two flags make the command usable: `--port <n>` shows only listeners on that port, and `--address <ip>` shows only listeners bound to that address. Narrow from the start; `head` is no substitute, because the line you want is rarely in the first ten.
 
-- `--port <n>` — only listeners on that port.
-- `--address <ip>` — only listeners bound to that address.
+The same command against two workloads shows the two directions of a connection. Ask the `tester` proxy about port 80, and the `notification-service-v1` proxy about port 15006:
 
-Narrowing from the start is the habit; `head` is not a substitute, because the line you want is rarely in the first ten.
+```sh
+istioctl proxy-config listener deploy/tester -n proxycfg-demo --port 80
+istioctl proxy-config listener deploy/notification-service-v1 -n proxycfg-demo --port 15006
+```
 
-> [!TIP]
-> **Try it — one port, and what it hands off to**
->
-> ```sh
-> istioctl proxy-config listener deploy/tester -n proxycfg-demo --port 80
-> istioctl proxy-config listener deploy/notification-service-v1 -n proxycfg-demo --port 15006
-> ```
->
-> Expect something like:
->
-> ```text
-> ADDRESSES  PORT  MATCH                                     DESTINATION
-> 0.0.0.0    80    Trans: raw_buffer; App: http/1.1,h2c      Route: 80
-> 0.0.0.0    80    ALL                                       PassthroughCluster
->
-> ADDRESSES  PORT   MATCH                                    DESTINATION
-> 0.0.0.0    15006  Addr: *:8084                             Cluster: inbound|8084||
-> ```
->
-> The same command against two workloads shows the two directions. `tester`'s port-80 listener is **outbound** — it is a client, so it has a listener for a destination it might call. `notification-service-v1`'s 15006 listener is **inbound**, matching on the original destination port `8084` and handing to a cluster rather than a route. [Part 4](./course-04-inbound-secrets-and-method.md) takes that direction apart.
+You should see something like:
+
+```text
+ADDRESSES PORT MATCH                                DESTINATION
+0.0.0.0   80   Trans: raw_buffer; App: http/1.1,h2c Route: 80
+0.0.0.0   80   ALL                                  PassthroughCluster
+ADDRESSES PORT  MATCH                                                                                           DESTINATION
+0.0.0.0   15006 Addr: *:15006                                                                                   Non-HTTP/Non-TCP
+0.0.0.0   15006 Trans: tls; App: istio-http/1.0,istio-http/1.1,istio-h2                                         InboundPassthroughCluster
+0.0.0.0   15006 Trans: raw_buffer; App: http/1.1,h2c                                                            InboundPassthroughCluster
+0.0.0.0   15006 Trans: tls; App: TCP TLS                                                                        InboundPassthroughCluster
+0.0.0.0   15006 Trans: raw_buffer                                                                               InboundPassthroughCluster
+0.0.0.0   15006 Trans: tls                                                                                      InboundPassthroughCluster
+0.0.0.0   15006 Trans: tls; App: istio,istio-peer-exchange,istio-http/1.0,istio-http/1.1,istio-h2; Addr: *:8084 Cluster: inbound|8084||
+0.0.0.0   15006 Trans: raw_buffer; Addr: *:8084                                                                 Cluster: inbound|8084||
+```
+
+The `tester` listener on port 80 is **outbound**: `tester` is a client, so it has a listener for a destination it might call. The `notification-service-v1` listener on 15006 is **inbound**, and it holds many filter chains. The last two lines match on the original destination port `8084`, one for mutual TLS from another sidecar (`Trans: tls`) and one for plain text (`Trans: raw_buffer`), and both hand off to the cluster `inbound|8084||`, not to a route. The lines above them catch connections to any other port and pass them to `InboundPassthroughCluster`, which forwards them unchanged.
 
 ## What a missing listener means
 
-Stage one failing has a distinct signature, and it is the one people least expect: traffic that **works but is not in the mesh**, or a connection that is refused outright.
+When the listener stage fails, the result is often not an error. There are three cases. With no listener for a port and `ALLOW_ANY`, traffic passes through: routing rules do not apply, metrics are missing, and mutual TLS (mTLS, where both sides present a certificate) is not used. With no listener for a port and `REGISTRY_ONLY`, traffic is dropped, and the usual cause is a missing `ServiceEntry` for an outside host. With no inbound listener on the destination, the receiving proxy has nothing to pass to the application, and server-side policy cannot apply.
 
-- **No listener for a port, `ALLOW_ANY`** → traffic passes through. Routing rules do not apply, metrics are absent, mTLS is not used. Everything looks fine until someone asks why the dashboards are empty.
-- **No listener for a port, `REGISTRY_ONLY`** → traffic is dropped. Usually a missing `ServiceEntry` for an external host.
-- **No inbound listener on the destination** → the receiving proxy has nothing to hand to the application; server-side policy cannot apply.
+So the question this stage answers is not "did routing work" but "did Istio ever handle this traffic".
 
-So the question this stage answers is not "did routing work" but "was this traffic ever Istio's to route".
+> [!TIP]
+> When a rule seems to be ignored rather than wrong, start at the listener. If the port has no `Route:` hand-off, no `VirtualService` can ever apply to it.
+
+You now know how traffic reaches the sidecar proxy: `iptables` rules redirect it to port 15001 or 15006, and a listener decides what happens next. On port 80, the HTTP filter chain hands the request to `Route: 80`. What that route configuration holds, and how Envoy picks one rule in it, is the next question.
+
+## Common pitfalls
 
 > [!WARNING]
-> **Pitfalls at the capture and listener stage**
->
-> - **Looking for your application's ports in the listener list.** The listeners are Istio's — 15001, 15006, and per-destination outbound listeners. The application's own port appears as a `MATCH` criterion on 15006, not as a listener of its own.
+> - **Looking for your application's ports in the listener list.** The listeners are Istio's: 15001, 15006, and outbound listeners per port. The application's own port shows up as a `MATCH` rule on 15006, not as a listener of its own.
 > - **Treating `PassthroughCluster` as a fault.** It is the default for unknown destinations. It is only a problem when you expected configuration to apply.
-> - **Relying on protocol sniffing.** Name the Service port (`http`, `grpc`, `tcp`, …) or set `appProtocol`. Sniffing fails silently for server-first protocols and sends them down the passthrough chain.
-> - **Forgetting traffic exclusions.** `excludeOutboundPorts` and friends remove traffic from the mesh entirely — no routing, no policy, no telemetry — and nothing in the listener list hints that a port was excluded.
-> - **Dumping listeners unfiltered on a real cluster.** Use `--port` or `--address`; the default output is a sidecar's entire view of the mesh.
-
-> *Stage one does not ask where a request should go — it asks whether the mesh ever saw it.*
-
-## Reference
-
-- [Traffic capture and the sidecar](https://istio.io/latest/docs/ops/configuration/traffic-management/traffic-routing/) — how redirection and the catch-all listeners fit together.
-- [Protocol selection](https://istio.io/latest/docs/ops/configuration/traffic-management/protocol-selection/) — port naming, `appProtocol`, and exactly which protocols sniffing can and cannot detect.
-- [Envoy listeners](https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/listeners/listeners) — filter chains and chain matching, the mechanism behind the two port-80 entries.
-- [outboundTrafficPolicy](https://istio.io/latest/docs/tasks/traffic-management/egress/egress-control/) — `ALLOW_ANY` against `REGISTRY_ONLY`, and what each does to unknown destinations.
+> - **Relying on protocol detection.** Name the Service port (`http`, `grpc`, `tcp` and so on) or set `appProtocol`. Detection cannot work for server-first protocols.
+> - **Forgetting traffic exclusions.** `excludeOutboundPorts` and similar annotations take traffic out of the mesh completely, and nothing in the listener list shows that a port was excluded.
+> - **Dumping listeners unfiltered on a real cluster.** Use `--port` or `--address`. The default output is the sidecar's view of the whole mesh.

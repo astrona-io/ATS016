@@ -1,6 +1,10 @@
 # Solution: Make The Header Route Actually Fire
 
-## Step 1 — Characterise the failure
+The header route fails for two separate reasons, and neither one produces an error. This walkthrough finds each cause, proves it from the proxy, fixes both, and checks both paths with real traffic. The grader checks three things: one owner for the host with no `IST0109`, every header request reaching `v2`, and every plain request reaching `v1`.
+
+## Step 1: Describe the failure
+
+Send one request with the header and one without, from the `tester` pod:
 
 ```sh
 kubectl -n conflict-demo exec deploy/tester -- sh -c \
@@ -9,11 +13,11 @@ kubectl -n conflict-demo exec deploy/tester -- sh -c \
   'curl -s -X POST http://notification-service/notify; echo'
 ```
 
-Both return `["EMAIL"]`. The header made **no** difference at all — and that
-totality is the clue. A rule that partly works points at a matching bug; a rule
-with no effect whatsoever points at a rule that was never consulted.
+Both return `["EMAIL"]`. The header made **no** difference at all, and that is the clue. A rule that partly works points at a matching bug. A rule with no effect at all points at a rule that was never checked.
 
-## Step 2 — Cause one: host ownership
+## Step 2: Find cause one, two owners for one host
+
+List every `VirtualService` with its hosts and gateways:
 
 ```sh
 kubectl -n conflict-demo get virtualservice \
@@ -21,55 +25,65 @@ kubectl -n conflict-demo get virtualservice \
 ```
 
 ```text
-NAME                  HOSTS                     GATEWAYS
-notification          [notification-service]    <none>
-notification-extra    [notification-service]    <none>
+NAME                 HOSTS                    GATEWAYS
+notification         [notification-service]   <none>
+notification-extra   [notification-service]   <none>
 ```
 
-Two objects, one host, both on the mesh gateway. Istio **merges** them into one
-virtual host and the resulting rule order is not defined by anything you
-control. The analyzer says so:
+Two objects, one host, both on the mesh gateway. Host merging is not supported in sidecars, so the proxy uses only one of the two objects for this host and drops the other. Nothing in your YAML decides which one wins. The analyzer says so:
 
 ```sh
 istioctl analyze -n conflict-demo
 ```
 
 ```text
-Warning [IST0109] ... define the same host notification-service which can lead to undefined behavior.
+Error [IST0109] (VirtualService conflict-demo/notification-extra) The VirtualServices conflict-demo/notification,conflict-demo/notification-extra associated with mesh gateway define the same host */notification-service.conflict-demo.svc.cluster.local which can lead to undefined behavior. This can be fixed by merging the conflicting VirtualServices into a single resource.
+Error [IST0109] (VirtualService conflict-demo/notification) The VirtualServices conflict-demo/notification,conflict-demo/notification-extra associated with mesh gateway define the same host */notification-service.conflict-demo.svc.cluster.local which can lead to undefined behavior. This can be fixed by merging the conflicting VirtualServices into a single resource.
+Warning [IST0130] (VirtualService conflict-demo/notification) VirtualService rule #1 not used (route without matches defined before).
+Error: Analyzers found issues when analyzing namespace: conflict-demo.
+See https://istio.io/v1.30/docs/reference/config/analysis for more information about causes and resolutions.
 ```
 
-A `Warning`, not an `Error` — nothing here is invalid, which is why it survived.
+The analyzer reports both causes. `IST0109` appears once on each object that claims the host. `IST0109` is an `Error`, yet `kubectl apply` accepted both objects: the API server checks each object on its own and never compares two of them.
 
-## Step 3 — Cause two: a shadowed rule
+## Step 3: Find cause two, a shadowed rule
+
+Print the `spec` of the `notification` object:
 
 ```sh
 kubectl -n conflict-demo get virtualservice notification -o yaml | sed -n '/^spec:/,$p'
 ```
 
-The catch-all route sits at index 0 and the header rule at index 1. Envoy walks
-`http:` top down and **the first match wins**; a rule with no `match` block
-compiles to a prefix match on `/`, which is true for every request. Everything
-below it is unreachable.
+The catch-all route sits at index 0 and the header rule at index 1. The sidecar proxy (Envoy) walks `http:` from the top and **the first match wins**. A rule with no `match` block becomes a prefix match on `/`, which is true for every request, so every rule below it is shadowed and never reached. So even if the proxy uses this object, the header rule never fires. This is the `IST0130` warning from the analyzer: rule `#1` is the second rule, because the count starts at `0`.
 
-## Step 4 — Confirm from the proxy before changing anything
+## Step 4: Confirm from the proxy before you change anything
+
+Ask the client's proxy what it really holds for port 80:
 
 ```sh
-istioctl proxy-config routes deploy/tester -n conflict-demo \
-  --name 80 -o json | grep -E '"cluster"|"exact_match"' | head
+istioctl proxy-config routes deploy/tester -n conflict-demo --name 80 -o json \
+  | grep -E '"exact"|"cluster": "outbound\|80\|v'
 ```
 
-Only `v1` clusters appear, and no header match anywhere. The route to `v2` does
-not exist as far as this proxy is concerned — which is the decisive evidence,
-and the reason the YAML alone could not tell you.
+```text
+                            "cluster": "outbound|80|v1|notification-service.conflict-demo.svc.cluster.local",
+```
 
-## Step 5 — Fix both causes
+Only the `v1` cluster appears, and there is no `exact` header match anywhere. As far as this proxy is concerned, the route to `v2` does not exist. That is the decisive evidence, and the reason the YAML alone could not tell you.
 
-Delete the duplicate claimant, then reorder the survivor: **specific match
-first, unconditional last.**
+## Step 5: Fix both causes
+
+First delete the duplicate object, so one object owns the host:
 
 ```sh
 kubectl -n conflict-demo delete virtualservice notification-extra
-kubectl apply -f - <<'EOF'
+```
+
+Then reorder the object that is left: **specific match first, unconditional last.**
+
+Save this as `virtualservice-notification.yaml`:
+
+```yaml
 apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
@@ -91,17 +105,19 @@ spec:
         - destination:
             host: notification-service
             subset: v1
-EOF
 ```
 
-No pod restarts: a `VirtualService` edit is an RDS push over the existing xDS
-stream and the proxy swaps its route table in place.
+Apply it:
 
 ```sh
-astrona submit
+kubectl apply -f virtualservice-notification.yaml
 ```
 
-## Step 6 — Verify both paths, with volume
+No pod restarts. `istiod` sends the new routes to the proxy over the connection it already has, and the proxy swaps its route table in place.
+
+## Step 6: Check both paths, ten requests each
+
+Send ten requests with the header and ten without:
 
 ```sh
 kubectl -n conflict-demo exec deploy/tester -- sh -c \
@@ -115,37 +131,36 @@ kubectl -n conflict-demo exec deploy/tester -- sh -c \
 ["EMAIL"]
 ```
 
-One line per path. Two lines from one path would mean traffic is still being
-split — the failure mode a single request cannot detect.
+One line per path. Two lines from one path would mean traffic is still being split, which a single request cannot show.
+
+## Step 7: Submit
+
+Send the lab for grading:
 
 ```sh
 astrona submit
 ```
 
+All three checks should pass: one owner for the host with no `IST0109`, the header path on `v2`, and the default path on `v1`. If one fails, its message names the path that is still wrong.
+
 ## Why the shortcuts are wrong
 
 | Shortcut | What happens |
 | --- | --- |
-| Add a third `VirtualService` to "override" the others | that creates the conflict rather than resolving it |
-| Reorder the rules but keep both objects | the merge can reshuffle them again when either is edited |
+| Add a third `VirtualService` to "override" the others | the proxy still uses only one object for the host, and you cannot say which |
+| Reorder the rules but keep both objects | the proxy may keep using `notification-extra`, and `IST0109` stays |
 | Delete `notification` instead of `notification-extra` | you keep the object with no header rule at all |
-| Bind one object to a gateway to "separate" them | legitimate in general, but the task requires mesh traffic to have one owner |
+| Bind one object to a gateway to "separate" them | fine in general, but the task needs mesh traffic to have one owner |
 
 ## Common mistakes
 
-- Reading only the YAML you wrote. The proxy route table is the only authority
-  on what is in effect.
-- Putting the catch-all route first. Every rule under it is unreachable and
-  nothing warns you at apply time.
-- Assuming merge order is stable — it can change when an unrelated object is
-  edited.
-- Verifying one path. Fixing the header route by making the default unreachable
-  is not a fix.
+- Reading only the YAML you wrote. The proxy's route table is the only record of what is in force.
+- Putting the catch-all route first. Every rule under it can never be reached. The apply still succeeds and only prints a `Warning` line that is easy to miss.
+- Assuming the winning object stays the same. It can change when either object is deleted or recreated.
+- Checking one path. Fixing the header route by making the default unreachable is not a fix.
 
 ## Practice variations
 
-- Split the two objects by binding one to a gateway and one to `mesh`, so both
-  can legitimately coexist.
-- Add a third rule matching `uri: prefix: /priority` and predict its position in
-  the proxy before checking.
-- Deliberately place the default route first again and watch the route table.
+- Split the two objects by binding one to a gateway and one to `mesh`, so both can live together legitimately.
+- Add a third rule matching `uri: prefix: /priority` and predict its position in the proxy before you check.
+- Put the default route first again on purpose and watch the route table.

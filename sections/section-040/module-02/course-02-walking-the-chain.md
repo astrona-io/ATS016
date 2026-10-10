@@ -1,116 +1,96 @@
-# Part 2 — Walking The Chain
+# Walking The Chain
 
-> Prerequisite: [Part 1 — Who Answered With 503](./course-01-who-answered-with-503.md). Next: [Part 3 — Choosing The Fix, And The Other Cause](./course-03-choosing-the-fix.md).
-
-The flag has narrowed the failure to one stage. This part confirms it with the tool that reads the whole configuration at once, then walks the chain by hand — because the manual walk is what you will need on the day the analyzer has nothing to say.
+The response flag has narrowed the failure to one stage. This part confirms it with the tool that reads the whole configuration at once, `istioctl analyze`. Then it walks the chain by hand, because the manual walk is what you need on the day the analyzer has nothing to say.
 
 ## The fast path first
 
-Before following anything by hand, spend two seconds on the analyzer. For a dangling reference it is frequently the entire answer.
+Before you follow anything by hand, spend two seconds on `istioctl analyze`. It reads every Istio object in scope together and reports the references that do not resolve, so for a broken reference it is often the whole answer. Run it on the playground namespace:
 
-> [!TIP]
-> **Try it — the fast path**
->
-> ```sh
-> istioctl analyze -n fivezerothree-demo
-> ```
->
-> Expect something like:
->
-> ```text
-> Error [IST0101] (VirtualService notification.fivezerothree-demo) Referenced host+subset in destinationrule not found: "notification-service+v2"
-> ```
->
-> `IST0101` names both halves of the problem in one line: the `VirtualService` references `notification-service+v2`, and no `DestinationRule` defines that subset. The `host+subset` notation is the analyzer's way of saying the pair does not resolve — which is the same statement the `NC` flag made from the data plane side, arrived at independently from the configuration.
+<!-- astrona:playground:renew -->
 
-Two independent sources agreeing is worth noticing rather than skipping past. The analyzer read objects in etcd; the flag came from a proxy's runtime behaviour. When those two disagree — a clean analyze with a `NC` flag — you have learned something else: the configuration is coherent and the proxy is running something older, which is a delivery problem ([module 030-02](../../section-030/module-02/course.md)) rather than a configuration one.
+```sh
+istioctl analyze -n fivezerothree-demo
+```
+
+You should see something like:
+
+```text
+Error [IST0101] (VirtualService fivezerothree-demo/notification) Referenced host+subset in destinationrule not found: "notification-service+v2"
+Error: Analyzers found issues when analyzing namespace: fivezerothree-demo.
+See https://istio.io/v1.30/docs/reference/config/analysis for more information about causes and resolutions.
+```
+
+The code `IST0101` means a referenced resource does not exist. The message names both halves of the problem: the `VirtualService` refers to `notification-service+v2`, and no `DestinationRule` defines that subset. That is the same statement the `NC` flag made from the proxy's side, reached on its own from the configuration.
+
+Two separate sources agreeing is worth noticing. The analyzer read the objects stored in Kubernetes; the flag came from a proxy's behaviour at run time. When they disagree, for example a clean analyzer run with an `NC` flag, you have learned something else. The configuration is coherent, but the proxy still runs older configuration, so the problem is delivery from `istiod`, not the configuration itself.
 
 ## Why walk the chain anyway
 
-The analyzer's coverage is a fixed set of checks. It will not tell you:
+The analyzer runs a fixed set of checks. It will not tell you that a subset exists but its labels match no pod, which is valid configuration with an empty cluster. It will not tell you that endpoints exist but this proxy has stopped using them, or that a proxy still runs configuration from before your fix. It also knows nothing about a problem no analyzer was written for. The chain works in all of those cases, because it reads what the proxy actually runs. The analyzer is the shortcut; the chain is the skill.
 
-- that a subset exists but its labels match no pod (valid configuration, empty cluster);
-- that endpoints exist but this particular proxy has ejected them;
-- that a proxy is running configuration from before your fix;
-- anything at all about a mesh whose problem no analyzer was written for.
+The first link is the route. It is Istio's translation of your `VirtualService`, and the cluster name it produces is the exact string the next command needs. Pull the cluster names out of the `tester` proxy's routes:
 
-The chain works in all of those cases, because it reads what the proxy is actually running. The analyzer is the shortcut; the chain is the skill.
+```sh
+istioctl proxy-config routes deploy/tester -n fivezerothree-demo -o json \
+  | grep '"cluster"' | grep notification
+```
 
-## Step one: which cluster does the route name?
+You should see something like:
 
-The route is Istio's translation of your `VirtualService`, and the cluster name it produces is the exact string the next command needs.
+```text
+        "cluster": "outbound|80|v2|notification-service.fivezerothree-demo.svc.cluster.local",
+```
 
-> [!TIP]
-> **Try it — the name the route hands on**
->
-> ```sh
-> istioctl proxy-config routes deploy/tester -n fivezerothree-demo -o json \
->   | grep '"cluster"' | grep notification
-> ```
->
-> Expect something like:
->
-> ```text
->         "cluster": "outbound|80|v2|notification-service.fivezerothree-demo.svc.cluster.local",
-> ```
->
-> Read the four fields: outbound, port 80, subset **`v2`**, that FQDN. Note what this tells you about the route stage — it worked. The rule matched, it produced a destination, and the proxy did exactly what the `VirtualService` asked. The subset name is the first verifiably wrong thing in the investigation, and it is an *input* to the next stage rather than a fault in this one.
+Read the four fields: outbound, port 80, subset **`v2`**, and the fully qualified name. The route stage worked: the rule matched, it produced a destination, and the proxy did exactly what the `VirtualService` asked. The subset name is the first thing that is provably wrong, and it is an *input* to the next stage rather than a fault in this one.
 
-## Step two: does that cluster exist?
+## Does that cluster exist?
 
-A cluster for a subset exists only if a `DestinationRule` defines that subset ([module 040-01 Part 3](../module-01/course-03-clusters-and-endpoints.md)). Ask the proxy what it actually has.
+A cluster for a subset exists only if a `DestinationRule` defines that subset, so ask the proxy what it actually has. List the `tester` proxy's clusters for `notification-service`:
 
-> [!TIP]
-> **Try it — the clusters that actually exist**
->
-> ```sh
-> istioctl proxy-config cluster deploy/tester -n fivezerothree-demo | grep notification
-> ```
->
-> Expect something like:
->
-> ```text
-> notification-service.fivezerothree-demo.svc.cluster.local   80  -    outbound  EDS  notification.fivezerothree-demo
-> notification-service.fivezerothree-demo.svc.cluster.local   80  v1   outbound  EDS  notification.fivezerothree-demo
-> ```
->
-> Two clusters: the subsetless one, and `v1`. There is no `v2` row. The route names a destination that does not exist in this proxy's configuration at all — which is precisely what `NC` said, now confirmed from the configuration side. The `DESTINATION RULE` column names the object that would have had to define it.
+```sh
+istioctl proxy-config cluster deploy/tester -n fivezerothree-demo | grep notification
+```
 
-At this point the diagnosis is complete and you could stop. Step three is worth doing anyway, once, because it teaches the distinction that the next module's fix depends on.
+You should see something like:
 
-## Step three: two different kinds of empty
+```text
+notification-service.fivezerothree-demo.svc.cluster.local      80        -          outbound      EDS              notification.fivezerothree-demo
+notification-service.fivezerothree-demo.svc.cluster.local      80        v1         outbound      EDS              notification.fivezerothree-demo
+```
 
-> [!TIP]
-> **Try it — the two different empty answers**
->
-> ```sh
-> istioctl proxy-config endpoints deploy/tester -n fivezerothree-demo \
->   --cluster "outbound|80|v2|notification-service.fivezerothree-demo.svc.cluster.local"
-> istioctl proxy-config endpoints deploy/tester -n fivezerothree-demo \
->   --cluster "outbound|80|v1|notification-service.fivezerothree-demo.svc.cluster.local"
-> ```
->
-> Expect something like:
->
-> ```text
-> ENDPOINT   STATUS   OUTLIER CHECK   CLUSTER
-> 
-> ENDPOINT             STATUS      OUTLIER CHECK     CLUSTER
-> 10.244.0.12:8084     HEALTHY     OK                outbound|80|v1|notification-service...
-> ```
->
-> `v2` returns an empty table — but read *why* it is empty: there is no such cluster to have endpoints. `v1` has a healthy pod that has been waiting there all along. Nothing was ever wrong with the workload; the route was addressed to a destination that does not exist.
+There are two clusters: the one without a subset, and `v1`. There is no `v2` row. The route names a destination that does not exist in this proxy's configuration at all, which is what `NC` said, now confirmed from the configuration side. The last column names the `DestinationRule` that would have had to define it. At this point the diagnosis is complete. The endpoint stage is still worth checking once, because it teaches the difference the choice of fix depends on.
 
-The output looks identical for two quite different states, and telling them apart matters:
+## Two different kinds of empty
 
-| State | Cluster listed by `proxy-config cluster`? | Endpoints | Flag |
+An empty endpoint list can mean two quite different things. Ask for the endpoints of the `v2` cluster and of the `v1` cluster:
+
+```sh
+istioctl proxy-config endpoints deploy/tester -n fivezerothree-demo \
+  --cluster "outbound|80|v2|notification-service.fivezerothree-demo.svc.cluster.local"
+istioctl proxy-config endpoints deploy/tester -n fivezerothree-demo \
+  --cluster "outbound|80|v1|notification-service.fivezerothree-demo.svc.cluster.local"
+```
+
+You should see something like:
+
+```text
+ENDPOINT     STATUS     OUTLIER CHECK     CLUSTER
+ENDPOINT            STATUS      OUTLIER CHECK     CLUSTER
+10.244.0.8:8084     HEALTHY     OK                outbound|80|v1|notification-service.fivezerothree-demo.svc.cluster.local
+```
+
+`v2` returns only the header line, but read *why* it is empty: there is no such cluster to have endpoints. `v1` has a healthy pod that has been waiting there all along. Nothing was ever wrong with the workload; the route named a destination that does not exist. The output looks the same for two different states, and telling them apart matters:
+
+| State | Listed by `proxy-config cluster`? | Endpoints | Flag |
 | --- | --- | --- | --- |
-| **No cluster** | no | empty (nothing to query) | `NC` |
+| **No cluster** | no | empty (nothing to ask about) | `NC` |
 | **Empty cluster** | yes | empty | `UH` |
 
-The endpoint command alone cannot distinguish them, which is why step two is not optional. Step two answers *does it exist*; step three answers *does it have anything*. Conflating the two is how people fix the wrong end — the subject of [Part 3](./course-03-choosing-the-fix.md).
+The endpoint command alone cannot tell them apart, which is why the cluster check is not optional. The cluster check answers *does it exist*; the endpoint check answers *does it have anything*. Mixing the two up is how people fix the wrong end.
 
 ## The chain as a habit
+
+Put together, the walk is one short procedure, and each command uses a name the previous one produced:
 
 ```text
    flag NC/UH
@@ -131,22 +111,15 @@ The endpoint command alone cannot distinguish them, which is why step two is not
            └─ populated    → check STATUS and OUTLIER CHECK
 ```
 
-Each command consumes a name the previous one produced. That is what makes it a chain rather than a search, and it is why copying the cluster name exactly — quoted, with empty fields intact — is not fussiness but the mechanism.
+That is what makes it a chain rather than a search. It is also why you copy the cluster name exactly, quoted and with empty fields kept: the next command matches it character by character.
+
+You now know the exact missing link: the route names the cluster `outbound|80|v2|...`, and the proxy has no such cluster, while the `v1` cluster has a healthy pod. You also know that a missing cluster and an empty cluster look alike at the endpoint stage. The open question is which end of the reference to change, because both edits make the analyzer quiet and only one makes the requests succeed.
+
+## Common pitfalls
 
 > [!WARNING]
-> **Pitfalls while walking the chain**
->
-> - **Skipping the cluster step and going straight to endpoints.** An empty endpoint list looks the same whether the cluster is missing or merely empty, and those need different fixes.
+> - **Skipping the cluster check and going straight to endpoints.** An empty endpoint list looks the same whether the cluster is missing or only empty, and those need different fixes.
 > - **Retyping the cluster name.** Copy it from the route output. `--cluster` matches exactly, empty fields included, and `|` needs quoting in a shell.
-> - **Querying the destination proxy.** This failure lives in the client's configuration; the destination never saw the request.
-> - **Trusting a clean analyze run to mean the proxy agrees.** The analyzer reads etcd, the chain reads the proxy. A disagreement is a delivery problem, and it is a finding rather than a contradiction.
-> - **Treating the analyzer's silence as "no problem".** Its coverage is a fixed set of checks; subset labels matching no pod is valid configuration it will not flag.
-
-> *The chain is one name at a time: the route produces it, the cluster confirms it, the endpoints populate it — and every empty answer means something different depending on which step produced it.*
-
-## Reference
-
-- [Debugging Envoy and istiod](https://istio.io/latest/docs/ops/diagnostic-tools/proxy-cmd/) — the `proxy-config` subcommands with worked output.
-- [IST0101 — referenced resource not found](https://istio.io/latest/docs/reference/config/analysis/ist0101/) — the analyzer page for the fast path.
-- [Destination rule reference](https://istio.io/latest/docs/reference/config/networking/destination-rule/) — subsets and their label selectors, the object that makes a cluster exist.
-- `istioctl proxy-config cluster --help` — `--fqdn`, `--port`, `--subset` and `--direction` for narrowing on a real cluster.
+> - **Asking the destination proxy.** This failure lives in the client's configuration; the destination never saw the request.
+> - **Trusting a clean analyzer run to mean the proxy agrees.** The analyzer reads the stored objects; the chain reads the proxy. A disagreement points at delivery from `istiod`.
+> - **Treating the analyzer's silence as "no problem".** It runs a fixed set of checks; subset labels that match no pod are valid configuration it will not report.

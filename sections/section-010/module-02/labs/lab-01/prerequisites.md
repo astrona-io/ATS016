@@ -3,7 +3,8 @@
 Before starting this lab you should be able to:
 
 - Use `kubectl` to inspect and edit objects in a namespace.
-- Read a `VirtualService` and a `DestinationRule` and say what each controls.
+- Read an `AuthorizationPolicy` and a `PeerAuthentication` and say what each controls.
+- Run `istioctl x describe pod` and `istioctl proxy-config log` against a pod.
 - Send a test request from one pod to another with `curl`.
 
 ## What the environment gives you

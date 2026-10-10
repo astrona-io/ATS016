@@ -1,26 +1,28 @@
 # Solution: An Empty Graph And A Red Badge
 
-## Step 1 — Check both data sources first
+The graph is empty because nothing has sent any traffic, and the red validation icon is on a `VirtualService` that points at things that do not exist. You fix the second one and prove both with the command line, which reads the same data Kiali draws from.
 
-Kiali stores nothing. It reads Istio objects from the Kubernetes API and metrics
-from Prometheus, and it fails quietly when either is missing:
+## Step 1: Check both data sources first
+
+Kiali stores nothing. It reads Istio objects from the Kubernetes API server and metrics from Prometheus, and it fails quietly when either one is missing. Check both pods:
 
 ```sh
 kubectl -n istio-system get pods -l app=kiali
 kubectl -n istio-system get pods -l app.kubernetes.io/name=prometheus
 ```
 
-Both `Running`. So "the mesh is down" is not the explanation — and a Kiali that
-is up with Prometheus missing would have produced exactly the same empty graph
-with no error worth reading.
+Both are `Running`. So "the mesh is down" is not the explanation. A Kiali that runs with Prometheus missing would show exactly the same empty graph, with no useful error.
 
-## Step 2 — Why an empty graph is normal here
+What each source gives Kiali:
 
-The graph is built from `istio_requests_total` over a time window. No requests
-in that window means no edges, and a node with no edges is not drawn. **An idle
-service is invisible.**
+- **The Kubernetes API server:** the Istio objects, Services and Pods. Kiali uses them for the Istio Config view and the Workloads and Services lists.
+- **Prometheus:** the `istio_requests_total` metrics. Kiali uses them to draw nodes and edges.
 
-Generate traffic and the picture appears:
+## Step 2: Understand why an empty graph is normal here
+
+The graph is built from `istio_requests_total` over a time window. No requests in that window means no edges, and a node with no edges is not drawn. **An idle service is invisible.**
+
+Send steady traffic from the `tester` pod (a background loop, five requests a second), wait 20 seconds, and read the counters from the tester's own proxy:
 
 ```sh
 kubectl -n kiali-demo exec deploy/tester -- sh -c \
@@ -32,44 +34,40 @@ kubectl -n kiali-demo exec deploy/tester -c istio-proxy -- \
 ```
 
 ```text
-istio_requests_total{reporter="source",source_workload="tester",destination_workload="notification-service-v1",response_code="200",...} 98
+istio_requests_total{reporter="source",source_workload="tester",...,destination_workload="notification-service-v1",...,response_code="200",...,connection_security_policy="unknown"} 98
 ```
 
-That single series **is** one edge of the graph: a source workload, a
-destination workload, a response code and a count. Five requests a second is
-plenty — the graph needs continuity, not volume.
+The output is shortened: the real line carries many more labels, shown here as `...`. That one series **is** one edge of the graph: a source workload, a destination workload, a response code and a count. Five requests a second is plenty. The graph needs traffic that keeps going, not a lot of it.
 
-Allow for the pipeline delay: proxy → Prometheus scrape (~15s) → Kiali query.
-A new edge takes tens of seconds to appear even when everything works.
+Allow for the delay along the way: the proxy, then a Prometheus scrape about every 15 seconds, then the Kiali query. A new edge takes tens of seconds to appear even when everything works.
 
-## Step 3 — Find what the validation badge is about
+## Step 3: Find what the validation icon is about
 
-Kiali's Istio Config view runs the same analyzers as `istioctl analyze` and
-reports the same codes, so confirm it from the terminal:
+Kiali's Istio Config view runs the same analyzers as `istioctl analyze` and reports the same `IST####` codes. Confirm it from the terminal:
 
 ```sh
 istioctl analyze -n kiali-demo
 ```
 
 ```text
-Error [IST0101] (VirtualService broken.kiali-demo) Referenced gateway not found: "does-not-exist"
-Error [IST0101] (VirtualService broken.kiali-demo) Referenced host+subset in destinationrule not found: "notification-service+nonexistent"
-Warning [IST0109] (VirtualService broken.kiali-demo) ... define the same host notification-service which can lead to undefined behavior.
+Error [IST0101] (VirtualService kiali-demo/broken) Referenced gateway not found: "does-not-exist"
+Error [IST0101] (VirtualService kiali-demo/broken) Referenced host+subset in destinationrule not found: "notification-service+nonexistent"
+Warning [IST0132] (VirtualService kiali-demo/broken) one or more host [notification-service] defined in VirtualService kiali-demo/broken not found in Gateway kiali-demo/does-not-exist.
 ```
 
-Three findings on one object, and the third is a bonus lesson: adding a second
-`VirtualService` for a host that already had one reproduced the host-ownership
-conflict from section 020.
+The output is shortened to the messages. The two `IST0101` errors are the red icon: the `VirtualService` named `broken` names a `Gateway` called `does-not-exist` and a subset called `nonexistent`, and neither exists. Both are references between objects, which is why the API server accepted the object: its validating webhook only ever sees one object at a time.
 
-## Step 4 — Fix them
+## Step 4: Fix them
 
-The `broken` object references a gateway that does not exist, a subset that does
-not exist, and duplicates a host that already has an owner. Nothing about it is
-salvageable — remove it, and make sure a valid route for the host remains:
+The `broken` object points at a gateway that does not exist and a subset that does not exist. Nothing in it is worth keeping. Remove it:
 
 ```sh
 kubectl -n kiali-demo delete virtualservice broken
-kubectl apply -f - <<'EOF'
+```
+
+The grader also requires a valid route for the host to remain, so the namespace is still routed. Save this as `virtualservice-notification.yaml`:
+
+```yaml
 apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
@@ -82,7 +80,17 @@ spec:
     - route:
         - destination:
             host: notification-service
-EOF
+```
+
+Apply it:
+
+```sh
+kubectl apply -f virtualservice-notification.yaml
+```
+
+Then check the result:
+
+```sh
 istioctl analyze -n kiali-demo
 ```
 
@@ -90,25 +98,25 @@ istioctl analyze -n kiali-demo
 ✔ No validation issues found when analyzing namespace: kiali-demo.
 ```
 
-Note what was **not** done: no `Gateway` called `does-not-exist` was created,
-and no `nonexistent` subset was invented. Making a dangling reference resolve by
-creating its target is how you trade a loud failure for a quiet one.
+Look at what you did **not** do. You did not create a `Gateway` called `does-not-exist`, and you did not invent a `nonexistent` subset. Making a dangling reference resolve by creating its target trades a loud failure for a quiet one.
+
+Send it for grading to see where you stand:
 
 ```sh
 astrona submit
 ```
 
-## Step 5 — Read the graph as a locator
+## Step 5: Read the graph as a locator
 
-In the UI (`kubectl -n istio-system port-forward svc/kiali 20001:20001`), set
-graph type and time range deliberately, and turn on **Traffic rate**,
-**Security** and **Idle nodes**.
+If your browser can reach the cluster, open the Kiali page:
 
-A red edge states one thing precisely: *between this caller and this callee, in
-this window, a significant share of requests failed.* It does **not** say the
-callee is at fault — the failure may be a `503` the caller's own proxy generated
-without ever contacting it. The graph tells you **where** to look; the access
-log tells you **why**.
+```sh
+kubectl -n istio-system port-forward svc/kiali 20001:20001
+```
+
+Then open `http://localhost:20001`. Set the graph type and time range on purpose, and turn on **Traffic rate**, **Security** and **Idle nodes**.
+
+A red edge says one thing exactly: *between this caller and this callee, in this window, a large share of requests failed.* It does **not** say the callee is at fault. The failure may be a `503` the caller's own sidecar proxy created without ever contacting it. The graph tells you **where** to look. The access log tells you **why**.
 
 Everything Kiali shows has a command behind it:
 
@@ -117,13 +125,17 @@ Everything Kiali shows has a command behind it:
 | an edge and its rate | `pilot-agent request GET stats/prometheus` |
 | edge colour | the same metric grouped by `response_code` |
 | a padlock | `connection_security_policy` on the destination |
-| a red validation badge | `istioctl analyze -n <ns>` |
+| a red validation icon | `istioctl analyze -n <ns>` |
+
+## Step 6: Submit
+
+The grader checks three things: the Prometheus and Kiali pods are `Running`; `istioctl analyze -n kiali-demo` reports no `Error` or `Warning` and a `VirtualService` still routes `notification-service`; and the tester's proxy holds `istio_requests_total` series for the `tester` to `notification-service` edge. The grader sends five requests of its own before it checks the metrics.
 
 ```sh
 astrona submit
 ```
 
-## Cleaning up the load generator
+When you are done, stop the load generator:
 
 ```sh
 kubectl -n kiali-demo exec deploy/tester -- pkill -f 'while true' || true
@@ -131,18 +143,14 @@ kubectl -n kiali-demo exec deploy/tester -- pkill -f 'while true' || true
 
 ## Common mistakes
 
-- Installing Kiali without Prometheus. The graph stays empty and nothing
-  explains why.
-- Concluding a service is down because it is missing from the graph. Kiali draws
-  traffic, not deployments.
-- Trusting a stale view. The graph has a time window; widen it or refresh after
-  generating load.
-- Using Kiali as the only evidence. Confirm findings with `istioctl` before
-  changing anything.
+- Installing Kiali without Prometheus. The graph stays empty and nothing explains why.
+- Deciding a service is down because it is missing from the graph. Kiali draws traffic, not deployments.
+- Trusting an old view. The graph has a time window. Widen it, or refresh after you send traffic.
+- Using Kiali as the only evidence. Confirm findings with `istioctl` before you change anything.
+- Deleting every `VirtualService` to clear the findings. The grader requires a route for `notification-service` to remain.
 
 ## Practice variations
 
 - Use the graph to find which caller is responsible when two clients exist.
 - Compare Kiali's validation list with `istioctl analyze --all-namespaces`.
-- Apply `manifests/fault.yaml`, watch the edge turn red, and correlate the
-  percentage with the raw `response_code` counters.
+- Apply a `VirtualService` that aborts 30% of requests with a `500`, watch the edge turn red, and compare the percentage with the raw `response_code` counters.

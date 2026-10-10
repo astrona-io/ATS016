@@ -1,0 +1,17 @@
+# Invalid: one HTTP rule may redirect OR route, never both. The validating
+# webhook rejects this object, so the bootstrap stores it while istiod is
+# down and both validating webhooks are set to failurePolicy Ignore.
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: bad-redirect
+  namespace: cphealth-demo
+spec:
+  hosts:
+    - notification-service
+  http:
+    - redirect:
+        uri: /v2
+      route:
+        - destination:
+            host: notification-service

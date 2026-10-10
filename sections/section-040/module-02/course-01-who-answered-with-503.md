@@ -1,143 +1,131 @@
-# Part 1 — Who Answered With 503
+# Who Answered With 503
 
-> Prerequisite: [the module landing page](./course.md). Next: [Part 2 — Walking The Chain](./course-02-walking-the-chain.md).
-
-The first useful question about a `503` is not *why* but *who*. Until you know whether the proxy or the application produced it, every theory is a guess — and the two live in different systems, with different logs, fixed by different people. This part answers it in one command and then reads the answer properly.
+The first useful question about a `503` is not *why* but *who*. Until you know whether a proxy or the application produced it, every theory is a guess. The two live in different places, with different logs, and different people fix them. This part answers the question with one command, and then reads the answer properly.
 
 ## The symptom, and what it already rules out
 
-> [!TIP]
-> **Try it — the failure**
->
-> ```sh
-> kubectl -n fivezerothree-demo exec deploy/tester -- \
->   curl -s -o /dev/null -w '%{http_code}\n' -X POST http://notification-service/notify
-> kubectl -n fivezerothree-demo get pods
-> ```
->
-> Expect something like:
->
-> ```text
-> 503
-> NAME                                      READY   STATUS    RESTARTS   AGE
-> notification-service-v1-6c9f8b7d5-x2kqp   2/2     Running   0          6m
-> tester-6d9f7b8c5-hj4kz                    2/2     Running   0          6m
-> ```
->
-> A `503` against a `2/2 Running` destination with no restarts. That combination eliminates the obvious explanations before you spend any time on them: the application is up, it has a sidecar, and nothing has crashed and come back. Whatever refused this request did so somewhere between the two pods — or before the request ever left the first one.
+Start with the failure itself and the state of the pods in the namespace. Together they already rule out the obvious explanations. Send one request from the `tester` pod to the `notification-service` Service, then list the pods:
 
-`2/2` is doing real work in that reading. A `1/1` pod would have pointed straight at [module 030-03](../../section-030/module-03/course.md), because a destination with no sidecar cannot participate in mesh routing at all.
+<!-- astrona:playground:renew -->
+
+```sh
+kubectl -n fivezerothree-demo exec deploy/tester -- \
+  curl -s -o /dev/null -w '%{http_code}\n' -X POST http://notification-service/notify
+kubectl -n fivezerothree-demo get pods
+```
+
+You should see something like:
+
+```text
+503
+NAME                                       READY   STATUS    RESTARTS   AGE
+notification-service-v1-54dd46d4b6-nz8f7   2/2     Running   0          10s
+tester-69699fd775-4fwhz                    2/2     Running   0          10s
+```
+
+The request fails with `503`, and the destination is `2/2 Running` with no restarts. That rules out the obvious causes: the application is up, it has a sidecar proxy, and nothing has crashed and restarted. Whatever refused this request did it somewhere between the two pods, or before the request left the first one. The `2/2` matters here. A `1/1` pod would mean the destination has no sidecar proxy at all, so it could not take part in mesh routing, and that is a different investigation.
 
 ## Where a 503 can come from
 
 Four different components can produce the same three digits:
 
-```text
-   tester app ──▶ tester's sidecar ──▶ network ──▶ destination sidecar ──▶ destination app
-                       │                                  │                      │
-                       │                                  │                      └─ the app itself
-                       │                                  │                         returned 503
-                       │                                  └─ inbound policy or
-                       │                                     the app connection failed
-                       └─ no cluster / no endpoints /
-                          upstream never reached
+```mermaid
+flowchart LR
+    A["tester app"] --> B["tester sidecar"]
+    B -->|"network"| C["destination sidecar"]
+    C --> D["destination app"]
 ```
 
-Distinguishing them by inspection is impossible: the status code carries no origin. Envoy solves this by writing an **access log line** for every request it handles, and putting in it a short code — the **response flag** — that says why the request ended the way it did.
+The diagram shows the path of one request; the `tester` sidecar, the destination sidecar and the destination application can each answer `503`.
 
-The `demo` profile used by this playground enables access logging by default. In a production-profile install it is usually off, and turning it on is [module 050-01](../../section-050/module-01/course.md)'s first topic.
+The `tester` sidecar answers `503` when it has no cluster, no endpoints, or no way to reach the destination. The destination sidecar answers `503` when its connection to the application fails. The destination application can also return `503` itself. You cannot tell these apart from the status code, because it carries no origin. Envoy solves this with an **access log**: one line for every request it handles. In that line it writes a short code, the **response flag**, that says why the request ended the way it did. The `demo` profile used by this playground turns access logging on. In other installs it is often off, and you must turn it on before you can read it.
 
 ## The flags in the 503 family
 
-| Flag | Name | What it means | Where to look next |
-| --- | --- | --- | --- |
-| `NC` | no cluster | the route named a cluster that does not exist | `DestinationRule` subsets, host names |
-| `UH` | no healthy upstream host | the cluster exists and has no usable endpoints | Service selector, pod readiness, subset labels, ejections |
-| `NR` | no route | nothing matched the request | `Host` header, port protocol, `VirtualService` binding |
-| `UF` | upstream connection failure | could not establish a connection at all | mTLS mismatch, wrong port, network policy |
-| `UC` | upstream connection termination | the connection was dropped mid-request | application crash, protocol mismatch |
-| `-` | *(none)* | no proxy-level error | the **application** produced the status |
+These are the response flags you meet with a `503`:
 
-Two reading aids make this a model rather than a list. The `U` prefix means **upstream** — a statement about the destination — and the flags are roughly ordered by how far the request got: `NC` never found a destination, `UH` found one with nothing in it, `UF` tried to connect and failed, `UC` connected and lost it.
+| Flag | Meaning | Where to look next |
+| --- | --- | --- |
+| `NC` | upstream cluster not found: the route named a cluster that does not exist | `DestinationRule` subsets, host names |
+| `UH` | no healthy upstream host: the cluster exists and has no usable endpoints | Service selector, pod readiness, subset labels, removed endpoints |
+| `NR` | no route configured: nothing matched the request | `Host` header, port protocol, `VirtualService` binding |
+| `UF` | upstream connection failure: the connection could not be set up | mTLS mismatch, wrong port, network policy |
+| `UC` | upstream connection termination: the connection was closed during the request | application crash, protocol mismatch |
+| `-` | no flag: no proxy-level error | the **application** produced the status |
 
-And the last row is the one that saves the most time. A `503` with flag `-` is **your service's own answer**, faithfully relayed. No amount of Istio debugging will explain it, and the investigation belongs in the application's logs.
+Two reading aids turn this list into a model. The `U` prefix means **upstream**, the destination side of the connection. And the flags are roughly ordered by how far the request got: `NC` never found a destination, `UH` found one with nothing in it, `UF` tried to connect and failed, `UC` connected and lost the connection. The last row saves the most time. A `503` with the flag `-` is your service's own answer, passed on unchanged. No amount of Istio debugging will explain it; the investigation belongs in the application's logs.
 
 ## Reading the line
 
-> [!TIP]
-> **Try it — the proxy's account of the request**
->
-> ```sh
-> kubectl -n fivezerothree-demo logs deploy/tester -c istio-proxy --tail=5
-> ```
->
-> Expect something like:
->
-> ```text
-> [2026-09-27T09:31:44.812Z] "POST /notify HTTP/1.1" 503 NC no_healthy_upstream - "-" 0 19 0 - "-" "curl/8.4.0" "b1f0..." "notification-service" "-" - - 10.96.44.31:80 10.244.0.9:41234 - default
-> ```
->
-> Read it left to right and stop at the fourth field:
->
-> ```text
->   "POST /notify HTTP/1.1"   503      NC       no_healthy_upstream    ...   "-"
->    the request              status   FLAG     response code details        upstream host
-> ```
->
-> `NC` says this came from the proxy and names the reason: there was no usable cluster to send it to. The exact flag can differ by Istio version and by the precise state — `UH` appears in closely related cases — which is why you **read the flag you get** rather than reciting one from memory.
+The client proxy's access log is that proxy's own record of the request. Read the last lines of the `tester` pod's proxy log:
 
-Two more fields on that line carry weight:
+```sh
+kubectl -n fivezerothree-demo logs deploy/tester -c istio-proxy --tail=5
+```
 
-- **`response code details`** (`no_healthy_upstream` here) is Envoy's own longer explanation, and for some failures — notably authorization — it is the entire answer.
-- **The upstream host field** is `-`. That means no connection was ever attempted. Compare with a successful request, where it holds an address like `10.244.0.12:8084`. An address there proves the proxy got as far as talking to something.
+You should see something like:
 
-## The other log that is empty
+```text
+2026-10-09T22:23:47.850294Z	info	cache	returned workload trust anchor from cache	ttl=23h59m59.149709307s
+2026-10-09T22:23:47.850441Z	info	cache	returned workload trust anchor from cache	ttl=23h59m59.149558848s
+2026-10-09T22:23:48.025271Z	info	Readiness succeeded in 280.949789ms
+2026-10-09T22:23:48.025490Z	info	Envoy proxy is ready
+[2026-10-09T22:23:56.668Z] "POST /notify HTTP/1.1" 503 NC cluster_not_found - "-" 0 0 0 - "-" "curl/8.22.0" "45585c55-a0d3-9fee-9965-0f467034a873" "notification-service" "-" - - 10.96.187.226:80 10.244.0.9:56710 - -
+```
 
-This is the half of the evidence people forget to gather: check the **destination's** proxy for the same request.
+The first four lines are the proxy's own start-up messages. The last line, in square brackets, is the access log line for your request.
+
+Read it from left to right and stop at the field after the status code:
+
+```text
+  "POST /notify HTTP/1.1"   503      NC       cluster_not_found      ...   "-"
+   the request              status   FLAG     response code details        upstream host
+```
+
+`NC` says the proxy produced this `503`, and names the reason: the route named a cluster that the proxy does not have. Two more fields on the line carry weight. The **response code details** (`cluster_not_found` here) are Envoy's explanation in words, and for some failures, such as authorization, they are the whole answer. The **upstream host** field is `-`, which means no connection was ever attempted. On a successful request it holds an address such as `10.244.0.8:8084`, which proves the proxy connected to a pod.
+
+## The log that stays empty
+
+The other half of the evidence is easy to forget: check the **destination's** proxy log for the same request. Read the last lines of the `notification-service-v1` proxy log:
 
 ```sh
 kubectl -n fivezerothree-demo logs deploy/notification-service-v1 -c istio-proxy --tail=5
 ```
 
-Nothing corresponding appears. That absence is not a gap in the evidence — it *is* evidence, and it is decisive:
+No line for this request appears. That absence is evidence, and it settles the question:
 
 | Client log | Destination log | Means |
 | --- | --- | --- |
-| failure | **nothing** | the request never arrived. Routing, clusters, endpoints, or the connection itself. |
-| failure | failure | it arrived and failed there. Inbound policy, or the application. |
-| success | failure | rare; a problem on the response path. |
+| failure | **nothing** | the request never arrived: routing, clusters, endpoints, or the connection itself |
+| failure | failure | it arrived and failed there: inbound policy, or the application |
+| success | failure | rare; a problem on the way back |
 
-Here the client failed and the destination saw nothing, so the entire investigation stays on the **sending** side — which is exactly where [Part 2](./course-02-walking-the-chain.md) walks.
+Here the client failed and the destination saw nothing, so the whole investigation stays on the **sending** side.
 
 ## What the flag has already told you
 
-Before running a single `proxy-config` command, the log has narrowed the problem to one stage of [module 040-01's](../module-01/course.md) four:
+Before you run a single `proxy-config` command, the log has narrowed the problem to one stage of the proxy's chain:
 
 ```text
    NR  → stage 2, route        nothing matched
    NC  → stage 3, cluster      the named cluster does not exist
    UH  → stage 4, endpoint     the cluster is empty
-   UF  → beyond stage 4        connection refused at the far end (section 050-02)
+   UF  → beyond stage 4        the connection failed at the far end
    -   → not Istio             the application answered
 ```
 
-That is why "read the flag first" is the rule and not a preference. Walking the chain from stage one with no flag is four commands; walking it with a flag is one.
+That is why "read the flag first" is a rule and not a preference. Walking the chain from the first stage with no flag takes four commands; with a flag it takes one.
+
+> [!TIP]
+> Make reading the client proxy's last log line your first step on any failing request. It tells you who answered and which stage to check, before you open a single YAML file.
+
+You now know who answered: the `tester` sidecar proxy, with the flag `NC`, and the request never reached the destination. The flag points at the cluster stage. What it does not tell you is which object made the route name a cluster that does not exist, and that is the next step.
+
+## Common pitfalls
 
 > [!WARNING]
-> **Pitfalls in identifying the source of a 503**
->
-> - **Reading the application log first.** For this class of failure the request never reaches the application; its log is empty and proves nothing.
-> - **Ignoring the response flag.** `NC`, `UH`, `UF` and `UC` point at four different layers, and `-` points out of Istio entirely. Guessing without it wastes more time than any other mistake in this module.
-> - **Memorising one flag for "missing subset".** The exact flag varies with Istio version and state. Read what you actually get, and use the table to interpret it.
-> - **Failing to check the destination's log.** The absence of a matching line is half the diagnosis.
+> - **Reading the application log first.** For this kind of failure the request never reaches the application, so its log is empty and proves nothing.
+> - **Ignoring the response flag.** `NC`, `UH`, `UF` and `UC` point at four different layers, and `-` points out of Istio entirely.
+> - **Skipping the destination's log.** The missing line there is half the diagnosis.
 > - **Assuming a `503` with a healthy pod means the application is down.** `2/2 Running` plus `503` is the signature of a routing fault, not an application fault.
-> - **Expecting access logs to be enabled.** The `demo` profile turns them on; many production installs do not.
-
-> *The status code says a request failed; the response flag says who failed it, and that is the only question worth asking first.*
-
-## Reference
-
-- [Envoy access logging — response flags](https://www.envoyproxy.io/docs/envoy/latest/configuration/observability/access_log/usage#config-access-log-format-response-flags) — the complete flag list with precise definitions.
-- [Istio default access log format](https://istio.io/latest/docs/tasks/observability/logs/access-log/) — every field in the line above, in order.
-- [Common problems — 503 errors](https://istio.io/latest/docs/ops/common-problems/network-issues/) — symptom-first index for the variants this module does not cover.
-- `kubectl logs <pod> -c istio-proxy --tail=20 -f` — following a proxy's log while you reproduce a failure; the fastest way to attribute a specific request.
+> - **Expecting access logs to be on.** The `demo` profile turns them on; many other installs do not.

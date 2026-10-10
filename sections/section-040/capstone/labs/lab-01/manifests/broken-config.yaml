@@ -1,6 +1,8 @@
 # Fault 1: the route names a subset nothing defines.
-# (Fault 2 is in lab-start.yaml: the reporting-service port is named "web",
-#  which declares no protocol, so Istio treats it as plain TCP.)
+# (Fault 2 is in lab-start.yaml: the reporting-service port is named "tcp-web",
+#  which declares the protocol tcp, so Istio handles it as plain TCP and builds
+#  no HTTP route for it. A name with no known protocol, such as "web", would not
+#  be a fault: Istio would detect plain HTTP automatically.)
 apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:

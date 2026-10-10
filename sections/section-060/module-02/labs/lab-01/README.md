@@ -1,3 +1,7 @@
+---
+estimated_duration: 25m
+---
+
 # Troubleshoot With Prometheus And Grafana
 
 - **ID:** LAB
@@ -16,7 +20,7 @@ astrona destroy ats-016-lab-060-02
 ```
 
 `astrona destroy` takes the environment name (`metadata.name` = `ats-016-lab-060-02`), not
-the config path.
+the configuration path.
 
 ## Layout
 

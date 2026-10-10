@@ -5,9 +5,7 @@ set -uo pipefail
 
 NS="kiali-demo"
 
-kubectl -n "$NS" exec deploy/tester -- sh -c \
-  'for i in $(seq 1 5); do curl -s -o /dev/null -X POST http://notification-service/notify; done' >/dev/null 2>&1 || true
-sleep 3
+# The grader sends no traffic itself: the learner must have produced it.
 
 SERIES="$(kubectl -n "$NS" exec deploy/tester -c istio-proxy -- \
   pilot-agent request GET stats/prometheus 2>/dev/null \

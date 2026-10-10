@@ -1,88 +1,54 @@
 # Section 030: Troubleshooting The Mesh Control Plane
 
-A broken control plane does not look like an outage. Traffic keeps flowing, because every proxy serves from the configuration it already holds and the certificate it already has. What stops is *change* — and nothing reports that change has stopped.
+A broken control plane does not look like an outage. Requests keep succeeding, because every sidecar proxy works with the configuration it already holds and the certificate it already has. What stops is *change*, and nothing reports that change has stopped. `istiod` is Istio's control plane: it sends configuration and certificates to every sidecar proxy, and it serves the webhooks that add sidecars to pods and check Istio objects.
 
-This section works down the path configuration takes to reach a workload, and each module answers one question about it. Is `istiod` healthy enough to serve anything? Did what it sent actually arrive? And, the question that invalidates the other two when the answer is no: is there a proxy on that workload at all?
+This section follows the path configuration takes to reach a proxy, and each module answers one question about it. Is `istiod` healthy enough to serve anything? Did what it sent actually arrive at each proxy? And the question that makes the other two irrelevant when the answer is no: does the pod have a sidecar proxy at all?
 
-**Curriculum item covered:** Troubleshooting the Mesh Control Plane
+**Exam topic covered:** Troubleshooting the Mesh Control Plane
 
----
+## What you will learn
 
-## What You Will Master
-
-- The four jobs `istiod` performs — xDS server, certificate authority, injection webhook, validation webhook — and how the mesh degrades when each fails.
-- What survives a control plane outage, for how long, and what stops immediately.
-- `istiod`'s readiness, restart count, logs and the `pilot_*` metrics on port 15014.
-- Where a rejected configuration becomes visible, given that `kubectl apply` reported success.
-- xDS and its four resource types: `CDS`, `LDS`, `EDS`, `RDS`.
-- `SYNCED`, `STALE` and `NOT SENT` — what each rules in and out, and what `SYNCED` does *not* prove.
-- Why a workload missing from `istioctl proxy-status` has no state at all, and the three causes in order of likelihood.
-- Spotting control plane version skew and confirming which revision serves a workload.
+- The four jobs `istiod` does (xDS server, certificate authority, injection webhook, validation webhook) and how the mesh degrades when each one fails.
+- What keeps working during a control plane outage, for how long, and what stops at once.
+- How to read `istiod`'s readiness, restart count, log and its `pilot_*` metrics on port `15014`.
+- Where a rejected configuration shows up, even though `kubectl apply` reported success.
+- The xDS protocol and its four main resource types: `CDS`, `LDS`, `EDS` and `RDS`.
+- What `SYNCED`, `STALE`, `NOT SENT` and `ERROR` in `istioctl proxy-status -v 1` rule in and out, and what `SYNCED` does *not* prove.
+- Why a workload missing from `istioctl proxy-status` has no state at all, and the three causes in order.
+- How to spot version skew and confirm which `istiod` revision serves a workload.
 - The six-step sidecar injection checklist: namespace label, pod template label, pod age, webhook health, revision, pod spec.
-- Why labelling a namespace never affects pods that already exist.
+- Why labelling a namespace never changes pods that already exist.
 
----
+## The learning path
 
-## The Learning Path
+Each module has a landing page, a few short parts, a graded lab right after the part it tests, and a summary. Each module also has an ungraded playground: launch it from the module's landing page and keep it running while you read.
 
-### 1. Check Control Plane Health
-*   **Module Reader:** **[Module 1: Check Control Plane Health](./module-01/course.md)**
-    *   Deep dive, in order:
-        1. [Four Jobs In One Process](./module-01/course-01-the-four-jobs-of-istiod.md)
-        2. [The Instruments](./module-01/course-02-instruments-logs-and-metrics.md)
-        3. [Outage Anatomy And Rejected Configuration](./module-01/course-03-outage-anatomy-and-rejects.md)
-*   **Hands-on Playground:** `sections/section-030/module-01/playground` — a kind cluster with Istio installed and namespace `cphealth-demo`. Nothing is broken; you take `istiod` down yourself and watch which half of the mesh notices.
-    ```bash
-    astrona run --git ssh://git@github.com/astrona-io/ATS016.git -c sections/section-030/module-01/playground
-    ```
-*   **Graded Lab:** **[The Mesh Works And Nothing Can Change](./module-01/labs/lab-01/question.md)** — exam-style task, graded on the final cluster state.
-    ```bash
-    astrona run --git ssh://git@github.com/astrona-io/ATS016.git -c sections/section-030/module-01/labs/lab-01
-    ```
+The first module, **Check Control Plane Health**, splits `istiod` into its four jobs, reads its pod status, log and metrics, scales it to zero on purpose, and finds an invalid object that was stored without validation. Its parts are Four Jobs In One Process, The Instruments, Take The Control Plane Away, and Stored Without Validation, followed by the lab **The Mesh Works And Nothing Can Change**.
 
-### 2. Diagnose Config Sync With proxy-status
-*   **Module Reader:** **[Module 2: Diagnose Config Sync With proxy-status](./module-02/course.md)**
-    *   Deep dive, in order:
-        1. [How Configuration Reaches A Proxy](./module-02/course-01-xds-and-acknowledgement.md)
-        2. [Reading The Table](./module-02/course-02-reading-the-proxy-status-table.md)
-        3. [Absence, And The Per-Proxy Diff](./module-02/course-03-absence-and-per-proxy-diff.md)
-*   **Hands-on Playground:** `sections/section-030/module-02/playground` — a kind cluster with Istio installed and namespace `proxysync-demo`, where every proxy starts fully `SYNCED`.
-    ```bash
-    astrona run --git ssh://git@github.com/astrona-io/ATS016.git -c sections/section-030/module-02/playground
-    ```
-*   **Graded Lab:** **[One Workload Vanished From The Mesh](./module-02/labs/lab-01/question.md)** — exam-style task, graded on the final cluster state.
-    ```bash
-    astrona run --git ssh://git@github.com/astrona-io/ATS016.git -c sections/section-030/module-02/labs/lab-01
-    ```
+The second module, **Diagnose Configuration Sync With proxy-status**, explains how configuration travels from `istiod` to each proxy and is acknowledged, reads the `istioctl proxy-status` table, and diagnoses a workload that is missing from it. Its parts are How Configuration Reaches A Proxy, Reading The Table, and Absence, And The Per-Proxy Diff, followed by the lab **One Workload Vanished From The Mesh**.
 
-### 3. Debug A Workload With No Sidecar
-*   **Module Reader:** **[Module 3: Debug A Workload With No Sidecar](./module-03/course.md)**
-    *   Deep dive, in order:
-        1. [How Injection Actually Happens](./module-03/course-01-the-injection-webhook.md)
-        2. [Labels, Selectors And Precedence](./module-03/course-02-labels-and-precedence.md)
-        3. [Working The Checklist](./module-03/course-03-working-the-checklist.md)
-*   **Hands-on Playground:** `sections/section-030/module-03/playground` — a kind cluster with Istio installed and namespace `noinject-demo`, containing one normally injected workload and one that is quietly outside the mesh.
-    ```bash
-    astrona run --git ssh://git@github.com/astrona-io/ATS016.git -c sections/section-030/module-03/playground
-    ```
-*   **Graded Lab:** **[Bring An Exempt Workload Back Into The Mesh](./module-03/labs/lab-01/question.md)** — exam-style task, graded on the final cluster state.
-    ```bash
-    astrona run --git ssh://git@github.com/astrona-io/ATS016.git -c sections/section-030/module-03/labs/lab-01
-    ```
+The third module, **Debug A Workload With No Sidecar**, explains how the injection webhook adds a sidecar to a pod, which labels win, and how to work the checklist when a pod started without one. Its parts are How Injection Actually Happens, Labels, Selectors And Precedence, Working The Checklist, and Fix It And Prove It Joined, followed by the lab **Bring An Exempt Workload Back Into The Mesh**.
 
-Each playground is ungraded: it spins up, prepares the environment, and waits. There is no task and no `astrona submit`. Tear one down with `astrona destroy <name>` when you are finished — the name is printed in each module's playground callout.
+When you finish a module, its summary page removes the playground for you.
 
----
+## Section capstone
 
-## Section Capstone
+**Three Workloads, Three Different Control Plane Faults** is one graded scenario that combines all three modules. Three workloads in two namespaces are out of step with the control plane, each for a different reason: a pod-template opt-out, a namespace pinned to a revision that does not exist, and an invalid `VirtualService` that was stored without validation and redirects every request. Work it after the module labs.
 
-**[Three Workloads, Three Different Control Plane Faults](./capstone/labs/lab-01/question.md)** — one graded scenario
-combining this section's modules, with several independent faults to find and
-fix. Work it after the module labs.
-
-> A platform migration left three workloads in an inconsistent state across two namespaces:
+Start it:
 
 ```bash
 astrona run --git ssh://git@github.com/astrona-io/ATS016.git -c sections/section-030/capstone/labs/lab-01
-astrona submit
+```
+
+Send it for grading when you are done:
+
+```bash
+astrona submit -c sections/section-030/capstone/labs/lab-01
+```
+
+Remove it afterwards:
+
+```bash
+astrona destroy ats-016-capstone-030
 ```

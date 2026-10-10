@@ -1,58 +1,39 @@
 # Debug A 503 Caused By A Missing Subset
 
-<!-- astrona:playground -->
-> [!NOTE]
-> 🧪 **Hands-on playground for this module** — a clean, throwaway machine to explore on. No task, no grading. Folder: [`playground/`](https://github.com/astrona-io/ATS016/tree/main/sections/section-040/module-02/playground)
->
-> ```sh
-> astrona run --git ssh://git@github.com/astrona-io/ATS016.git -c sections/section-040/module-02/playground
-> astrona destroy ats-016-playground-040-02
-> ```
+`503 Service Unavailable` is one of the most common failures in an Istio mesh, and on its own it says almost nothing. It can mean the application crashed, or that no pod was ever running. In a mesh it often means something else: the sidecar proxy had nowhere to send the request, because its route names a destination that does not exist.
 
-`503 Service Unavailable` is the most common failure in an Istio mesh and the least informative on its own. It can mean the application crashed. It can mean nothing was ever running. It can also mean — and in a mesh, usually does — that the proxy had nowhere to send the request, because the destination it was told to use does not exist.
+A `503` from your **application** and a `503` from the **proxy in front of it** look exactly the same to the client, yet they need completely different investigations. One question separates them, and it takes one command. This module works through one case from start to finish: a `VirtualService` that routes to a subset no `DestinationRule` defines. The method is the real goal, because it works for every `503`.
 
-The contrast that organises this module: a `503` from your **application** and a `503` from the **proxy in front of it** are byte-for-byte identical to the client, and they need completely different investigations. One question separates them, and it takes one command. This module works a single instance end to end — a `VirtualService` routing to a subset no `DestinationRule` defines — but the method is the point, and it generalises to every `503` you will meet.
-
-> A route to a subset with no DestinationRule produces a cluster with nothing behind it, and a proxy with nowhere to send a request answers 503.
-
-## How this module is organised
-
-1. **[Part 1 — Who Answered With 503](./course-01-who-answered-with-503.md)** — separating a proxy-generated failure from an application one, the response flag field, and what each flag in the `503` family points at.
-2. **[Part 2 — Walking The Chain](./course-02-walking-the-chain.md)** — the analyzer's fast path, then route → cluster → endpoint by hand, carrying each name to the next command, and the two different kinds of empty answer.
-3. **[Part 3 — Choosing The Fix, And The Other Cause](./course-03-choosing-the-fix.md)** — which end of a dangling reference to change and why it matters, proving a fix from three directions, and the unnamed-Service-port failure that produces the same symptom from nowhere near the same place.
+The module has four parts. **Who Answered With 503** reads the Envoy access log to find out whether a proxy or the application produced the status code, and what the response flag says. **Walking The Chain** confirms the finding with `istioctl analyze`, then follows the route, cluster and endpoint stages by hand to the missing link. **Choosing And Proving The Fix** decides which end of the broken reference to change and proves the fix three ways; a graded lab follows it. **Declaring The Port Protocol** shows a second cause of "my routing rule does nothing": a Service port whose protocol Istio does not treat as HTTP. A second graded lab follows that part.
 
 ## Learning objectives
 
 After this module you can:
 
-- Read a `503` as a statement about the proxy rather than about the application, and prove which one answered.
-- Find the response flag in an Envoy access log line and say what `NC`, `UH`, `NR`, `UF`, `UC` and `-` each indicate.
-- Explain why a failing request leaves no trace on the destination proxy.
-- Follow the route → cluster → endpoint chain to the exact link that is missing.
-- Distinguish a missing cluster from an empty one, and name the flag that tells them apart.
-- Decide whether to change the route or define the missing subset, and justify the choice.
-- Verify a fix with traffic, the proxy's own configuration, and the analyzer.
-- Recognise a Service port with no declared protocol as a second cause of the same symptom.
+- Read a `503` as a statement about the proxy rather than the application, and prove which one answered.
+- Find the response flag in an Envoy access log line and say what `NC`, `UH`, `NR`, `UF`, `UC` and `-` each point at.
+- Explain why a failing request leaves no trace in the destination proxy's log.
+- Follow the route, cluster and endpoint chain to the exact link that is missing.
+- Tell a missing cluster from an empty one, and name the flag that separates them.
+- Decide whether to change the route or define the missing subset, and explain the choice.
+- Prove a fix with a real request, the proxy's own configuration, and the analyzer.
+- Explain how Istio decides a Service port's protocol, and fix a port whose protocol stops HTTP routing.
 
 ## Before you start
 
-You need [module 040-01](../module-01/course.md): the four stages, the `istioctl proxy-config` subcommands, and the `direction|port|subset|fqdn` cluster naming convention are all assumed here.
+You need Kubernetes basics: namespaces, Deployments, Services, pod labels, `kubectl logs` and `kubectl exec`. You also need the four stages of the sidecar proxy (Envoy), the proxy container Istio adds to each pod. Envoy handles a request as listener, then route, then cluster, then endpoint, and `istioctl proxy-config` has one subcommand for each.
 
-The playground gives you a single-node `kind` cluster with **Istio 1.30.5 already installed** (the `demo` profile), `istioctl` on your PATH, and the injected namespace **`fivezerothree-demo`** containing:
+You also need to read cluster names. Istio names a cluster `direction|port|subset|fqdn`, for example `outbound|80|v1|notification-service.fivezerothree-demo.svc.cluster.local`. A subset is a named group of pods selected by labels in a `DestinationRule`, and a subset cluster exists only if a `DestinationRule` defines that subset.
 
-- `notification-service-v1` — a Deployment labelled `version: v1`, behind the Service `notification-service` on port 80.
-- `tester` — a client pod with `curl`.
-- A `DestinationRule` and a `VirtualService` that are **already broken**, in the specific way this module diagnoses. Work the chain before reading `playground/manifests/`.
+Your playground is a single-node `kind` cluster with **Istio 1.30.5** installed with the `demo` profile, which turns on Envoy access logging, and `istioctl` on your PATH. The namespace **`fivezerothree-demo`** has sidecar injection switched on and runs these workloads:
 
-Every command in every part runs against the playground cluster; `kubectl` is already pointed at it.
+| Workload | What it is |
+| --- | --- |
+| `notification-service-v1` | A Deployment with the label `version: v1`, behind the Service `notification-service` on port `80` |
+| `tester` | A client pod with `curl`. Every test request in this module is sent from here |
 
-## Where this fits
+The namespace also holds a `DestinationRule` and a `VirtualService` that are **broken on purpose**, in exactly the way this module diagnoses. Follow the chain before you read their YAML. Every command in the parts runs against this playground, and `kubectl` already points at it.
 
-This module is section 040's method applied under time pressure, and the order is what makes it fast:
+Launch your playground now, and keep it running next to you while you read the parts:
 
-1. **Read the response flag** before forming any theory — it says whether the proxy or the application answered, and which layer failed.
-2. **Run the analyzer** — for reference errors it frequently names the object outright.
-3. **Follow route → cluster → endpoint**, carrying each name to the next command.
-4. **Fix one thing**, then re-verify with both traffic and the chain.
-
-[Section 050](../../section-050/module-01/course.md) takes the access log apart properly — every field, not just the flag — and applies the same method to failures that happen *after* a connection is established.
+<!-- astrona:playground -->

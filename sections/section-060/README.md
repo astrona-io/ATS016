@@ -1,73 +1,72 @@
 # Section 060: Troubleshooting With Mesh Observability
 
-Every section before this one works on a single proxy or a single pair of workloads. That is the right altitude once you know where to look, and the wrong one when the report is "something is slow" and forty services are involved.
+Looking at one pod, or one pair of pods, is the right view once you know where to look. It is the wrong view when the report says "something is slow" and forty services are involved. This section covers the tools that show the whole mesh at once, and how far you can trust what they show.
 
-This section is the view from above, and the important thing about both tools in it is that neither is a new source of truth. Kiali draws `istioctl analyze`'s findings and Istio's metrics as a picture. Grafana draws the same metrics as graphs. Everything they show can be read from a proxy by hand — which is exactly why you can trust them, and why a red edge is a place to start rather than an answer.
+It covers three tools. Kiali is the Istio console: it draws the services in the mesh as a graph and checks their Istio configuration. Prometheus is a monitoring system that collects the metrics every sidecar proxy records and answers queries over them. Grafana is a dashboard tool that draws those metrics as graphs. None of them is a new source of truth. Kiali draws the messages of `istioctl analyze` and Istio's metrics as a picture, and Grafana draws the same metrics as panels. You can read everything they show from a proxy by hand, which is why you can trust them, and why a red edge is a place to start, not an answer.
 
 **Curriculum items covered:** Troubleshooting Configuration, Troubleshooting the Mesh Data Plane
 
----
+## What you will learn
 
-## What You Will Master
+- Kiali's two data sources, and why it shows nothing without either one.
+- What a red edge in the Kiali graph says exactly, and what it does not say.
+- Finding the messages of `istioctl analyze` inside Kiali's Istio Config view.
+- Why a running, healthy service can be missing from the graph.
+- The security padlock, and the `connection_security_policy` label behind it.
+- Istio's standard metrics: `istio_requests_total`, the duration histogram, the byte histograms and the TCP counters.
+- The `reporter` label, which says whether the client proxy or the server proxy counted a request, and what a difference between the two proves.
+- PromQL, the Prometheus query language, for a request rate, an error ratio and a latency percentile, including why `le` must survive the aggregation.
+- Finding which caller a failure affects with `by (source_workload)`.
+- Querying Prometheus over its HTTP interface when no browser is available.
+- Which of Istio's Grafana dashboards answers which question.
 
-- Kiali's two data sources, and why it shows nothing without either.
-- What a red edge states precisely, and what it does not.
-- Finding `istioctl analyze`'s output inside Kiali's Istio Config view.
-- Why a running, healthy service can be absent from the graph entirely.
-- The security badge, and the `connection_security_policy` label behind it.
-- Istio's standard metrics: `istio_requests_total`, the duration histogram, the byte histograms, the TCP counters.
-- The `reporter` label — client view against server view — and what a disagreement between them proves.
-- PromQL for a request rate, an error ratio and a latency percentile, including why `le` must survive the aggregation.
-- Querying Prometheus over its HTTP API when no browser is available.
-- Which of Istio's four Grafana dashboards answers which question.
+## The modules
 
----
-
-## The Learning Path
+Each module has a landing page, a few short parts, a playground, a graded lab right after the part that teaches its skill, and a summary. Both playgrounds install the observability add-ons at startup, so they take longer to start than other playgrounds.
 
 ### 1. Troubleshoot With Kiali
-*   **Module Reader:** **[Module 1: Troubleshoot With Kiali](./module-01/course.md)**
-    *   Deep dive, in order:
-        1. [What Kiali Is Built From](./module-01/course-01-what-kiali-is-built-from.md)
-        2. [Reading The Graph](./module-01/course-02-reading-the-graph.md)
-        3. [Validations, Badges And Cross-Checking](./module-01/course-03-validations-and-cross-checking.md)
-*   **Hands-on Playground:** `sections/section-060/module-01/playground` — a kind cluster with Istio, the Prometheus and Kiali addons, and namespace `kiali-demo`. No traffic flows at startup, so the graph begins empty — which is the first thing the module has you fix.
-    ```bash
-    astrona run --git ssh://git@github.com/astrona-io/ATS016.git -c sections/section-060/module-01/playground
-    ```
-*   **Graded Lab:** **[An Empty Graph And A Red Badge](./module-01/labs/lab-01/question.md)** — exam-style task, graded on the final cluster state.
-    ```bash
-    astrona run --git ssh://git@github.com/astrona-io/ATS016.git -c sections/section-060/module-01/labs/lab-01
-    ```
+
+The module starts at its landing page, which also launches the playground. The parts, in order:
+
+1. What Kiali Is Built From
+2. Reading The Graph
+3. Validations, Badges And Cross-Checking, followed by the lab **An Empty Graph And A Red Badge**
+4. Summary
+
+The playground is a `kind` cluster with Istio, the Prometheus and Kiali add-ons, and the namespace `kiali-demo`. No traffic flows at startup, so the graph begins empty, and that is the first thing the module has you fix.
 
 ### 2. Troubleshoot With Prometheus And Grafana
-*   **Module Reader:** **[Module 2: Troubleshoot With Prometheus And Grafana](./module-02/course.md)**
-    *   Deep dive, in order:
-        1. [The Metrics Pipeline](./module-02/course-01-the-metrics-pipeline.md)
-        2. [The reporter Label And PromQL Patterns](./module-02/course-02-reporter-and-promql.md)
-        3. [Measuring A Known Failure, And Grafana](./module-02/course-03-measuring-a-failure-and-grafana.md)
-*   **Hands-on Playground:** `sections/section-060/module-02/playground` — a kind cluster with Istio, the Prometheus and Grafana addons, and namespace `metrics-demo`, plus a fault manifest that injects a known error rate and a known delay to check your queries against.
-    ```bash
-    astrona run --git ssh://git@github.com/astrona-io/ATS016.git -c sections/section-060/module-02/playground
-    ```
-*   **Graded Lab:** **[Measure The Failure Before You Fix It](./module-02/labs/lab-01/question.md)** — exam-style task, graded on the final cluster state.
-    ```bash
-    astrona run --git ssh://git@github.com/astrona-io/ATS016.git -c sections/section-060/module-02/labs/lab-01
-    ```
 
-Both playgrounds install observability addons at startup, so they take longer to come up than the others. Each is ungraded: it spins up, prepares the environment, and waits. There is no task and no `astrona submit`. Tear one down with `astrona destroy <name>` when you are finished — the name is printed in each module's playground callout.
+The module starts at its landing page, which also launches the playground. The parts, in order:
 
----
+1. The Metrics Pipeline
+2. The reporter Label And PromQL Patterns
+3. Measuring A Known Failure, followed by the lab **Find Which Caller Is Failing With PromQL**
+4. Grafana, Access Logs And Proving The Fix, followed by the lab **Measure The Failure Before You Fix It**
+5. Summary
 
-## Section Capstone
+The playground is a `kind` cluster with Istio, the Prometheus and Grafana add-ons, and the namespace `metrics-demo`. The parts inject a fault with a known error rate and a known delay, so you can check each query against the answer you expect.
 
-**[Measure A Failure, Fix It, Prove It](./capstone/labs/lab-01/question.md)** — one graded scenario
-combining this section's modules, with several independent faults to find and
-fix. Work it after the module labs.
+## Section capstone
 
-> A team reports that `notification-service` in `obscapstone-demo` "fails sometimes". Somebody opened Kiali, saw an empty graph, and escalated it as a total outage. Prometheus, Kiali and Grafana are all installed.
+The capstone, **Measure A Failure, Fix It, Prove It**, is one graded scenario that combines both modules, with several separate faults to find and fix. Work it after the module labs.
+
+A team reports that `notification-service` in `obscapstone-demo` "fails sometimes". Somebody opened Kiali, saw an empty graph, and escalated it as a total outage. Prometheus, Kiali and Grafana are all installed, and nobody has measured anything.
+
+Start the capstone:
 
 ```bash
 astrona run --git ssh://git@github.com/astrona-io/ATS016.git -c sections/section-060/capstone/labs/lab-01
-astrona submit
+```
+
+When you think you are done, send it for grading:
+
+```bash
+astrona submit -c sections/section-060/capstone/labs/lab-01
+```
+
+When you are finished, remove it. The command takes the capstone's name, not its folder path:
+
+```bash
+astrona destroy ats-016-capstone-060
 ```

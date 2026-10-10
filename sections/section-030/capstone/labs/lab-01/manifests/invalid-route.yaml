@@ -1,0 +1,17 @@
+# Invalid: one HTTP rule may redirect OR route, never both. Stored only
+# because istiod was down and both validating webhooks were set to
+# failurePolicy Ignore while it was applied.
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: payments-redirect
+  namespace: cpcapstone-demo
+spec:
+  hosts:
+    - payments-service
+  http:
+    - redirect:
+        uri: /v2
+      route:
+        - destination:
+            host: payments-service

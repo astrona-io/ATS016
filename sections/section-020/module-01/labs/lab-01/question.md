@@ -1,42 +1,35 @@
-# Task: Make The Header Route Actually Fire
+# Question
 
-**Time:** about 20 minutes · **Weight:** Troubleshooting Configuration
+Solve this question on: `terminal`
 
-## Scenario
+A routing rule in the namespace `conflict-demo` never does what it says. Istio 1.30.5 is installed.
 
-`notification-service` in the namespace `conflict-demo` runs two versions. `v1`
-answers `["EMAIL"]`; `v2` answers `["EMAIL","SMS"]`.
+`notification-service` in the namespace `conflict-demo` runs two versions. `v1` answers `["EMAIL"]` and `v2` answers `["EMAIL","SMS"]`, so the reply tells you which version answered.
 
-The intent is simple and somebody already wrote it: a request carrying the
-header `testing: true` should reach `v2`, and everything else should reach `v1`.
-It does not happen — every request reaches `v1`:
+The plan is simple, and somebody already wrote it: a request carrying the header `testing: true` should reach `v2`, and everything else should reach `v1`. It does not happen. Every request reaches `v1`:
 
 ```sh
 kubectl -n conflict-demo exec deploy/tester -- sh -c \
   'curl -s -X POST -H "testing: true" http://notification-service/notify; echo'
 ```
 
-`istioctl analyze` reports nothing more serious than a `Warning`.
+`kubectl apply` accepted every object, and nobody has acted on what `istioctl analyze` reports.
 
 ## Your task
 
 In the namespace `conflict-demo`:
 
-1. Work out why the header rule never fires. There are **two** independent
-   causes, and fixing only one is not enough.
-2. Repair the routing so the intent holds.
+1. Work out why the header rule never fires. There are **two** separate causes, and fixing only one is not enough.
+2. Repair the routing so the plan holds.
 
 ## Constraints
 
-- **Exactly one `VirtualService` may claim the `notification-service` host** on
-  the mesh gateway when you are done.
-- Do not modify the `DestinationRule`, the Deployments, the Service or the
-  `tester` pod.
-- Do not change how the versions respond — the response body is the evidence.
+- **Exactly one `VirtualService` may claim the `notification-service` host** on the mesh gateway (no `gateways:` field, or `mesh`) when you are done.
+- Do not change the `DestinationRule`, the Deployments, the Service or the `tester` pod.
+- Do not change how the versions answer. The reply body is the evidence.
 
 ## Done when
 
-- Ten consecutive requests carrying `testing: true` all return `["EMAIL","SMS"]`.
-- Ten consecutive requests without the header all return `["EMAIL"]`.
-- `kubectl -n conflict-demo get virtualservice` shows one object claiming the
-  host, and `istioctl analyze -n conflict-demo` is clean.
+- Ten requests in a row carrying `testing: true` (`POST http://notification-service/notify` from the `tester` pod) all return `["EMAIL","SMS"]`.
+- Ten requests in a row without the header all return `["EMAIL"]`.
+- `kubectl -n conflict-demo get virtualservice` shows one object claiming the host, and `istioctl analyze -n conflict-demo` no longer reports `IST0109`.

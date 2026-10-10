@@ -1,4 +1,4 @@
-# Summarise A Workload With describe And bug-report
+# Widen A Policy Without Weakening The Mesh
 # Astrona graded lab. Schema: internal/config.LabConfig.
 
 metadata:
@@ -43,7 +43,7 @@ validation:
       type: "file"
       source: "validation/validate-mtls-strict.sh"
     - name: "validate-log-level-restored"
-      description: "Confirms the proxy rbac log scope was returned to info"
+      description: "Confirms the proxy rbac log scope was returned to warning"
       type: "file"
       source: "validation/validate-log-level-restored.sh"
 

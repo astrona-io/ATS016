@@ -1,53 +1,39 @@
 # Debug Conflicting And Shadowed Routes
 
-<!-- astrona:playground -->
-> [!NOTE]
-> 🧪 **Hands-on playground for this module** — a clean, throwaway machine to explore on. No task, no grading. Folder: [`playground/`](https://github.com/astrona-io/ATS016/tree/main/sections/section-020/module-01/playground)
->
-> ```sh
-> astrona run --git ssh://git@github.com/astrona-io/ATS016.git -c sections/section-020/module-01/playground
-> astrona destroy ats-016-playground-020-01
-> ```
+A header-based route is often the first thing people write in Istio, and the first thing that quietly stops working. The YAML is correct, `kubectl apply` succeeds, and yet the request still reaches the wrong version of the service. No error appears anywhere in the request path.
 
-A header-based route is the first thing most people write in Istio, and it is also the first thing that silently stops working. The YAML is correct. `kubectl apply` is happy. `istioctl analyze` may say nothing at all. The request still lands on the wrong version.
+The routing object here is the `VirtualService`: the Istio resource that tells the sidecar proxies how to route requests for a host, as an ordered list of rules. The sidecar proxy (Envoy) is the proxy container Istio adds to each pod; it makes the routing decision for every request the pod sends. Two different mistakes break a `VirtualService` with the same symptom. Inside one object, a rule near the top can match every request, so a rule below it is never checked; that rule is **shadowed**. Across two objects, the same host can be claimed twice, and the proxy then uses only one of them, chosen by an order nobody wrote down.
 
-Two separate causes produce that identical symptom, and they need different fixes. Inside one `VirtualService`, a rule can be **shadowed** by a rule above it, because the list is evaluated in order and the first match wins. Across two `VirtualService` objects, the same host can be claimed twice and **merged** in an order you did not choose. This module takes both apart at the level of what the proxy actually ends up holding — which is where the habit that matters is formed: when the route table disagrees with your YAML, the YAML is not the whole story.
-
-> Two VirtualServices for the same host are merged unpredictably, and inside one VirtualService the first matching rule wins.
-
-## How this module is organised
-
-1. **[Part 1 — How A VirtualService Becomes A Route Table](./course-01-virtualservice-to-route-table.md)** — the translation from your object into Envoy's ordered route list, why a rule with no `match` is unconditional rather than a fallback, and what shadowing costs.
-2. **[Part 2 — One Host, Two Owners](./course-02-host-ownership-and-merging.md)** — what Istio does when two objects claim the same host, why the result is undefined rather than wrong, how gateway binding scopes ownership, and what `IST0109` is telling you.
-3. **[Part 3 — The Route Table Is The Ground Truth](./course-03-reading-the-route-table.md)** — reading the proxy's live route configuration, locating a shadowed rule in it, applying the two-part fix, and verifying both paths.
+This module takes both mistakes apart at the level of what the proxy actually holds. It has three parts. **How A VirtualService Becomes A Route Table** shows how `istiod`, Istio's control plane, turns a `VirtualService` into Envoy routes and how the proxy checks them, first match wins. **One Host, Two Owners** shows what Istio does when two objects claim one host, what `istioctl analyze` reports, and how gateway scope decides whether two objects conflict. **The Route Table Is The Ground Truth** reads the real route table from a proxy with `istioctl proxy-config routes`, applies the fix, and proves it on both paths. A graded lab follows the third part.
 
 ## Learning objectives
 
 After this module you can:
 
-- Describe how a `VirtualService` is translated into Envoy route configuration, and name the objects at each stage.
-- Explain how `http` rules are evaluated, and why a rule with no `match` ends the list.
-- Place a catch-all route correctly and predict what happens when it is placed first.
-- Describe what Istio does when two `VirtualService` objects declare the same host, and why the resulting order should not be relied on.
-- Use gateway binding to scope host ownership so two objects do not overlap.
-- Read the effective route order out of a running proxy with `istioctl proxy-config routes`.
-- Diagnose a misrouted request by comparing the proxy's route table against the configuration you believe is in force.
-- Verify a routing fix from both ends — the matched path and the default path.
+- Describe how a `VirtualService` is turned into Envoy route configuration, and name the parts at each stage.
+- Explain how `http` rules are checked, and why a rule with no `match` ends the list.
+- Place a catch-all route correctly, and predict what happens when it is placed first.
+- Describe what Istio does when two `VirtualService` objects declare the same host, and why the result cannot be trusted.
+- Use gateway binding to keep two objects from claiming the same host in the same scope.
+- Read the real route order out of a running proxy with `istioctl proxy-config routes`.
+- Find a misrouted request by comparing the proxy's route table with the configuration you believe is in force.
+- Check a routing fix from both ends: the matched path and the default path.
 
 ## Before you start
 
-You need to know what a `VirtualService` and a `DestinationRule` are, and what a subset is. You do not need to have written a routing rule before — this module is about the rules going wrong, which teaches the mechanism more sharply than the happy path does.
+You need Kubernetes basics: namespaces, Deployments, Services, pod labels and `kubectl exec`. You also need to know what a `VirtualService` and a `DestinationRule` are for. A `DestinationRule` defines named **subsets** of a Service: groups of pods selected by labels, such as `version: v1`. You do not need to have written a routing rule before. This module is about rules going wrong, which teaches the mechanism more sharply than the working case does.
 
-The playground gives you a single-node `kind` cluster with **Istio 1.30.5 already installed** (the `demo` profile), `istioctl` on your PATH, and the injected namespace **`conflict-demo`** containing:
+Your playground is one `kind` cluster with **Istio 1.30.5** installed with the `demo` profile, and `istioctl` on your PATH. The namespace **`conflict-demo`** has sidecar injection switched on and holds these objects:
 
-- `notification-service-v1` and `notification-service-v2` — two Deployments behind one Service, `notification-service`, on port 80. They are distinguishable by their response: `v1` answers `["EMAIL"]`, `v2` answers `["EMAIL","SMS"]`.
-- `tester` — a client pod with `curl`.
-- A `DestinationRule` defining subsets `v1` and `v2`, and **two `VirtualService` objects that are deliberately in conflict**.
+| Kubernetes name | What it is |
+| --- | --- |
+| `notification-service-v1`, `notification-service-v2` | Two versions of one app behind one Service, `notification-service`, on port `80`. `v1` answers `["EMAIL"]` and `v2` answers `["EMAIL","SMS"]`, so the reply tells you which version answered |
+| `tester` | A client pod with `curl`. Every test request is sent from here |
+| `DestinationRule` `notification` | Defines the subsets `v1` and `v2` |
+| `VirtualService` `notification` and `notification-extra` | Two objects for the same host, **in conflict on purpose** |
 
-Every command in every part runs against the playground cluster; `kubectl` is already pointed at it.
+Every command in this module runs against the playground cluster, and `kubectl` already points at it.
 
-## Where this fits
+Launch your playground now, and keep it running next to you while you read the parts:
 
-This module is the first place where the proxy is treated as the authority rather than the API server. The outside-in order from [section 010](../../section-010/module-01/course.md) still holds — is the configuration coherent, did it reach the proxy, what is the proxy doing — but conflicting routes are the case where the first question can answer "coherent enough" while the behaviour is still wrong.
-
-`istioctl proxy-config routes` appears here for the first time, used narrowly. [Section 040](../../section-040/module-01/course.md) takes the same command apart properly, across listeners, routes, clusters and endpoints, and shows how to follow a request through all four stages.
+<!-- astrona:playground -->

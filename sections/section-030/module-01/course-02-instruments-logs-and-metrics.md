@@ -1,145 +1,120 @@
-# Part 2 — The Instruments
+# The Instruments
 
-> Prerequisite: [Part 1 — Four Jobs In One Process](./course-01-the-four-jobs-of-istiod.md). Next: [Part 3 — Outage Anatomy And Rejected Configuration](./course-03-outage-anatomy-and-rejects.md).
-
-Part 1 gave you four failure signatures. This part gives you the three places to read them from: the pod's own status, the log, and the metrics endpoint. Each answers a different question, and knowing which is which stops you concluding "it is up" from evidence that only shows the process is alive.
+`istiod` can fail in four different ways, and each way leaves its own trail. This part covers the three sources of evidence that read that trail: the pod's own status, the `istiod` log and the `istiod` metrics. Each one answers a different question. Knowing which is which stops you from saying "it is up" based on evidence that only shows the process is alive.
 
 ## Readiness is not health
 
-`istiod` exposes probes on port **15021**, and Kubernetes uses them for two different decisions:
+Kubernetes decides whether a pod gets traffic with a readiness probe: a check it runs again and again against the container. `istiod` has one readiness probe, an HTTP request to the path `/ready` on port `8080`. If the probe fails, Kubernetes removes the pod from the `istiod` Service, so webhook calls and new proxy connections go to other replicas. `istiod` has no liveness probe, so Kubernetes restarts the container only when the process itself exits, for example when it crashes or runs out of memory.
 
-- **Liveness** — is the process alive? A failure here restarts the container.
-- **Readiness** — should this pod receive traffic? A failure here removes it from the `istiod` Service's endpoints, so webhook calls and new proxy connections go elsewhere.
+The readiness probe is shallow on purpose. It asks "is the server answering?", not "is it keeping the mesh up to date?". A control plane can show `1/1 Ready` while its proxies reject what it sends, while it is about to run out of memory, or while it refuses every object you apply.
 
-Both are shallow by design. They answer "is the server responding", not "is it converging the mesh". A control plane can be `1/1 Ready` while pushes are failing, while memory is about to be exhausted, or while it is rejecting every configuration you give it.
+So the field that tells you the most for the least effort is **`RESTARTS`**. The case to recognise is a restart count that keeps climbing on a pod that says `Running`. That is a crash loop that Kubernetes keeps hiding by restarting the container. It is most often the memory limit, and every restart makes all proxies reconnect.
 
-The field that carries the most information for the least effort is therefore **`RESTARTS`**, and the case to recognise is a climbing restart count on a `Running` pod. That is a crash loop that Kubernetes keeps papering over, almost always the memory limit, and its effect on the mesh is a cycle of convergence and reconnection every few minutes. Pair it with the termination reason to confirm:
+<!-- astrona:playground:renew -->
+
+Ask Kubernetes why the `istiod` container last stopped:
 
 ```sh
 kubectl -n istio-system get pod -l app=istiod \
   -o jsonpath='{.items[0].status.containerStatuses[0].lastState.terminated.reason}{"\n"}'
 ```
 
-An `OOMKilled` there is a complete diagnosis.
+If the container has never stopped, there is no last state, and the command prints an empty line. If it prints `OOMKilled`, the kernel killed the process because it used more memory than its limit, and that one word is the diagnosis.
 
 ## What a healthy log says
 
-`istiod`'s log is mostly a narration of pushes. Knowing the normal shape is what makes the abnormal line visible.
+The `istiod` log mostly records its pushes: each time it sends new configuration to the proxies. Once you know what normal looks like, an abnormal line stands out. Read the last 30 lines of the log:
 
-> [!TIP]
-> **Try it — what istiod is saying about itself**
->
-> ```sh
-> kubectl -n istio-system logs deploy/istiod --tail=30
-> ```
->
-> Expect something like:
->
-> ```text
-> info    ads     Push debounce stable[3] 1 for config Service/cphealth-demo/notification-service: 100.4ms since last change
-> info    ads     XDS: Pushing Services:24 ConnectedEndpoints:3 Version:2024-...
-> info    ads     Incremental push, service notification-service.cphealth-demo.svc.cluster.local
-> ```
->
-> The `ads` scope is the Aggregated Discovery Service — the single stream that carries all xDS types. `Push debounce` is `istiod` batching rapid changes before pushing, which is why a burst of `kubectl apply` produces one push rather than ten. `ConnectedEndpoints:3` is the number of proxies attached to *this* instance.
+```sh
+kubectl -n istio-system logs deploy/istiod --tail=30
+```
 
-What to scan for, in order of how much it tells you:
+You should see lines like these (shortened to six of the thirty lines):
 
-| Pattern | Means |
+```text
+2026-10-09T22:17:41.418293Z	info	delta	ADS: new delta connection for node:notification-service-v1-54dd46d4b6-flm8c.cphealth-demo-3
+2026-10-09T22:17:41.419131Z	info	delta	CDS: PUSH request for node:notification-service-v1-54dd46d4b6-flm8c.cphealth-demo resources:23 removed:0 size:24.2kB cached:0/19
+2026-10-09T22:17:41.467504Z	info	delta	LDS: PUSH request for node:notification-service-v1-54dd46d4b6-flm8c.cphealth-demo resources:17 removed:0 size:49.2kB
+2026-10-09T22:17:46.174568Z	info	delta	CDS: PUSH for node:tester-69699fd775-96h4j.cphealth-demo resources:22 removed:0 size:23.9kB cached:0/19
+2026-10-09T22:17:50.220929Z	info	ads	Push debounce stable[11] 1 for config ServiceEntry/cphealth-demo/notification-service.cphealth-demo.svc.cluster.local: 100.490871ms since last change, 100.49083ms since last push, full=false
+2026-10-09T22:17:50.221417Z	info	ads	XDS: Incremental Pushing ConnectedEndpoints:4 Version:2026-10-09T22:17:40Z/7
+```
+
+Most lines come from the `delta` scope. Istio 1.30 sends configuration over delta xDS, which sends only the resources that changed, and it logs one line per type and proxy: `CDS: PUSH ... for node:<pod>.<namespace>` means the clusters were pushed to that proxy. A `PUSH request` line answers a proxy that just connected (`ADS: new delta connection`); a plain `PUSH` line is a push that a change caused. The `ads` scope is the Aggregated Discovery Service: the single xDS stream that carries every type of configuration to a proxy. `Push debounce` means `istiod` waits a short time to collect quick changes before it pushes, so ten fast `kubectl apply` commands cause one push, not ten. `ConnectedEndpoints:4` is the number of proxies connected to *this* `istiod` pod: the two pods in `cphealth-demo` plus the ingress and egress gateways that the `demo` profile installs.
+
+Scan the log for these patterns, in order of how much each one tells you:
+
+| Pattern | What it means |
 | --- | --- |
-| `reject` | a proxy refused configuration, or `istiod` refused to build it — see [Part 3](./course-03-outage-anatomy-and-rejects.md) |
-| `error` / `warn` | anything from a failed API watch to an invalid resource |
-| a push debounce time climbing into seconds | the control plane is struggling to keep up |
-| `ConnectedEndpoints` far below your proxy count | proxies are attached elsewhere, or failing to attach |
+| `reject` | A proxy refused configuration, or `istiod` refused an object |
+| `error` / `warn` | Anything from a failed watch on the API server to an invalid object |
+| Debounce times climbing into seconds | The control plane is struggling to keep up |
+| `ConnectedEndpoints` far below your number of proxies | Proxies are connected to another `istiod` pod, or cannot connect |
 
 ## The metrics endpoint
 
-`istiod` serves Prometheus metrics on port **15014**. You can read them with no monitoring stack at all by asking the pod directly, which is worth knowing because the moment you need them is often the moment the monitoring is also unhappy.
+The log tells you what happened; the metrics tell you how often. `istiod` publishes metrics in the Prometheus format on port **15014**. You can read them with no monitoring system at all, by asking the pod directly. That matters, because the moment you need these numbers is often the moment your monitoring has problems too.
 
-The names look cryptic until you decompose them once:
+The names look cryptic until you take one apart. In `pilot_xds_pushes`, `pilot` is the component: Pilot is the original name of the xDS server, from before it was merged into `istiod`. `xds` is the protocol family, and `pushes` is what is counted. Most metrics follow that order: component, then subsystem, then the thing counted. These four describe the xDS job:
 
-```text
-   pilot  _  xds  _  pushes
-     │        │        │
-     │        │        └── what is counted
-     │        └─────────── the protocol family: x Discovery Service
-     └──────────────────── the component: "Pilot", istiod's original name
-                            (the xDS server used to be a separate binary)
+| Metric | Type | What it says |
+| --- | --- | --- |
+| `pilot_xds_pushes` | Counter, by `type` (`cds`, `lds`, `eds`, `rds`) | Configuration pushes sent. It goes up when something changes and stays still when nothing does. |
+| `pilot_total_xds_rejects` | Counter | Configuration a **proxy** refused. The proxy sends back a NACK (negative acknowledgement) and keeps its previous configuration. |
+| `pilot_total_xds_internal_errors` | Counter | Errors inside `istiod` while it serves xDS, not errors in your YAML. |
+| `pilot_proxy_convergence_time` | Histogram | How long a change takes to reach the proxies. The first number to get worse under load. |
+
+Two more are worth knowing by name. `pilot_xds` is a gauge: the number of proxies connected to this `istiod` pod right now. `pilot_k8s_cfg_events` counts the Istio object changes `istiod` receives from the API server. Together they tell you whether `istiod` gets input and has proxies to send output to.
+
+Ask `istiod` for its push and reject counters:
+
+```sh
+kubectl -n istio-system exec deploy/istiod -- \
+  curl -s localhost:15014/metrics | grep -E '^pilot_(xds_pushes|total_xds_internal_errors|total_xds_rejects)' | head
 ```
 
-Every metric is *component* + *subsystem* + *thing counted*, so once you can read one you can read all of them. The four that describe the xDS job:
+You should see something like:
 
-| Metric | Type | Says |
-| --- | --- | --- |
-| `pilot_xds_pushes` | counter, by `type` (`cds`/`lds`/`eds`/`rds`) | configuration pushes sent. Should climb when you change something and sit still when you do not. |
-| `pilot_xds_push_errors` | counter | pushes that failed in transit — connectivity or resource pressure, not your YAML. |
-| `pilot_total_xds_rejects` | counter | configuration a **proxy** refused (a NACK). Your config arrived and the proxy said no. |
-| `pilot_proxy_convergence_time` | histogram | how long a change takes to reach every proxy. The first thing to degrade under load. |
+```text
+pilot_xds_pushes{type="cds"} 17
+pilot_xds_pushes{type="eds"} 29
+pilot_xds_pushes{type="lds"} 17
+pilot_xds_pushes{type="rds"} 4
+```
 
-Two more worth knowing by name: `pilot_xds` (the number of connected proxies, as a gauge) and `pilot_k8s_cfg_events` (Kubernetes objects flowing in), which together tell you whether `istiod` is seeing input and has an audience for its output.
-
-> [!TIP]
-> **Try it — the push counters on a quiet mesh**
->
-> ```sh
-> kubectl -n istio-system exec deploy/istiod -- \
->   curl -s localhost:15014/metrics | grep -E '^pilot_(xds_pushes|xds_push_errors|total_xds_rejects)' | head
-> ```
->
-> Expect something like:
->
-> ```text
-> pilot_xds_pushes{type="cds"} 42
-> pilot_xds_pushes{type="eds"} 57
-> pilot_xds_pushes{type="lds"} 41
-> pilot_xds_pushes{type="rds"} 39
-> ```
->
-> Note which metrics are **missing**: `pilot_xds_push_errors` and `pilot_total_xds_rejects` do not appear. That is not an error in the command — a Prometheus counter is generally not emitted until it has been incremented at least once, so absence is the healthy case. Reading "no line" as "cannot tell" rather than "zero" is a mistake that sends people looking for a monitoring problem instead of accepting good news.
+Notice which metrics are **missing**: `pilot_total_xds_internal_errors` and `pilot_total_xds_rejects` do not appear. The command is not broken. A counter is usually not shown at all until it has gone up at least once, so a missing line is the healthy case. Read "no line" as "zero", not as "cannot tell".
 
 ## Counters only go up
 
-Every metric above except the histogram and the gauge is a **counter**: monotonically increasing for the lifetime of the process. Three consequences that govern how you read them:
+Every metric above, except the histogram and the gauge, is a **counter**. A counter only goes up, for as long as the process runs, and that changes how you read it. The number on its own means little: `pilot_xds_pushes{type="cds"} 17` tells you about uptime, not health. The useful reading is a difference: read the value, make a change, and read it again. A push that did not happen is your finding. A restart resets every counter to zero, so a counter that is suddenly small is evidence of a restart, which brings you back to the `RESTARTS` field.
 
-- **The absolute value means nothing.** `pilot_xds_pushes{type="cds"} 42` is a statement about uptime, not health.
-- **The useful reading is a difference.** Record the value, make a change, read it again. A push that did not happen is the finding.
-- **A restart resets them to zero.** A counter that suddenly looks small is evidence of a restart, which loops back to the `RESTARTS` field above.
+A monitoring system such as Prometheus does this subtraction for you with its `rate()` function. At a terminal, you do it by reading twice.
 
-In a real setup Prometheus does this differencing for you with `rate()`, which is [module 060-02](../../section-060/module-02/course.md)'s subject. At a terminal, you do it by reading twice.
+> [!TIP]
+> To check whether a change reached `istiod`, read `pilot_xds_pushes` before and after the change. No increase means no push.
 
 ## Resource pressure: the slow version of an outage
 
-The dramatic failure is `istiod` being absent. The common failure in a real cluster is `istiod` being **slow**: running, ready, pushing — and taking twenty seconds to do what used to take one.
+The dramatic failure is `istiod` being gone. The common failure on a real cluster is `istiod` being **slow**: running, ready and pushing, but taking twenty seconds to do what used to take one. Every symptom is a milder version of the outage. Configuration changes "did not work", and later did. Pods take a long time to become ready. Problems get reported and disappear before anyone looks.
 
-Every symptom is a milder version of the outage. Configuration changes that "did not work" and then did. Pods that take a long time to become ready. Intermittent reports that resolve themselves before anyone looks.
+The same three sources show this, read a different way:
 
-The instruments, read differently:
-
-| Signal | Where | Means |
+| Signal | Where | What it means |
 | --- | --- | --- |
-| `pilot_proxy_convergence_time` climbing | metrics | pushes are taking longer to land across the fleet |
-| push debounce times in seconds | log | changes are queueing before a push even starts |
-| memory near the limit | `kubectl top pod -n istio-system` | the next big change may OOM it |
-| `RESTARTS` increasing with no deploys | pod status | it already has |
+| `pilot_proxy_convergence_time` climbing | Metrics | Pushes take longer to reach the proxies |
+| Debounce times in seconds | Log | Changes queue up before a push even starts |
+| Memory near the limit | `kubectl top pod -n istio-system` | The next big change may get it `OOMKilled` |
+| `RESTARTS` going up with no deploys | Pod status | It has already happened |
 
-`istiod`'s memory footprint scales with the size of the configuration set and the number of connected proxies, not with request volume — so pressure arrives when the cluster grows, which is rarely when anyone is watching it.
+`istiod`'s memory use grows with the amount of configuration and the number of connected proxies, not with request traffic. So pressure arrives when the cluster grows, which is rarely when anyone is watching. `kubectl top` needs metrics-server, which a plain `kind` cluster does not install. Without it, the restart count and the last termination reason still tell most of the story.
 
-Note that `kubectl top` needs metrics-server, which a plain `kind` cluster does not install. If it is unavailable, the restart count and last termination reason still carry most of the story.
+You can now read the three sources of evidence about `istiod`: the pod status and its restart count, the log and its push lines, and the counters on port `15014`. You know that a missing counter means zero and that only a difference between two readings means something. What you have not seen yet is how these signals, and the mesh itself, behave when `istiod` is gone.
+
+## Common pitfalls
 
 > [!WARNING]
-> **Pitfalls in reading the instruments**
->
-> - **Treating `1/1 Ready` as healthy.** The probes answer "is the server responding". A ready `istiod` can be rejecting every push.
-> - **Ignoring restart count on a `Running` pod.** `1/1 Running` with `RESTARTS 14` is a crash loop, and the mesh is reconverging every few minutes.
-> - **Reading counter metrics as absolute values.** Compare before and after a change; a large number is just uptime.
-> - **Assuming a missing metric means zero.** Counters that have never incremented are usually absent entirely. `pilot_total_xds_rejects` not appearing is good news.
-> - **Looking only at one `istiod` replica's metrics.** Each instance counts its own pushes and its own connected proxies; `kubectl exec deploy/istiod` reaches exactly one of them.
-
-> *Readiness says the process answered; the counters say whether anything is actually converging.*
-
-## Reference
-
-- [Istio standard metrics — control plane](https://istio.io/latest/docs/reference/config/metrics/) — the published metric list, including the ones this part names.
-- [Observing the control plane](https://istio.io/latest/docs/ops/diagnostic-tools/controlz/) — `istioctl dashboard controlz`, a live view of `istiod`'s internal scopes and logging levels.
-- `kubectl -n istio-system exec deploy/istiod -- curl -s localhost:15014/metrics | grep '^# HELP pilot'` — the self-documenting form; every metric on your own version with its own description.
-- [Prometheus metric types](https://prometheus.io/docs/concepts/metric_types/) — counters, gauges and histograms, if "absence is not zero" was new.
+> - **Treating `1/1 Ready` as healthy.** The readiness probe only asks whether the server answers. A ready `istiod` can still have every push rejected.
+> - **Ignoring the restart count on a `Running` pod.** `1/1 Running` with `RESTARTS 14` is a crash loop, and the whole mesh reconnects every few minutes.
+> - **Reading counters as absolute values.** Compare before and after a change; a large number only means a long uptime.
+> - **Assuming a missing metric means "unknown".** Counters that have never gone up are usually missing completely. No `pilot_total_xds_rejects` line is good news.
+> - **Reading only one `istiod` replica's metrics.** Each replica counts its own pushes and its own proxies, and `kubectl exec deploy/istiod` reaches exactly one of them.

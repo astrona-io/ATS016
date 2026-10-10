@@ -1,57 +1,39 @@
 # Find Configuration Errors With istioctl analyze
 
-<!-- astrona:playground -->
-> [!NOTE]
-> 🧪 **Hands-on playground for this module** — a clean, throwaway machine to explore on. No task, no grading. Folder: [`playground/`](https://github.com/astrona-io/ATS016/tree/main/sections/section-010/module-01/playground)
->
-> ```sh
-> astrona run --git ssh://git@github.com/astrona-io/ATS016.git -c sections/section-010/module-01/playground
-> astrona destroy ats-016-playground-010-01
-> ```
+A `VirtualService` that routes to a subset no `DestinationRule` defines applies without an error. `kubectl get` lists it, and `kubectl describe` shows nothing wrong. The only symptom is that requests fail with `503`, several steps away from the object that caused it.
 
-A `VirtualService` that routes to a subset nobody ever defined applies cleanly. `kubectl get` lists it. `kubectl describe` shows no events worth reading. The only visible symptom is that requests return `503`, several layers away from the object that caused it.
+A `VirtualService` is the Istio resource that tells the sidecar proxies how to route requests for a host. A `DestinationRule` defines what happens to traffic for a host after routing, including named **subsets**: groups of pods selected by labels, such as `version: v1`. When a route names a subset that no `DestinationRule` defines, the route points at nothing.
 
-That gap — between configuration the Kubernetes API server accepts and configuration that actually means something to Istio — is what this module is about. The boundary worth holding on to is this: **`kubectl apply` validates one document at a time, and `istioctl analyze` validates a configuration set.** Almost every confusing mesh problem lives in the space between those two sentences.
+This module is about that gap and the tool that closes it. Keep one sentence in mind: **`kubectl apply` checks one document at a time, and `istioctl analyze` checks the whole configuration set.** The analyzer reads every Istio object together, the same way `istiod` (Istio's control plane) does, and reports the references that do not resolve.
 
-> analyze reads the config the way istiod does, so it finds the mistakes the API server happily accepted.
-
-## How this module is organised
-
-1. **[Part 1 — What The API Server Checks, And What It Cannot](./course-01-admission-and-the-analysis-gap.md)** — the admission path a `kubectl apply` actually takes, why a validating webhook cannot catch a missing subset even in principle, and what an analyzer is.
-2. **[Part 2 — Reading What The Analyzer Says](./course-02-reading-analyzer-messages.md)** — severity, `IST####` code and blamed object; the codes worth memorising; JSON output; and the exit-code behaviour that makes this a CI gate.
-3. **[Part 3 — Choosing The Right Analysis Source](./course-03-analysis-sources-and-the-fix-loop.md)** — cluster, file-on-top-of-cluster, and file-alone; `validate` against `analyze`; and the discipline of fixing one thing and proving it twice.
+The module has three parts. **What The API Server Checks, And What It Cannot** follows one `kubectl apply` through every stage and shows why a missing subset passes all of them. **Reading What The Analyzer Says** takes one analyzer message apart: its severity, its `IST####` code and the object it blames, and how the exit code turns analysis into a check in a build pipeline. **Choosing The Right Analysis Source** compares analysing the cluster, a file on top of the cluster and a file alone, and ends with fixing a broken reference and proving the fix. A graded lab follows the third part.
 
 ## Learning objectives
 
 After this module you can:
 
 - Describe the stages a `kubectl apply` of an Istio resource passes through, and name which stage rejects what.
-- Explain why cross-object references cannot be validated at admission time, and what that implies for your own manifests.
+- Explain why a reference from one object to another cannot be checked when the object is applied.
 - Run `istioctl analyze` against a namespace, the whole mesh, and a file that has not been applied yet.
-- Read an analyzer message and name its severity, its `IST####` code, and the object it blames.
+- Read an analyzer message and name its severity, its `IST####` code and the object it blames.
 - Explain why a `Warning` is often the real cause of a "my configuration does nothing" report.
-- Use `--failure-threshold` and the command's exit code to make analysis a build gate.
-- Choose between `istioctl validate` and `istioctl analyze` for a given situation, and state what each cannot see.
-- Fix an analyzer `Error` and prove the fix with both a clean analyze run and real traffic.
+- Use `--failure-threshold` and the exit code of the command to fail a build pipeline.
+- Choose between `istioctl validate` and `istioctl analyze`, and state what each one cannot see.
+- Fix an analyzer `Error` and prove the fix with a clean analyze run and real requests.
 
 ## Before you start
 
-You should be comfortable with `kubectl`, and know what a `VirtualService` and a `DestinationRule` are for — this module does not teach routing, it teaches how to find out that your routing is broken.
+You need Kubernetes basics: namespaces, Deployments, Services, pod labels, and the commands `kubectl get`, `kubectl apply` and `kubectl exec`. You also need to know what a `VirtualService` and a `DestinationRule` are for. This module does not teach routing; it teaches how to find out that routing is broken.
 
-The playground gives you a single-node `kind` cluster with **Istio 1.30.5 already installed** (the `demo` profile), `istioctl` on your PATH, and the namespace **`analyze-demo`**, injected, containing:
+Your playground is a single-node `kind` cluster with **Istio 1.30.5** installed with the `demo` profile, and `istioctl` on your PATH. Every pod in the mesh gets a sidecar proxy (Envoy): a proxy container that Istio adds to the pod, so that all inbound and outbound traffic of the pod passes through it. The namespace **`analyze-demo`** has sidecar injection switched on and runs these workloads:
 
-- `notification-service-v1` — a Deployment labelled `version: v1`, behind a Service `notification-service` on port 80.
-- `tester` — a client pod with `curl`.
-- A `DestinationRule` and a `VirtualService` that **are already broken on purpose**. Finding out how is the module's subject, so do not read the manifests in `playground/manifests/` until you have run the analyzer yourself.
+| Workload | What it is |
+| --- | --- |
+| `notification-service-v1` | A Deployment with the label `version: v1`, behind the Service `notification-service` on port `80`. It answers `["EMAIL"]` |
+| `tester` | A client pod with `curl`. Every test request in this module is sent from here |
 
-Every command in every part runs against the playground cluster; `kubectl` is already pointed at it.
+The namespace also holds a `DestinationRule` and a `VirtualService` that are **broken on purpose**. Finding out how is the subject of this module, so run the analyzer before you read their YAML. Every command in the parts runs against the playground cluster, and `kubectl` already points at it.
 
-## Where this fits
+Launch your playground now, and keep it running next to you while you read the parts:
 
-Analysis is the first of three questions in any mesh investigation, and the order matters because each one only makes sense if the previous answer was yes:
-
-1. **Is the configuration coherent?** → `istioctl analyze` — this module
-2. **Did it reach the proxies?** → `istioctl proxy-status` ([section 030](../../section-030/module-02/course.md))
-3. **What is the proxy actually doing with it?** → `istioctl proxy-config` ([section 040](../../section-040/module-01/course.md))
-
-Working outside-in keeps you from reading a 4,000-line Envoy configuration dump to discover a typo the analyzer would have named in two seconds. It also keeps you honest in the other direction: a clean analyze run does not end the investigation, it moves it to question two.
+<!-- astrona:playground -->

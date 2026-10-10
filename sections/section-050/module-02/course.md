@@ -1,53 +1,39 @@
 # Debug A 503 Caused By An mTLS Mismatch
 
-<!-- astrona:playground -->
-> [!NOTE]
-> 🧪 **Hands-on playground for this module** — a clean, throwaway machine to explore on. No task, no grading. Folder: [`playground/`](https://github.com/astrona-io/ATS016/tree/main/sections/section-050/module-02/playground)
->
-> ```sh
-> astrona run --git ssh://git@github.com/astrona-io/ATS016.git -c sections/section-050/module-02/playground
-> astrona destroy ats-016-playground-050-02
-> ```
+Mutual TLS (mTLS) is TLS in which both sides of a connection present a certificate, so the connection is encrypted and both identities are checked. In Istio, two different objects set up the two ends of an mTLS connection, and two different people often write them. **`PeerAuthentication`** sets what the **server** side accepts on inbound connections. **`DestinationRule`** sets what the **client** side sends. Neither object mentions the other, and neither is invalid on its own.
 
-Mutual TLS in Istio is configured from two ends by two different objects, usually written by two different people. `PeerAuthentication` says what the **server** will accept. `DestinationRule` says what the **client** will send. Neither object references the other, neither is invalid on its own, and the analyzer will not always object.
+Most `503` errors come from a client that cannot find its destination. This one comes from a client that finds the destination and cannot agree with it on how to connect. The evidence is a pair: one flag in the client's access log, and one connection-level line in the destination's access log.
 
-The contrast that makes this module worth a section of its own: every other `503` in this course is a failure to *find* a destination, visible in configuration the client holds. This one is a failure to *agree* with a destination that was found perfectly well — and its evidence is as much in what is missing from one log as in what is present in the other.
-
-> A STRICT server plus a client DestinationRule that disables TLS is a guaranteed failure, and nothing in either object looks wrong on its own.
-
-## How this module is organised
-
-1. **[Part 1 — Two Objects, Two Ends Of One Connection](./course-01-two-objects-two-ends.md)** — which object configures which side, every mode on both, the combinations that fail, and what those settings become inside Envoy.
-2. **[Part 2 — The Signature](./course-02-the-signature.md)** — the `UF`-with-a-silent-destination pattern, why the handshake fails before any HTTP exists to log, and reading the effective mode rather than a single object.
-3. **[Part 3 — Fixing It, And Proving Encryption](./course-03-fixing-and-proving-encryption.md)** — which end to change and why, the fix that removes configuration rather than adding it, proving traffic is encrypted rather than merely working, and the variant with no `DestinationRule` at all.
+This module has three parts. **Two Objects, Two Ends Of One Connection** explains what each object controls, the modes on both sides, which combinations fail, and what the settings become inside the proxies. **The Signature** reads the failure from the access logs of both proxies and confirms it against the destination's effective mTLS mode. **Fixing It, And Proving Encryption** chooses which end to change, fixes it, and proves that the traffic is encrypted and not only working. A graded lab follows the third part.
 
 ## Learning objectives
 
 After this module you can:
 
-- Name the object that configures each side of mTLS and the field each one uses.
+- Name the object that sets each side of mTLS, and the field each one uses.
 - List the modes on both sides and predict which combinations work.
-- Explain what `PERMISSIVE` does and why it makes mismatches survive unnoticed.
-- Recognise the `UF`-on-the-client, nothing-on-the-server signature and explain why the destination logs nothing.
-- Read a workload's effective mTLS mode rather than a single policy object.
-- Decide which of the two objects to change, and justify not changing the other.
-- Prove traffic is encrypted after the fix, rather than merely working.
-- Recognise the same signature produced by a caller that is outside the mesh, and fix it correctly.
+- Explain what `PERMISSIVE` does, and why it lets mismatches go unnoticed.
+- Recognise the signature of a `UC` flag on the client's proxy with a `filter_chain_not_found` line on the destination's proxy, and explain why the destination logs no request.
+- Read a workload's effective mTLS mode instead of a single policy object.
+- Decide which of the two objects to change, and explain why not the other.
+- Prove that traffic is encrypted after the fix, not only working.
+- Recognise the same signature from a caller outside the mesh, and fix it correctly.
 
 ## Before you start
 
-You need [module 050-01](../module-01/course.md) — this module is an applied reading of the access log, and the `UF` flag plus the two-proxy comparison are central to it. It also helps to know `istioctl x describe pod` from [module 010-02](../../section-010/module-02/course.md), and the inbound filter chains from [module 040-01 Part 4](../../section-040/module-01/course-04-inbound-secrets-and-method.md).
+You need Kubernetes basics: namespaces, Deployments, Services, and the commands `kubectl logs` and `kubectl exec`. You also need to read an Envoy access log line. Each sidecar proxy (the Envoy container Istio adds to every pod in the mesh) writes one line per request. The response flag, for example `UC` for upstream connection termination, says why the request ended, and the upstream host field shows the address the proxy connected to, or `-` if none. A request between two pods in the mesh is logged by the client's proxy on the way out and by the destination's proxy on the way in.
 
-The playground gives you a single-node `kind` cluster with **Istio 1.30.5 already installed** (the `demo` profile), `istioctl` on your PATH, and the injected namespace **`mtlsfail-demo`** containing:
+Your playground is one `kind` cluster with **Istio 1.30.5** installed with the `demo` profile, and `istioctl` on your PATH. Access logging is on for the whole mesh, which this module depends on. The namespace **`mtlsfail-demo`** has sidecar injection switched on and holds these objects:
 
-- `notification-service-v1` behind the Service `notification-service` on port 80.
-- `tester` — a client pod with `curl`.
-- A `PeerAuthentication` and a `DestinationRule` that are **already in conflict**. Diagnosing that is the module's subject.
+| Kubernetes name | What it is |
+| --- | --- |
+| `notification-service` | Service on port `80`, in front of `notification-service-v1` |
+| `notification-service-v1` | The application: nginx answering `["EMAIL"]` on any path |
+| `tester` | A client pod with `curl`. Every test request is sent from here |
+| `default` (`PeerAuthentication`) and `notification` (`DestinationRule`) | Two objects that are **already in conflict**, so every request fails |
 
-Every command in every part runs against the playground cluster; `kubectl` is already pointed at it.
+Diagnosing that conflict is the subject of this module, so do not read the two objects until a part asks you to.
 
-## Where this fits
+Launch your playground now, and keep it running next to you while you read the parts:
 
-This module completes section 050's method: read the flag, read *which proxy* logged it, then read what each end was configured to do.
-
-The `UF`-with-silent-destination pattern is worth committing to memory, because it is the one signature in Istio that points at a small, specific set of causes: an mTLS mode mismatch, a caller outside the mesh, or a port with no declared protocol. All three are configuration problems between two healthy workloads, and none of them will ever appear in an application log.
+<!-- astrona:playground -->

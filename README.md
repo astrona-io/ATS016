@@ -3,11 +3,14 @@
 Course material for the **Troubleshooting** domain of the Istio Certified
 Associate (ICA) exam, which is **20% of the exam**. Built for **Istio 1.30.5**.
 
-Everything lives under `sections/`. Each section contains:
+The course opens with an Introduction in `sections/intro/` (welcome, machine setup,
+how the course is made). Everything else lives under `sections/`. Each section
+contains:
 
-- **Modules** — a reading chapter split into a short landing page plus ordered
-  deep-dive parts, a throwaway **playground** to explore in, and a graded
-  **lab** with an exam-style task.
+- **Modules** — a reading chapter split into a short landing page, ordered
+  deep-dive parts and a summary page, a throwaway **playground** to explore in,
+  and one or two graded **labs** with an exam-style task, each placed right
+  after the part it tests.
 - **A capstone** — one larger graded lab combining that section's modules into a
   single scenario with several independent faults.
 
@@ -20,12 +23,12 @@ looking at the solution, then finish the section with its capstone.
 
 | Section | Title | Modules | Labs | Curriculum item |
 | --- | --- | --- | --- | --- |
-| [010](sections/section-010) | Troubleshooting Configuration With istioctl | 2 | 2 + capstone | Troubleshooting Configuration |
+| [010](sections/section-010) | Troubleshooting Configuration With istioctl | 2 | 3 + capstone | Troubleshooting Configuration |
 | [020](sections/section-020) | Debugging Conflicting And Shadowed Routes | 1 | 1 + capstone | Troubleshooting Configuration |
 | [030](sections/section-030) | Troubleshooting The Mesh Control Plane | 3 | 3 + capstone | Troubleshooting the Mesh Control Plane |
-| [040](sections/section-040) | Reading Data Plane Configuration | 2 | 2 + capstone | Troubleshooting the Mesh Data Plane |
-| [050](sections/section-050) | Debugging Data Plane Request Failures | 2 | 2 + capstone | Troubleshooting the Mesh Data Plane |
-| [060](sections/section-060) | Troubleshooting With Mesh Observability | 2 | 2 + capstone | Troubleshooting Configuration / the Mesh Data Plane |
+| [040](sections/section-040) | Reading Data Plane Configuration | 2 | 3 + capstone | Troubleshooting the Mesh Data Plane |
+| [050](sections/section-050) | Debugging Data Plane Request Failures | 2 | 3 + capstone | Troubleshooting the Mesh Data Plane |
+| [060](sections/section-060) | Troubleshooting With Mesh Observability | 2 | 3 + capstone | Troubleshooting Configuration / the Mesh Data Plane |
 
 The order is the order of an investigation, outside in. `istioctl analyze` comes
 first because it is the cheapest question to ask. Control plane health comes
@@ -38,20 +41,20 @@ sections teach you to read by hand.
 
 ## Modules
 
-| Module | Reader | Parts | Lab |
+| Module | Reader | Parts | Labs |
 | --- | --- | --- | --- |
 | 010-01 | [Find Configuration Errors With istioctl analyze](sections/section-010/module-01/course.md) | 3 | [lab-01](sections/section-010/module-01/labs/lab-01) |
-| 010-02 | [Summarise A Workload With describe, Capture A Cluster With bug-report](sections/section-010/module-02/course.md) | 3 | [lab-01](sections/section-010/module-02/labs/lab-01) |
+| 010-02 | [Summarise A Workload With describe, Capture A Cluster With bug-report](sections/section-010/module-02/course.md) | 3 | [lab-01](sections/section-010/module-02/labs/lab-01), [lab-02](sections/section-010/module-02/labs/lab-02) |
 | 020-01 | [Debug Conflicting And Shadowed Routes](sections/section-020/module-01/course.md) | 3 | [lab-01](sections/section-020/module-01/labs/lab-01) |
-| 030-01 | [Check Control Plane Health](sections/section-030/module-01/course.md) | 3 | [lab-01](sections/section-030/module-01/labs/lab-01) |
-| 030-02 | [Diagnose Config Sync With proxy-status](sections/section-030/module-02/course.md) | 3 | [lab-01](sections/section-030/module-02/labs/lab-01) |
-| 030-03 | [Debug A Workload With No Sidecar](sections/section-030/module-03/course.md) | 3 | [lab-01](sections/section-030/module-03/labs/lab-01) |
-| 040-01 | [Read The Proxy Configuration](sections/section-040/module-01/course.md) | 4 | [lab-01](sections/section-040/module-01/labs/lab-01) |
-| 040-02 | [Debug A 503 Caused By A Missing Subset](sections/section-040/module-02/course.md) | 3 | [lab-01](sections/section-040/module-02/labs/lab-01) |
-| 050-01 | [Read Envoy Access Logs And Response Flags](sections/section-050/module-01/course.md) | 4 | [lab-01](sections/section-050/module-01/labs/lab-01) |
+| 030-01 | [Check Control Plane Health](sections/section-030/module-01/course.md) | 4 | [lab-01](sections/section-030/module-01/labs/lab-01) |
+| 030-02 | [Diagnose Configuration Sync With proxy-status](sections/section-030/module-02/course.md) | 3 | [lab-01](sections/section-030/module-02/labs/lab-01) |
+| 030-03 | [Debug A Workload With No Sidecar](sections/section-030/module-03/course.md) | 4 | [lab-01](sections/section-030/module-03/labs/lab-01) |
+| 040-01 | [Read The Proxy Configuration](sections/section-040/module-01/course.md) | 5 | [lab-01](sections/section-040/module-01/labs/lab-01) |
+| 040-02 | [Debug A 503 Caused By A Missing Subset](sections/section-040/module-02/course.md) | 4 | [lab-01](sections/section-040/module-02/labs/lab-01), [lab-02](sections/section-040/module-02/labs/lab-02) |
+| 050-01 | [Read Envoy Access Logs And Response Flags](sections/section-050/module-01/course.md) | 5 | [lab-01](sections/section-050/module-01/labs/lab-01), [lab-02](sections/section-050/module-01/labs/lab-02) |
 | 050-02 | [Debug A 503 Caused By An mTLS Mismatch](sections/section-050/module-02/course.md) | 3 | [lab-01](sections/section-050/module-02/labs/lab-01) |
 | 060-01 | [Troubleshoot With Kiali](sections/section-060/module-01/course.md) | 3 | [lab-01](sections/section-060/module-01/labs/lab-01) |
-| 060-02 | [Troubleshoot With Prometheus And Grafana](sections/section-060/module-02/course.md) | 3 | [lab-01](sections/section-060/module-02/labs/lab-01) |
+| 060-02 | [Troubleshoot With Prometheus And Grafana](sections/section-060/module-02/course.md) | 4 | [lab-01](sections/section-060/module-02/labs/lab-01), [lab-02](sections/section-060/module-02/labs/lab-02) |
 
 ---
 
@@ -64,8 +67,8 @@ with several independent faults.
 | --- | --- | --- |
 | [010](sections/section-010/capstone/labs/lab-01) | Repair A Namespace Nothing Validates | uninjected namespace, two dangling references, a policy whose selector matches nothing |
 | [020](sections/section-020/capstone/labs/lab-01) | Consolidate Three Claimants Into One Route Table | three objects claiming one host, plus a shadowed rule |
-| [030](sections/section-030/capstone/labs/lab-01) | Three Workloads, Three Different Control Plane Faults | pod-template opt-out, a missing revision, config accepted and never pushed |
-| [040](sections/section-040/capstone/labs/lab-01) | Two 503s, Two Different Stages | a missing cluster, and a port that declares no protocol |
+| [030](sections/section-030/capstone/labs/lab-01) | Three Workloads, Three Different Control Plane Faults | pod-template opt-out, a missing revision, an invalid object stored without validation |
+| [040](sections/section-040/capstone/labs/lab-01) | Two 503s, Two Different Stages | a missing cluster, and a Service port declared as TCP |
 | [050](sections/section-050/capstone/labs/lab-01) | Diagnose Two Failures From The Logs Alone | an mTLS mismatch hiding an authorization denial |
 | [060](sections/section-060/capstone/labs/lab-01) | Measure A Failure, Fix It, Prove It | fault injection, a dangling subset, and a duplicated host |
 
@@ -103,9 +106,10 @@ astrona run --git ssh://git@github.com/astrona-io/ATS016.git -c sections/<sectio
 astrona destroy <name>
 ```
 
-The exact `run` line and the environment name for each module are in the callout
-at the top of its `course.md`. Several playgrounds start with something
-deliberately broken — that is the material, not a defect.
+The environment name is the playground's `metadata.name` in its `config.yaml`,
+for example `ats-016-playground-010-01`; each module's landing page launches its
+playground. Several playgrounds start with something deliberately broken — that
+is the material, not a defect.
 
 ## Running a lab
 
@@ -113,7 +117,7 @@ Labs and capstones are graded. Read `question.md`, do the work, and submit:
 
 ```bash
 astrona run --git ssh://git@github.com/astrona-io/ATS016.git -c sections/<section>/<module>/labs/lab-01
-astrona submit
+astrona submit -c sections/<section>/<module>/labs/lab-01
 astrona destroy <name>
 ```
 

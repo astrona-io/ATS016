@@ -1,0 +1,37 @@
+---
+estimated_duration: 25m
+---
+
+# Find Which Proxy Refused The Request
+
+- **ID:** LAB
+- **Slug:** ats-016-lab-050-01-02
+- **Author:** Paris Nakita Kejser
+- **Type:** Astrona graded lab
+
+Graded lab for the namespace `accesslog-demo`. Two faults are seeded: a `DENY` `AuthorizationPolicy` named `block-delete` that lists `POST` instead of `DELETE` (the destination's proxy returns `403`), and a `DestinationRule` connection pool of one (the client's proxy returns `503 UO` under a burst). Read `question.md` for the task; `solution.md` is the walkthrough.
+
+## Run it
+
+```sh
+astrona run -c .
+astrona submit
+astrona destroy ats-016-lab-050-01-02
+```
+
+`astrona destroy` takes the environment name (`metadata.name` = `ats-016-lab-050-01-02`), not
+the config path.
+
+## Layout
+
+| Path | Purpose |
+| --- | --- |
+| `config.yaml` | Environment definition, bootstrap and grading |
+| `question.md` | The task, exam style |
+| `solution.md` | Step-by-step walkthrough with a submit loop |
+| `prerequisites.md` | Assumed knowledge and what the environment provides |
+| `bootstrap/` | Environment preparation run once at startup |
+| `manifests/` | Starting state applied by the bootstrap |
+| `solution/` | Reference solution used by `astrona test` |
+| `testing/` | Helpers `astrona test` runs before the reference solution |
+| `validation/` | Grading scripts, one per check |

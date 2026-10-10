@@ -1,0 +1,17 @@
+# A route that matches only /reports, so a request to /notify finds the
+# virtual host but no route: 404 NR on the client's proxy.
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: notification
+  namespace: accesslog-demo
+spec:
+  hosts:
+    - notification-service
+  http:
+    - match:
+        - uri:
+            prefix: /reports
+      route:
+        - destination:
+            host: notification-service
