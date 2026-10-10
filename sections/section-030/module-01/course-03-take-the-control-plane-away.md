@@ -69,10 +69,11 @@ The control plane is gone, and the request still succeeded. Each sidecar proxy r
 
 ## What stops, and why it stops that way
 
-Existing traffic is only half the picture. The other half is anything that must be **new**: a new pod, a changed route, a renewed certificate. Restarting a Deployment tests the first one at once. Restart the Deployment of the application, then look at the pods and at the `FailedCreate` events in the namespace:
+Existing traffic is only half the picture. The other half is anything that must be **new**: a new pod, a changed route, a renewed certificate. Restarting a Deployment tests the first one at once. Restart the Deployment of the application, give the controller ten seconds to try, then look at the pods and at the `FailedCreate` events in the namespace:
 
 ```sh
 kubectl -n cphealth-demo rollout restart deployment notification-service-v1
+sleep 10
 kubectl -n cphealth-demo get pods
 kubectl -n cphealth-demo get events --field-selector reason=FailedCreate
 ```

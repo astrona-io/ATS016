@@ -67,7 +67,7 @@ kubectl -n metrics-demo delete virtualservice notification
 You should see:
 
 ```text
-virtualservice.networking.istio.io "notification" deleted
+virtualservice.networking.istio.io "notification" deleted from metrics-demo namespace
 ```
 
 With no `VirtualService` left, the sidecar proxies use Istio's default routing for the Service, which is a valid, working setup.

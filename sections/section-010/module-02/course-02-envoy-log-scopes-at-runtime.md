@@ -50,6 +50,7 @@ Raise the `rbac` scope to `debug`, send a `GET` from the `tester` pod, and read 
 istioctl proxy-config log $POD -n describe-demo --level rbac:debug
 kubectl -n describe-demo exec deploy/tester -- \
   curl -s -o /dev/null -X GET http://notification-service/notify
+sleep 2
 kubectl -n describe-demo logs $POD -c istio-proxy --tail=30 | grep -i rbac
 ```
 
@@ -64,7 +65,7 @@ active loggers:
 2026-10-09T22:49:11.332250Z	debug	envoy rbac external/envoy/source/extensions/filters/http/rbac/rbac_filter.cc:233	enforced denied, matched policy none	thread=29
 ```
 
-The IP addresses, timestamps and pod name differ on your cluster. Setting a level prints the new level of every scope, and `rbac` now shows `debug`. The `grep` also keeps the access log line for the `GET`, because its details field, `rbac_access_denied_matched_policy[none]`, contains `rbac`. The two `debug` lines below it come from the `rbac` scope you raised. If they do not appear, wait two seconds and read the log again: the proxy writes its log in short batches. `enforced denied, matched policy none` is the whole answer. *Enforced* means this was a real decision, not a dry run. *Denied* is the result. *Matched policy none* means an `ALLOW` policy selects this workload, the request matched none of its rules, and so the proxy refused it.
+The IP addresses, timestamps and pod name differ on your cluster. Setting a level prints the new level of every scope, and `rbac` now shows `debug`. The `grep` also keeps the access log line for the `GET`, because its details field, `rbac_access_denied_matched_policy[none]`, contains `rbac`. The two `debug` lines below it come from the `rbac` scope you raised. The `sleep 2` is there because the proxy writes its log in short batches; if the lines still do not appear, read the log again. `enforced denied, matched policy none` is the whole answer. *Enforced* means this was a real decision, not a dry run. *Denied* is the result. *Matched policy none* means an `ALLOW` policy selects this workload, the request matched none of its rules, and so the proxy refused it.
 
 Two details in that output are worth knowing. `requestedServerName` is the Server Name Indication (SNI) value of the connection: the name the client proxy put in the TLS handshake to say which service it wants. It becomes important later, when an mTLS or gateway problem makes it the wrong value. And when a rule *does* match, the same log prints the policy name in the `ns[...]-policy[...]-rule[N]` form that `describe` shows under `RBAC policies`.
 
