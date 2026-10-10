@@ -34,22 +34,15 @@ The second time is only approximate. It shows when the namespace object was last
 
 ## Webhook health
 
-If the namespace and the pod template both look right, and a **newly created** pod still has no sidecar, suspect the injector itself. Establish two things: that the `MutatingWebhookConfiguration` exists, and that one of its entries matches this namespace's labels. List the injector and print the namespace selector of its first entry:
+If the namespace and the pod template both look right, and a **newly created** pod still has no sidecar, suspect the injector itself. Establish two things: that an **active** `MutatingWebhookConfiguration` exists, and that one of its entries matches this namespace's labels. The name alone can mislead you. In this install, `istio-sidecar-injector` exists with four entries, but every entry selects on `istio.io/deactivated: never-match`, so it never injects anything. The active configuration is `istio-revision-tag-default`, the one for the revision tag `default`. List all mutating webhook configurations, then print the namespace selector of every entry in the active one:
 
 ```sh
-kubectl get mutatingwebhookconfiguration | grep -i sidecar-injector
-kubectl get mutatingwebhookconfiguration istio-sidecar-injector \
-  -o jsonpath='{.webhooks[0].namespaceSelector}{"\n"}'
+kubectl get mutatingwebhookconfiguration
+kubectl get mutatingwebhookconfiguration istio-revision-tag-default \
+  -o jsonpath='{range .webhooks[*]}{.name}{"\n  ns: "}{.namespaceSelector}{"\n"}{end}'
 ```
 
-You should see something like:
-
-```text
-istio-sidecar-injector   4     12m
-{"matchExpressions":[{"key":"istio.io/rev","operator":"In","values":["default"]},{"key":"istio-injection","operator":"DoesNotExist"}]}
-```
-
-The `4` in the first line is the number of webhook entries. Entry `[0]` handles namespaces labelled `istio.io/rev=default` without `istio-injection`; another entry handles `istio-injection=enabled`. You are checking that **some** entry matches your namespace's labels, so print them all if entry `[0]` does not.
+The first command lists both configurations, each with `4` in the `WEBHOOKS` column. The second prints the four entries of the active one. One entry selects namespaces labelled `istio-injection=enabled`; another selects `istio.io/rev=default` without `istio-injection`. You are checking that **some** entry matches your namespace's labels. If the only configuration you find has `never-match` in every selector, no pod is injected anywhere.
 
 The second half of webhook health is whether `istiod` answered. If it did not, the `failurePolicy` decided whether pod creation was blocked or went ahead without a sidecar. The ReplicaSet's events show it:
 

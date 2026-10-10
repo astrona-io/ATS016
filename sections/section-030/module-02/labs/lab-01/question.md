@@ -2,7 +2,7 @@
 
 Solve this question on: `terminal`
 
-**Time:** about 15 minutes · **Weight:** Troubleshooting the Mesh Control Plane
+**Time:** about 15 minutes · **Exam topic:** Troubleshooting the Mesh Control Plane
 
 ## Scenario
 

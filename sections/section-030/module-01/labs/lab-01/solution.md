@@ -1,6 +1,6 @@
 # Solution: The Mesh Works And Nothing Can Change
 
-Three reports point at one component: `istiod`, Istio's control plane. This walkthrough checks the control plane, brings it back, finds the stored object it refuses, and proves the mesh has caught up.
+Three reports point at one component: `istiod`, Istio's control plane. This walkthrough checks the control plane, brings it back, finds the invalid object that was stored without validation, and proves the mesh has caught up.
 
 ## Step 1: Trust the symptom, not the dashboards
 
@@ -19,7 +19,7 @@ istiod   0/0     0            0           31m
 
 `istiod` is scaled to zero. That one fact explains all three reports:
 
-- The applied `VirtualService` was never sent to the proxies.
+- Changes to the namespace are not sent to the proxies.
 - The colleague's new pods cannot be created, because the API server cannot reach the injection webhook.
 - Existing traffic is fine, because the proxies run on their stored configuration.
 
@@ -32,17 +32,28 @@ kubectl -n istio-system scale deploy istiod --replicas=1
 kubectl -n istio-system rollout status deploy istiod --timeout=180s
 ```
 
-Nothing needs to be applied again afterwards. A control plane outage delays changes; it does not lose them.
+Nothing needs to be applied again afterwards. A control plane outage delays changes; it does not lose them. That includes the invalid object: once `istiod` is back, it sends it to the proxies as it is. Send the request again:
 
-Submit now to see your progress. The `istiod` check should pass, and the check for the invalid route weights still fails:
+```sh
+kubectl -n cphealth-demo exec deploy/tester -- \
+  curl -s -o /dev/null -w '%{http_code} %{redirect_url}\n' -X POST http://notification-service/notify
+```
+
+```text
+301 http://notification-service/v2
+```
+
+The request that returned `200` a minute ago now gets a redirect to `/v2`, which nobody configured on purpose.
+
+Submit now to see your progress. The `istiod` check should pass, and the check for the invalid object still fails:
 
 ```sh
 astrona submit
 ```
 
-## Step 3: Find the object that will never be served
+## Step 3: Find the object that was stored without validation
 
-With `istiod` back, ask what it makes of the namespace. `kubectl get` lists the object and `kubectl describe` shows no events, because Istio networking objects have no status field that reports a problem. The evidence is in the `istiod` log and metrics, and `istioctl analyze` names the object:
+With `istiod` back, ask what it makes of the namespace. `kubectl get` lists the object and `kubectl describe` shows no events, because Istio networking objects have no status field that reports a problem. `istiod` does not check a stored object again, so its log and metrics say nothing about it either. `istioctl analyze` is the tool that names it. The log and counter checks below are still worth running, because they would show the other case, a proxy that refused configuration:
 
 ```sh
 kubectl -n istio-system logs deploy/istiod --tail=200 | grep -i -E 'reject|invalid'
@@ -51,27 +62,27 @@ kubectl -n istio-system exec deploy/istiod -- \
 istioctl analyze -n cphealth-demo
 ```
 
-The analyzer reports an `Error` with the code `IST0106` (`SchemaValidationError`) on `VirtualService bad-weights.cphealth-demo`, with the reason `total destination weight 120 != 100`. The `bad-weights` `VirtualService` has two destinations, each with `weight: 60`. It was stored in etcd because the validating webhook was skipped when it was applied. `istiod` refuses it every time it builds configuration.
+The analyzer reports an `Error` with the code `IST0106` (`SchemaValidationError`) on `VirtualService cphealth-demo/bad-redirect`, with the reason `HTTP route cannot contain both route and redirect`. Its one HTTP rule both redirects the request and routes it, which a rule may never do. It was stored in etcd only because both validating webhooks were skipped when it was applied; with the webhooks working, `kubectl apply` refuses it. `istiod` serves the rule as it is, and the redirect is what the proxies apply.
 
 `pilot_total_xds_rejects` may be **missing** rather than zero. A counter that has never gone up is usually not shown at all, and a missing line there is good news.
 
 ## Step 4: Remove or correct it
 
-Either fix is accepted. Removing the object is the right choice if nobody wanted a weighted split:
+Either fix is accepted. Removing the object is the right choice if nobody needs it:
 
 ```sh
-kubectl -n cphealth-demo delete virtualservice bad-weights
+kubectl -n cphealth-demo delete virtualservice bad-redirect
 ```
 
-If the split was intended, correct it instead, so the weights add up to 100.
+If the route was intended, correct it instead, so the rule only routes.
 
-Save this as `virtualservice-bad-weights.yaml`:
+Save this as `virtualservice-bad-redirect.yaml`:
 
 ```yaml
 apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
-  name: bad-weights
+  name: bad-redirect
   namespace: cphealth-demo
 spec:
   hosts:
@@ -80,13 +91,12 @@ spec:
     - route:
         - destination:
             host: notification-service
-          weight: 100
 ```
 
 Apply it:
 
 ```sh
-kubectl apply -f virtualservice-bad-weights.yaml
+kubectl apply -f virtualservice-bad-redirect.yaml
 ```
 
 With `istiod` healthy, the validation webhook checks Istio objects again. If you tried to apply the original object now, `kubectl apply` would refuse it at once. That is the system working as designed.

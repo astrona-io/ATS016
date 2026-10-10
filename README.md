@@ -67,7 +67,7 @@ with several independent faults.
 | --- | --- | --- |
 | [010](sections/section-010/capstone/labs/lab-01) | Repair A Namespace Nothing Validates | uninjected namespace, two dangling references, a policy whose selector matches nothing |
 | [020](sections/section-020/capstone/labs/lab-01) | Consolidate Three Claimants Into One Route Table | three objects claiming one host, plus a shadowed rule |
-| [030](sections/section-030/capstone/labs/lab-01) | Three Workloads, Three Different Control Plane Faults | pod-template opt-out, a missing revision, config accepted and never pushed |
+| [030](sections/section-030/capstone/labs/lab-01) | Three Workloads, Three Different Control Plane Faults | pod-template opt-out, a missing revision, an invalid object stored without validation |
 | [040](sections/section-040/capstone/labs/lab-01) | Two 503s, Two Different Stages | a missing cluster, and a Service port declared as TCP |
 | [050](sections/section-050/capstone/labs/lab-01) | Diagnose Two Failures From The Logs Alone | an mTLS mismatch hiding an authorization denial |
 | [060](sections/section-060/capstone/labs/lab-01) | Measure A Failure, Fix It, Prove It | fault injection, a dangling subset, and a duplicated host |

@@ -35,9 +35,9 @@ Each job fails in its own way. If you know the four failure patterns, the sympto
 | **xDS server** | Sends routes, policies and endpoints to every proxy | Running proxies keep their last configuration and serve traffic normally. No configuration change takes effect. New proxies get no configuration. |
 | **Certificate authority** | Issues and renews workload certificates | Nothing at first. Certificates last 24 hours by default, so a long outage eventually breaks mutual TLS everywhere at once. |
 | **Injection webhook** | Adds the sidecar proxy to new pods | Depends on the webhook's `failurePolicy`. `Fail`, the Istio default, refuses to create the pod. `Ignore` lets the pod start with **no sidecar**, outside the mesh. |
-| **Validation webhook** | Rejects invalid Istio objects when you apply them | Once `istiod` has started, the webhook's `failurePolicy` is `Fail`, so every write of an Istio object is refused. If the policy is `Ignore`, invalid objects are stored without a check and `istiod` refuses them later. |
+| **Validation webhook** | Rejects invalid Istio objects when you apply them | Once `istiod` has started, the webhook's `failurePolicy` is `Fail`, so every write of an Istio object is refused. If the policy is `Ignore`, invalid objects are stored without a check, and `istiod` later serves them as they are. |
 
-When you are on call, you start from the symptom, so read the table from right to left. "New pods are not created, but existing traffic is fine" points at job 3 with `failurePolicy: Fail`, and usually at job 1 too. "Everything broke at once, about a day after an incident" points at job 2. "Half our pods have no sidecar" points at job 3 with `failurePolicy: Ignore`. "I applied it, it exists, and nothing happened" points at job 4: an object that was stored but never sent.
+When you are on call, you start from the symptom, so read the table from right to left. "New pods are not created, but existing traffic is fine" points at job 3 with `failurePolicy: Fail`, and usually at job 1 too. "Everything broke at once, about a day after an incident" points at job 2. "Half our pods have no sidecar" points at job 3 with `failurePolicy: Ignore`. "Requests behave in a way nobody configured, and the object exists" points at job 4: an object that was stored without validation.
 
 ## Why traffic survives at all
 
@@ -77,7 +77,7 @@ You should see something like:
 
 ```text
 NAME                      READY   STATUS    RESTARTS   AGE
-istiod-7d4c9b8f4-k2m8x    1/1     Running   0          12m
+istiod-7dc9684c55-wks54   1/1     Running   0          30s
 1/1
 ```
 

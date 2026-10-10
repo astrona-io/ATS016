@@ -4,8 +4,8 @@
 # Three independent control plane faults:
 #   1. orders-service carries a pod-template injection opt-out.
 #   2. cpcapstone-legacy is pinned to a revision that does not exist.
-#   3. An invalid weighted VirtualService is stored while istiod is down and
-#      the validating webhook is relaxed, so it exists and will never be pushed.
+#   3. An invalid VirtualService (redirect and route in one rule) is stored
+#      while istiod is down and both validating webhooks are relaxed.
 #
 # istiod is left RUNNING: the learner must find three faults, not one outage.
 set -euo pipefail
@@ -14,7 +14,9 @@ MAIN="cpcapstone-demo"
 LEGACY="cpcapstone-legacy"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MANIFESTS="$SCRIPT_DIR/../manifests"
-WEBHOOK="istio-validator-istio-system"
+# Istio installs two validating webhooks (the revision one and the default
+# one); both must be relaxed, or the API server still refuses the object.
+WEBHOOKS="$(kubectl get validatingwebhookconfiguration -o name | grep -E 'istio' | sed 's#.*/##')"
 
 echo "[capstone] Applying starting workloads..."
 kubectl apply -f "$MANIFESTS/lab-start.yaml"
@@ -24,17 +26,30 @@ for d in orders-service payments-service tester; do
 done
 kubectl -n "$LEGACY" rollout status deployment/billing-service --timeout=300s
 
-echo "[capstone] Storing a configuration istiod will never accept..."
-kubectl patch validatingwebhookconfiguration "$WEBHOOK" --type json \
-  -p '[{"op":"replace","path":"/webhooks/0/failurePolicy","value":"Ignore"}]' >/dev/null 2>&1 || true
+echo "[capstone] Storing an invalid VirtualService while no webhook can check it..."
 kubectl -n istio-system scale deploy istiod --replicas=0
 kubectl -n istio-system rollout status deploy istiod --timeout=120s
-kubectl apply -f "$MANIFESTS/bad-weights.yaml" || \
-  echo "[capstone] WARNING: the invalid object could not be stored."
+# A running istiod switches the webhooks back to Fail, so relax them only
+# after its pods are gone.
+for _ in $(seq 1 60); do
+  kubectl -n istio-system get pods -l app=istiod -o name 2>/dev/null | grep -q . || break
+  sleep 2
+done
+echo "[capstone] Relaxing both validating webhooks so the invalid object can be stored..."
+for W in $WEBHOOKS; do
+  kubectl patch validatingwebhookconfiguration "$W" --type json \
+    -p '[{"op":"replace","path":"/webhooks/0/failurePolicy","value":"Ignore"}]' >/dev/null
+done
+kubectl apply -f "$MANIFESTS/invalid-route.yaml" || {
+  echo "[capstone] ERROR: the invalid object could not be stored; a webhook is still enforcing." >&2
+  exit 1
+}
 kubectl -n istio-system scale deploy istiod --replicas=1
 kubectl -n istio-system rollout status deploy istiod --timeout=300s
-kubectl patch validatingwebhookconfiguration "$WEBHOOK" --type json \
-  -p '[{"op":"replace","path":"/webhooks/0/failurePolicy","value":"Fail"}]' >/dev/null 2>&1 || true
+for W in $WEBHOOKS; do
+  kubectl patch validatingwebhookconfiguration "$W" --type json \
+    -p '[{"op":"replace","path":"/webhooks/0/failurePolicy","value":"Fail"}]' >/dev/null 2>&1 || true
+done
 
 echo "[capstone] Starting state ready. The control plane is healthy."
 kubectl -n "$MAIN" get pods -o custom-columns='POD:.metadata.name,CONTAINERS:.spec.containers[*].name'

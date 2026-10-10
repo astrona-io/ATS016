@@ -3,7 +3,7 @@
 # Three fixes, none of which is an object you simply apply:
 #   1. orders-service  - remove the pod-template injection opt-out, recreate pods
 #   2. cpcapstone-legacy - point the namespace at a revision that exists
-#   3. payments-split  - remove or correct the invalid weighted route
+#   3. payments-redirect - remove or correct the invalid route (redirect and route in one rule)
 #
 # This manifest is the end state for (2) and (3).
 apiVersion: v1
@@ -16,7 +16,7 @@ metadata:
 apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
-  name: payments-split
+  name: payments-redirect
   namespace: cpcapstone-demo
 spec:
   hosts:
@@ -25,4 +25,3 @@ spec:
     - route:
         - destination:
             host: payments-service
-          weight: 100

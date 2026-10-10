@@ -1,18 +1,17 @@
-# Accepted by the API server only because the validating webhook was
-# unavailable; istiod refuses it at push time. The weights sum to 120.
+# Invalid: one HTTP rule may redirect OR route, never both. Stored only
+# because istiod was down and both validating webhooks were set to
+# failurePolicy Ignore while it was applied.
 apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
-  name: payments-split
+  name: payments-redirect
   namespace: cpcapstone-demo
 spec:
   hosts:
     - payments-service
   http:
-    - route:
+    - redirect:
+        uri: /v2
+      route:
         - destination:
             host: payments-service
-          weight: 60
-        - destination:
-            host: payments-service
-          weight: 60

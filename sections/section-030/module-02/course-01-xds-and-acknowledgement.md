@@ -83,11 +83,19 @@ kubectl -n proxysync-demo logs deploy/notification-service-v1 -c istio-proxy --t
   | grep -i -E 'xds|15012|connect'
 ```
 
-You should see a line like this one:
+You should see lines like these:
 
 ```text
-info    xdsproxy connected to delta upstream XDS server: istiod.istio-system.svc:15012
+discoveryAddress: istiod.istio-system.svc:15012
+2026-10-09T22:19:23.047131Z	info	CA Endpoint istiod.istio-system.svc:15012, provider Citadel
+2026-10-09T22:19:23.047148Z	info	Using CA istiod.istio-system.svc:15012 cert with certs: var/run/secrets/istio/root-cert.pem
+2026-10-09T22:19:23.047638Z	info	xdsproxy	Initializing with upstream address "istiod.istio-system.svc:15012" and cluster "Kubernetes"
+2026-10-09T22:19:23.117346Z	info	xdsproxy	connected to delta upstream XDS server: istiod.istio-system.svc:15012	id=1
+2026-10-09T22:19:23.143296Z	info	ads	ADS: new connection for node:1
+2026-10-09T22:19:23.143950Z	info	ads	ADS: new connection for node:2
 ```
+
+The first lines show that the same address and port serve two jobs: `discoveryAddress` is where configuration comes from, and the `CA Endpoint` is where the proxy asks for its certificate. The line that matters here is `connected to delta upstream XDS server`.
 
 The `xdsproxy` scope is `pilot-agent` relaying xDS to Envoy. The word **`delta`** names the variant in use: delta xDS sends only what changed, not the full set on every update, which keeps a large mesh affordable. On a proxy that cannot reach `istiod`, the same search shows a connection error again and again, such as `connection refused` or `context deadline exceeded`, against `istiod.istio-system.svc:15012`. That message names both the address and the port to unblock.
 

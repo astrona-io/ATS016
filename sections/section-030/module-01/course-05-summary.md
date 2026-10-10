@@ -10,11 +10,11 @@ The pod status says little about health. `istiod`'s only probe is a readiness ch
 
 With `istiod` scaled to zero, an existing request still returned `200`, but a restarted Deployment could not create its new pod. The injection webhook's `failurePolicy: Fail` refused the pod because the API server could not reach `istiod`. With `Ignore`, the pod would have started with no sidecar, outside the mesh. Scaling `istiod` back up was enough for the mesh to catch up by itself.
 
-An invalid object can still be stored when the validation webhook is skipped, and a proxy can refuse configuration with a NACK. In both cases `kubectl get` and `kubectl describe` show nothing wrong. The key facts to remember are these:
+An invalid object can still be stored when both validation webhooks are skipped, and once `istiod` is back it serves that object as it is, so requests behave in a way nobody configured. `istioctl analyze` names it with `IST0106`; the `istiod` log does not. Separately, a proxy can refuse configuration with a NACK, which `pilot_total_xds_rejects` counts and `istioctl proxy-status -v 1` shows as `ERROR`. In both cases `kubectl get` and `kubectl describe` show nothing wrong. The key facts to remember are these:
 
 - Working traffic proves nothing about the control plane; test a change instead.
-- The `istiod` log, `pilot_total_xds_rejects` and `istioctl analyze` record configuration that was stored but never applied.
+- `istioctl analyze` finds an object that was stored without validation; `pilot_total_xds_rejects` counts configuration a proxy refused.
 - A missing counter means zero, and only the difference between two readings is meaningful.
-- Check in order: pod status, log, metrics, a small test change, then `istioctl proxy-status`.
+- Check in order: pod status, log, metrics, `istioctl analyze`, a small test change, then `istioctl proxy-status`.
 
 <!-- astrona:playground:destroy -->

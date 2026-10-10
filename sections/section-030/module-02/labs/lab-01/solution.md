@@ -74,13 +74,13 @@ These are two separate claims: a sidecar exists in the pod, and that proxy reach
 
 ```sh
 kubectl -n proxysync-demo get pods \
-  -o custom-columns='POD:.metadata.name,CONTAINERS:.spec.containers[*].name'
+  -o custom-columns='POD:.metadata.name,CONTAINERS:.spec.containers[*].name,INIT:.spec.initContainers[*].name'
 istioctl proxy-status -v 1 | grep proxysync-demo
 kubectl -n proxysync-demo exec deploy/tester -- \
   curl -s -o /dev/null -w '%{http_code}\n' -X POST http://notification-service/notify
 ```
 
-The first command lists the containers of each pod. Istio 1.30 runs `istio-proxy` as a Kubernetes native sidecar, an init container with `restartPolicy: Always`, when every node runs Kubernetes 1.33 or later. In that case `istio-proxy` is missing from the `CONTAINERS` column and appears under `.spec.initContainers` instead; the grader checks both lists. The second command should show both pods with `SYNCED` for `CDS`, `EDS`, `LDS` and `RDS`, and the last command should print `200`.
+The first command lists the containers and init containers of each pod. The lab's node runs Kubernetes 1.33 or later, so Istio 1.30 runs `istio-proxy` as a Kubernetes native sidecar, an init container with `restartPolicy: Always`: it is missing from the `CONTAINERS` column and appears in the `INIT` column for both pods. The grader checks both lists. The second command should show both pods with `SYNCED` for `CDS`, `EDS`, `LDS` and `RDS`, and the last command should print `200`.
 
 Submit for the final grade:
 

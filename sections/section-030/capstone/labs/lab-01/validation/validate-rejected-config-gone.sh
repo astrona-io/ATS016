@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# PASS when no route weights fail to sum to 100 and payments-service answers.
+# PASS when no HTTP rule has both a redirect and a route, and payments-service answers.
 set -uo pipefail
 
 NS="cpcapstone-demo"
@@ -10,17 +10,13 @@ d=json.load(sys.stdin)
 bad=[]
 for item in d.get("items",[]):
     name=item["metadata"]["name"]
-    for idx,route in enumerate(item.get("spec",{}).get("http",[]) or []):
-        dests=route.get("route",[]) or []
-        weights=[x.get("weight") for x in dests]
-        if len(dests) > 1 or any(w is not None for w in weights):
-            total=sum(w or 0 for w in weights)
-            if total != 100:
-                bad.append(f"{name} http[{idx}] weights sum to {total}")
+    for idx,rule in enumerate(item.get("spec",{}).get("http",[]) or []):
+        if rule.get("redirect") and rule.get("route"):
+            bad.append(f"{name} http[{idx}] has both redirect and route")
 print("\n".join(bad))')"
 
 if [ -n "$BAD" ]; then
-  echo "FAIL: invalid weighted route(s) still present:"
+  echo "FAIL: invalid route rule(s) still present:"
   printf '  %s\n' "$BAD"
   exit 1
 fi
@@ -32,5 +28,5 @@ if [ "$CODE" != "200" ]; then
   exit 1
 fi
 
-echo "PASS: no invalid weights remain and payments-service returns 200."
+echo "PASS: no invalid route rule remains and payments-service returns 200."
 exit 0

@@ -282,7 +282,7 @@ modules:
         title: "Take The Control Plane Away"
         path: sections/section-030/module-01/course-03-take-the-control-plane-away.md
       - type: reading
-        title: "Accepted, Never Applied"
+        title: "Stored Without Validation"
         path: sections/section-030/module-01/course-04-accepted-never-applied.md
       - type: reading
         title: Question

@@ -29,14 +29,18 @@ The `istiod` log mostly records its pushes: each time it sends new configuration
 kubectl -n istio-system logs deploy/istiod --tail=30
 ```
 
-You should see lines like these (shortened; the real lines are longer):
+You should see lines like these (shortened to six of the thirty lines):
 
 ```text
-info    ads     Push debounce stable[3] 1 for config Service/cphealth-demo/notification-service: 100.4ms since last change
-info    ads     XDS: Pushing Services:24 ConnectedEndpoints:3 Version:2024-...
+2026-10-09T22:17:41.418293Z	info	delta	ADS: new delta connection for node:notification-service-v1-54dd46d4b6-flm8c.cphealth-demo-3
+2026-10-09T22:17:41.419131Z	info	delta	CDS: PUSH request for node:notification-service-v1-54dd46d4b6-flm8c.cphealth-demo resources:23 removed:0 size:24.2kB cached:0/19
+2026-10-09T22:17:41.467504Z	info	delta	LDS: PUSH request for node:notification-service-v1-54dd46d4b6-flm8c.cphealth-demo resources:17 removed:0 size:49.2kB
+2026-10-09T22:17:46.174568Z	info	delta	CDS: PUSH for node:tester-69699fd775-96h4j.cphealth-demo resources:22 removed:0 size:23.9kB cached:0/19
+2026-10-09T22:17:50.220929Z	info	ads	Push debounce stable[11] 1 for config ServiceEntry/cphealth-demo/notification-service.cphealth-demo.svc.cluster.local: 100.490871ms since last change, 100.49083ms since last push, full=false
+2026-10-09T22:17:50.221417Z	info	ads	XDS: Incremental Pushing ConnectedEndpoints:4 Version:2026-10-09T22:17:40Z/7
 ```
 
-The `ads` scope is the Aggregated Discovery Service: the single xDS stream that carries every type of configuration to a proxy. `Push debounce` means `istiod` waits a short time to collect quick changes before it pushes, so ten fast `kubectl apply` commands cause one push, not ten. `ConnectedEndpoints:3` is the number of proxies connected to *this* `istiod` pod.
+Most lines come from the `delta` scope. Istio 1.30 sends configuration over delta xDS, which sends only the resources that changed, and it logs one line per type and proxy: `CDS: PUSH ... for node:<pod>.<namespace>` means the clusters were pushed to that proxy. A `PUSH request` line answers a proxy that just connected (`ADS: new delta connection`); a plain `PUSH` line is a push that a change caused. The `ads` scope is the Aggregated Discovery Service: the single xDS stream that carries every type of configuration to a proxy. `Push debounce` means `istiod` waits a short time to collect quick changes before it pushes, so ten fast `kubectl apply` commands cause one push, not ten. `ConnectedEndpoints:4` is the number of proxies connected to *this* `istiod` pod: the two pods in `cphealth-demo` plus the ingress and egress gateways that the `demo` profile installs.
 
 Scan the log for these patterns, in order of how much each one tells you:
 
@@ -72,17 +76,17 @@ kubectl -n istio-system exec deploy/istiod -- \
 You should see something like:
 
 ```text
-pilot_xds_pushes{type="cds"} 42
-pilot_xds_pushes{type="eds"} 57
-pilot_xds_pushes{type="lds"} 41
-pilot_xds_pushes{type="rds"} 39
+pilot_xds_pushes{type="cds"} 17
+pilot_xds_pushes{type="eds"} 29
+pilot_xds_pushes{type="lds"} 17
+pilot_xds_pushes{type="rds"} 4
 ```
 
 Notice which metrics are **missing**: `pilot_total_xds_internal_errors` and `pilot_total_xds_rejects` do not appear. The command is not broken. A counter is usually not shown at all until it has gone up at least once, so a missing line is the healthy case. Read "no line" as "zero", not as "cannot tell".
 
 ## Counters only go up
 
-Every metric above, except the histogram and the gauge, is a **counter**. A counter only goes up, for as long as the process runs, and that changes how you read it. The number on its own means little: `pilot_xds_pushes{type="cds"} 42` tells you about uptime, not health. The useful reading is a difference: read the value, make a change, and read it again. A push that did not happen is your finding. A restart resets every counter to zero, so a counter that is suddenly small is evidence of a restart, which brings you back to the `RESTARTS` field.
+Every metric above, except the histogram and the gauge, is a **counter**. A counter only goes up, for as long as the process runs, and that changes how you read it. The number on its own means little: `pilot_xds_pushes{type="cds"} 17` tells you about uptime, not health. The useful reading is a difference: read the value, make a change, and read it again. A push that did not happen is your finding. A restart resets every counter to zero, so a counter that is suddenly small is evidence of a restart, which brings you back to the `RESTARTS` field.
 
 A monitoring system such as Prometheus does this subtraction for you with its `rate()` function. At a terminal, you do it by reading twice.
 

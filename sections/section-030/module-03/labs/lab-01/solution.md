@@ -4,21 +4,14 @@ One workload in this namespace runs without its sidecar proxy. This walkthrough 
 
 ## Step 1: Find the workload that is not in the mesh
 
-List each pod with its ready flags and container names:
+List each pod with its containers and its init containers. The lab's node runs Kubernetes 1.33 or later, so Istio 1.30 adds `istio-proxy` as a native sidecar under `initContainers`:
 
 ```sh
 kubectl -n noinject-demo get pods \
-  -o custom-columns='POD:.metadata.name,READY:.status.containerStatuses[*].ready,CONTAINERS:.spec.containers[*].name'
+  -o custom-columns='POD:.metadata.name,CONTAINERS:.spec.containers[*].name,INIT:.spec.initContainers[*].name'
 ```
 
-```text
-POD                                       READY        CONTAINERS
-notification-service-v1-6c9f8b7d5-x2kqp   true,true    notification-service,istio-proxy
-reporting-service-7fd4c8b96-mn5tp         true         reporting-service
-tester-6d9f7b8c5-hj4kz                    true,true    tester,istio-proxy
-```
-
-`reporting-service` has one container where the others have two. Nothing here is an error, which is exactly why this state survives reviews. If the cluster runs the proxy as a native sidecar, `istio-proxy` appears under `.spec.initContainers` instead; the `READY` column of `kubectl get pods` (`1/1` against `2/2`) shows the same difference either way.
+The `CONTAINERS` column shows only the application for every pod. The `INIT` column lists `istio-proxy` for `notification-service-v1` and `tester`, and nothing for `reporting-service`. Nothing here is an error, which is exactly why this state survives reviews. The `READY` column of plain `kubectl get pods` shows the same difference: `1/1` against `2/2`.
 
 The second, independent check comes from `istiod`'s side:
 
@@ -78,19 +71,20 @@ astrona submit
 
 ## Step 4: Prove it joined, and that it still works
 
-Check the container, the sync state, a real request, and the analyzer:
+Check the sidecar, the sync state, a real request, and the analyzer:
 
 ```sh
 kubectl -n noinject-demo get pods -l app=reporting-service \
-  -o jsonpath='{.items[0].spec.containers[*].name}{"\n"}'
+  -o jsonpath='{.items[0].spec.containers[*].name}{"  init: "}{.items[0].spec.initContainers[*].name}{"\n"}'
 istioctl proxy-status -v 1 | grep reporting-service
 kubectl -n noinject-demo exec deploy/tester -- \
   curl -s -o /dev/null -w '%{http_code}\n' http://reporting-service/
 istioctl analyze -n noinject-demo
 ```
 
+The first line now lists `istio-proxy` after `init:`. The rest looks like this:
+
 ```text
-reporting-service istio-proxy
 reporting-service-...noinject-demo   Kubernetes   SYNCED (30s)   IGNORED   SYNCED (30s)   SYNCED (30s)   SYNCED (30s)   ...
 200
 ✔ No validation issues found when analyzing namespace: noinject-demo.

@@ -22,13 +22,13 @@ for _ in $(seq 1 90); do
 done
 sleep 5
 
-kubectl -n cphealth-demo delete virtualservice bad-weights --ignore-not-found
+kubectl -n cphealth-demo delete virtualservice bad-redirect --ignore-not-found
 
 kubectl apply -f - <<'EOF'
 apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
-  name: bad-weights
+  name: bad-redirect
   namespace: cphealth-demo
 spec:
   hosts:
@@ -37,7 +37,6 @@ spec:
     - route:
         - destination:
             host: notification-service
-          weight: 100
 EOF
 
 # Bringing istiod back is only half of it: each proxy has to re-establish its

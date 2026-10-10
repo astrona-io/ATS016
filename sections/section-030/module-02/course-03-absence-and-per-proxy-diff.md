@@ -30,17 +30,20 @@ kubectl -n proxysync-demo get pods
 istioctl proxy-status | grep proxysync-demo
 ```
 
-You should see something like:
+You should see something like this (the `Waiting for deployment` lines are left out):
 
 ```text
-NAME                                      READY   STATUS    RESTARTS   AGE
-notification-service-v1-5f7b9c4d8-nq2wl   1/1     Running   0          20s
-tester-6d9f7b8c5-hj4kz                    2/2     Running   0          9m
-
-tester-6d9f7b8c5-hj4kz.proxysync-demo     Kubernetes     istiod-7d4c9b8f4-k2m8x     1.30.5     4 (CDS,LDS,EDS,RDS)
+namespace/proxysync-demo unlabeled
+deployment.apps/notification-service-v1 restarted
+deployment "notification-service-v1" successfully rolled out
+NAME                                       READY   STATUS        RESTARTS   AGE
+notification-service-v1-54dd46d4b6-b8q8n   2/2     Terminating   0          14s
+notification-service-v1-79bc4d85d8-4pfnc   1/1     Running       0          1s
+tester-69699fd775-tb6pc                    2/2     Running       0          14s
+tester-69699fd775-tb6pc.proxysync-demo                 Kubernetes     istiod-7dc9684c55-jmkrp     1.30.5      4 (CDS,LDS,EDS,RDS)
 ```
 
-The application pod is `Running` and healthy by every Kubernetes measure, and it has left the mesh: `1/1` instead of `2/2`, and no row. `tester` still has its sidecar and is still listed, so this is a problem with one pod, not with the control plane. That is the comparison to practise: one missing row is a pod problem, and every row missing is an `istiod` problem.
+The old pod, `2/2 Terminating`, is still shutting down; it disappears a few seconds later. The new application pod is `Running` and healthy by every Kubernetes measure, and it has left the mesh: `1/1` instead of `2/2`, and no row. `tester` still has its sidecar and is still listed, so this is a problem with one pod, not with the control plane. That is the comparison to practise: one missing row is a pod problem, and every row missing is an `istiod` problem.
 
 Now put the label back and restart again. After any change meant to bring a workload into the mesh, a row in `istioctl proxy-status` is your proof that it **connected**, not just restarted.
 
@@ -54,9 +57,14 @@ istioctl proxy-status -v 1 | grep proxysync-demo
 You should see something like:
 
 ```text
-notification-service-v1-...proxysync-demo   Kubernetes   SYNCED (15s)   IGNORED   SYNCED (15s)   SYNCED (15s)   SYNCED (15s)   istiod-7d4c9b8f4-k2m8x   1.30.5
-tester-...proxysync-demo                    Kubernetes   SYNCED (15s)   IGNORED   SYNCED (15s)   SYNCED (15s)   SYNCED (15s)   istiod-7d4c9b8f4-k2m8x   1.30.5
+namespace/proxysync-demo labeled
+deployment.apps/notification-service-v1 restarted
+deployment "notification-service-v1" successfully rolled out
+notification-service-v1-bb5484c79-qpsjj.proxysync-demo     Kubernetes     SYNCED (0s)      IGNORED     SYNCED (0s)     SYNCED (0s)      SYNCED (0s)      istiod-7dc9684c55-jmkrp     1.30.5
+tester-69699fd775-tb6pc.proxysync-demo                     Kubernetes     SYNCED (10s)     IGNORED     SYNCED (0s)     SYNCED (10s)     SYNCED (10s)     istiod-7dc9684c55-jmkrp     1.30.5
 ```
+
+The `Waiting for deployment` lines are left out here too.
 
 The row is back, and `SYNCED`, within seconds of the pod becoming ready. The order matters here. The proxy connects, receives its configuration and confirms it, and only then does the pod report ready, because the sidecar's readiness check waits for the first configuration. That is why a control plane outage stops new pods from becoming ready, instead of leaving them ready with no configuration.
 
@@ -83,10 +91,10 @@ You should see something like:
 ```text
 Clusters Match
 Listeners Match
-Routes Match
+Routes Match (RDS last loaded at Sat, 10 Oct 2026 00:19:38 CEST)
 ```
 
-The `Routes Match` line may also show when the routes were last loaded. Three `Match` lines mean a healthy proxy: `istiod`'s record and the proxy's live configuration are identical. When they differ, the command prints `Don't Match` and a diff of the two documents. The resource named in the diff is the one that failed to apply, which is usually enough to find the Istio object behind it. The target can be written as `deploy/<name>.<namespace>`, or as the `<pod>.<namespace>` string exactly as the `NAME` column prints it.
+The `Routes Match` line also shows when the routes were last loaded. Three `Match` lines mean a healthy proxy: `istiod`'s record and the proxy's live configuration are identical. When they differ, the command prints `Don't Match` and a diff of the two documents. The resource named in the diff is the one that failed to apply, which is usually enough to find the Istio object behind it. The target can be written as `deploy/<name>.<namespace>`, or as the `<pod>.<namespace>` string exactly as the `NAME` column prints it.
 
 Reading a diff means translating Envoy names back to Istio objects. A cluster named `outbound|80|v3|notification-service.proxysync-demo.svc.cluster.local` on one side and not the other points at a `DestinationRule` subset called `v3`. The cluster name gives you the direction, the port, the subset and the host, and that tells you which Istio object to edit.
 

@@ -23,26 +23,27 @@ deployment.apps/reporting-service patched
 deployment "reporting-service" successfully rolled out
 ```
 
+The `Waiting for deployment` lines in between are left out.
+
 Changing the **pod template** changes its hash, so the Deployment controller creates a new ReplicaSet and therefore new pods. No separate restart was needed. If the fix had been a *namespace* label instead, no pod would have been recreated, and `kubectl rollout restart` would have been the necessary second step. A pod-template fix recreates pods by itself; a namespace label, webhook or revision fix does not.
 
 ## Proving it joined
 
-Confirm from two directions, because they are two separate claims. The container list says a proxy exists in the pod. `istioctl proxy-status -v 1` says that the proxy connected to `istiod` and confirmed its configuration. A pod can pass the first check and fail the second, for example when something blocks its connection to `istiod` on port `15012`. Print the new pod's containers, then look for the workload in the proxy list:
+Confirm from two directions, because they are two separate claims. The container list says a proxy exists in the pod. `istioctl proxy-status -v 1` says that the proxy connected to `istiod` and confirmed its configuration. A pod can pass the first check and fail the second, for example when something blocks its connection to `istiod` on port `15012`. Print the new pod's containers and init containers, then look for the workload in the proxy list:
 
 ```sh
 kubectl -n noinject-demo get pods -l app=reporting-service \
-  -o jsonpath='{.items[0].spec.containers[*].name}{"\n"}'
+  -o jsonpath='{.items[0].spec.containers[*].name}{"  init: "}{.items[0].spec.initContainers[*].name}{"\n"}'
 istioctl proxy-status -v 1 | grep reporting-service
 ```
 
-You should see something like:
+The first line starts with `reporting-service`, the only normal container, and its `init:` list now includes `istio-proxy`. The proxy runs as a native sidecar, because the playground's node runs Kubernetes 1.33 or later. The second command prints a row like this one:
 
 ```text
-reporting-service istio-proxy
-reporting-service-5c7d9f684-qv8rz.noinject-demo   Kubernetes   SYNCED (30s)   IGNORED   SYNCED (30s)   SYNCED (30s)   SYNCED (30s)   istiod-7d4c9b8f4-k2m8x   1.30.5
+reporting-service-68774d68cd-8vtt8.noinject-demo           Kubernetes     SYNCED (0s)      IGNORED     SYNCED (0s)     SYNCED (0s)      SYNCED (0s)      istiod-7dc9684c55-ldc2p     1.30.5
 ```
 
-The pod has two containers and a `SYNCED` row. The workload is now covered by every mesh policy in this namespace, which was quietly untrue a few minutes ago. If the proxy runs as a native sidecar, which Istio 1.30 does when every node runs Kubernetes 1.33 or later, `istio-proxy` is listed under `initContainers` instead. If the first command prints only `reporting-service`, read `.spec.initContainers[*].name` before you conclude anything.
+The pod has a sidecar and a `SYNCED` row. The workload is now covered by every mesh policy in this namespace, which was quietly untrue a few minutes ago. Reading only `.spec.containers` would print `reporting-service` alone, before and after the fix, so always include the init containers.
 
 ## Traffic still flows
 

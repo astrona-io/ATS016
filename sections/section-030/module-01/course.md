@@ -4,7 +4,7 @@ When something in the mesh goes wrong, people usually look at the workload that 
 
 People look at the control plane last because a broken control plane does not look like an outage. Requests keep succeeding and dashboards stay green. What stops is *change*, and nothing reports that change has stopped. A **data plane** failure, a problem in the proxies that carry the requests, shows up at once as failed requests. A **control plane** failure shows up as something missing: configuration that never takes effect, pods that are never created, or certificates that quietly expire.
 
-The module has four parts. **Four Jobs In One Process** splits `istiod` into the four jobs it does and shows how the mesh fails when each one stops. **The Instruments** reads the three sources of evidence about `istiod`: the pod status, the log and the metrics. **Take The Control Plane Away** scales `istiod` to zero on purpose and shows what keeps working and what stops. **Accepted, Never Applied** finds configuration that the cluster stored but `istiod` never sent to the proxies. A graded lab follows the fourth part.
+The module has four parts. **Four Jobs In One Process** splits `istiod` into the four jobs it does and shows how the mesh fails when each one stops. **The Instruments** reads the three sources of evidence about `istiod`: the pod status, the log and the metrics. **Take The Control Plane Away** scales `istiod` to zero on purpose and shows what keeps working and what stops. **Stored Without Validation** finds an invalid object that skipped the validation webhook, was stored, and is served as it is. A graded lab follows the fourth part.
 
 ## Learning objectives
 

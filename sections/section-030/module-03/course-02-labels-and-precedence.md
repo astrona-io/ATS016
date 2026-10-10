@@ -32,14 +32,39 @@ The namespace is labelled correctly, so that is not the cause here. Ruling out t
 
 ## What the webhook itself selects on
 
-The labels only matter because the `MutatingWebhookConfiguration` selects on them. That object registers the injection webhook with the API server and says which pods it applies to. Reading it turns the convention into a rule you can check. Print each webhook entry with its namespace selector and its object selector:
+The labels only matter because a `MutatingWebhookConfiguration` selects on them. That object registers the injection webhook with the API server and says which pods it applies to. Reading it turns the convention into a rule you can check. Start with the configuration whose name sounds right, `istio-sidecar-injector`, and print each webhook entry with its namespace selector and its object selector:
 
 ```sh
 kubectl get mutatingwebhookconfiguration istio-sidecar-injector \
   -o jsonpath='{range .webhooks[*]}{.name}{"\n  ns: "}{.namespaceSelector}{"\n  obj: "}{.objectSelector}{"\n"}{end}'
 ```
 
-A default install has four webhook entries, one for each combination of labels. Between them, the two selectors work like this:
+You should see something like:
+
+```text
+rev.namespace.sidecar-injector.istio.io
+  ns: {"matchLabels":{"istio.io/deactivated":"never-match"}}
+  obj: {"matchLabels":{"istio.io/deactivated":"never-match"}}
+rev.object.sidecar-injector.istio.io
+  ns: {"matchLabels":{"istio.io/deactivated":"never-match"}}
+  obj: {"matchLabels":{"istio.io/deactivated":"never-match"}}
+namespace.sidecar-injector.istio.io
+  ns: {"matchLabels":{"istio.io/deactivated":"never-match"}}
+  obj: {"matchLabels":{"istio.io/deactivated":"never-match"}}
+object.sidecar-injector.istio.io
+  ns: {"matchLabels":{"istio.io/deactivated":"never-match"}}
+  obj: {"matchLabels":{"istio.io/deactivated":"never-match"}}
+```
+
+Every entry selects on the label `istio.io/deactivated: never-match`, which no namespace or pod carries. This configuration is switched off on purpose. The install also created a **revision tag** called `default`, a name that points at an installed `istiod` revision, and the tag has its own configuration, `istio-revision-tag-default`. That one does the real injection, with the same four entries and working selectors. List every mutating webhook configuration, then print the entries of the tag's configuration:
+
+```sh
+kubectl get mutatingwebhookconfiguration
+kubectl get mutatingwebhookconfiguration istio-revision-tag-default \
+  -o jsonpath='{range .webhooks[*]}{.name}{"\n  ns: "}{.namespaceSelector}{"\n  obj: "}{.objectSelector}{"\n"}{end}'
+```
+
+The list shows both `istio-sidecar-injector` and `istio-revision-tag-default`. The tag's entries carry the real selectors: four webhook entries, one for each combination of labels. Between them, the two selectors work like this:
 
 | Selector | Question it answers | Result |
 | --- | --- | --- |

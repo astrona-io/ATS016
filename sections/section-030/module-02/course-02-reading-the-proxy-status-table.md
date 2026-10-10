@@ -14,13 +14,17 @@ Run the command with no arguments:
 istioctl proxy-status
 ```
 
-You should see something like this (shortened to the two pods in `proxysync-demo`; the ingress and egress gateways in `istio-system` are listed too):
+You should see something like:
 
 ```text
-NAME                                                     CLUSTER        ISTIOD                     VERSION     SUBSCRIBED TYPES
-notification-service-v1-6c9f8b7d5-x2kqp.proxysync-demo   Kubernetes     istiod-7d4c9b8f4-k2m8x     1.30.5      4 (CDS,LDS,EDS,RDS)
-tester-6d9f7b8c5-hj4kz.proxysync-demo                    Kubernetes     istiod-7d4c9b8f4-k2m8x     1.30.5      4 (CDS,LDS,EDS,RDS)
+NAME                                                        CLUSTER        ISTIOD                      VERSION     SUBSCRIBED TYPES
+istio-egressgateway-b7dd4655b-qdm9q.istio-system            Kubernetes     istiod-7dc9684c55-jmkrp     1.30.5      3 (CDS,LDS,EDS)
+istio-ingressgateway-7f54444996-vqdpt.istio-system          Kubernetes     istiod-7dc9684c55-jmkrp     1.30.5      3 (CDS,LDS,EDS)
+notification-service-v1-54dd46d4b6-b8q8n.proxysync-demo     Kubernetes     istiod-7dc9684c55-jmkrp     1.30.5      4 (CDS,LDS,EDS,RDS)
+tester-69699fd775-tb6pc.proxysync-demo                      Kubernetes     istiod-7dc9684c55-jmkrp     1.30.5      4 (CDS,LDS,EDS,RDS)
 ```
+
+The first two rows are the ingress and egress gateways that the `demo` profile installs in `istio-system`. They subscribe to only three types, because a gateway gets routes (RDS) only once a `Gateway` object binds a port on it, and this playground has none.
 
 Each row is one proxy connected to `istiod` right now. The `NAME` column is `<pod>.<namespace>`; you pass that exact string back to the command when you want to inspect one proxy. `ISTIOD` names the `istiod` pod that serves the proxy, `VERSION` is the proxy's own Istio version, and `SUBSCRIBED TYPES` lists the xDS types the proxy asked for. This short form does **not** show whether each type is in sync. Since Istio 1.27, that needs the long form:
 
@@ -28,15 +32,17 @@ Each row is one proxy connected to `istiod` right now. The `NAME` column is `<po
 istioctl proxy-status -v 1
 ```
 
-You should see something like this (shortened to the same two pods):
+You should see something like:
 
 ```text
-NAME                                                     CLUSTER        CDS             ECDS        EDS             LDS             RDS             ISTIOD                     VERSION
-notification-service-v1-6c9f8b7d5-x2kqp.proxysync-demo   Kubernetes     SYNCED (9m)     IGNORED     SYNCED (9m)     SYNCED (9m)     SYNCED (9m)     istiod-7d4c9b8f4-k2m8x     1.30.5
-tester-6d9f7b8c5-hj4kz.proxysync-demo                    Kubernetes     SYNCED (9m)     IGNORED     SYNCED (9m)     SYNCED (9m)     SYNCED (9m)     istiod-7d4c9b8f4-k2m8x     1.30.5
+NAME                                                        CLUSTER        CDS              ECDS        EDS             LDS              RDS             ISTIOD                      VERSION
+istio-egressgateway-b7dd4655b-qdm9q.istio-system            Kubernetes     SYNCED (11s)     IGNORED     SYNCED (2s)     SYNCED (11s)     IGNORED         istiod-7dc9684c55-jmkrp     1.30.5
+istio-ingressgateway-7f54444996-vqdpt.istio-system          Kubernetes     SYNCED (11s)     IGNORED     SYNCED (2s)     SYNCED (11s)     IGNORED         istiod-7dc9684c55-jmkrp     1.30.5
+notification-service-v1-54dd46d4b6-b8q8n.proxysync-demo     Kubernetes     SYNCED (2s)      IGNORED     SYNCED (2s)     SYNCED (2s)      SYNCED (2s)     istiod-7dc9684c55-jmkrp     1.30.5
+tester-69699fd775-tb6pc.proxysync-demo                      Kubernetes     SYNCED (5s)      IGNORED     SYNCED (2s)     SYNCED (5s)      SYNCED (5s)     istiod-7dc9684c55-jmkrp     1.30.5
 ```
 
-Now there is one column per xDS type, sorted by name, and the time in brackets is how long ago `istiod` last sent that type. `IGNORED` means the proxy never asked for that type, which is normal for `ECDS` in a mesh with no extensions.
+Now there is one column per xDS type, sorted by name, and the time in brackets is how long ago `istiod` last sent that type. `IGNORED` means the proxy never asked for that type. That is normal for `ECDS` in a mesh with no extensions, and for `RDS` on the two gateways.
 
 ## The four states
 
@@ -90,18 +96,20 @@ istioctl version
 istioctl proxy-status | awk '{print $1, $4}'
 ```
 
-You should see something like this (the proxy list is shortened to the two pods in `proxysync-demo`):
+You should see something like:
 
 ```text
 client version: 1.30.5
 control plane version: 1.30.5
-data plane version: 1.30.5 (4 proxies)
+data plane version: 1.30.5 (4 proxies), 65536.65536.65536 (2 proxies)
 NAME VERSION
-notification-service-v1-6c9f8b7d5-x2kqp.proxysync-demo 1.30.5
-tester-6d9f7b8c5-hj4kz.proxysync-demo 1.30.5
+istio-egressgateway-b7dd4655b-qdm9q.istio-system 1.30.5
+istio-ingressgateway-7f54444996-vqdpt.istio-system 1.30.5
+notification-service-v1-54dd46d4b6-b8q8n.proxysync-demo 1.30.5
+tester-69699fd775-tb6pc.proxysync-demo 1.30.5
 ```
 
-`istioctl version` already sums up the data plane, and lists several versions when there is skew; that is the faster check. The four proxies are the two pods and the two gateways that the `demo` profile installs. The per-proxy list is what you need next, to find out *which* pods are behind so you can restart them. `client version` is your local `istioctl`, and it can differ from the other two without anything being wrong, although a client far from the control plane may print output that does not match this page.
+`istioctl version` already sums up the data plane, and lists several versions when there is skew; that is the faster check. The four proxies on 1.30.5 are the two pods and the two gateways. It also counts two entries with the version `65536.65536.65536`. That is not a real Istio release: it is a placeholder for a version `istioctl` could not read from the data `istiod` reports. The per-proxy list shows every proxy on 1.30.5, so on this playground there is no skew. The per-proxy list is what you need next, to find out *which* pods are behind so you can restart them. `client version` is your local `istioctl`, and it can differ from the other two without anything being wrong, although a client far from the control plane may print output that does not match this page.
 
 You can now read both forms of the table. The short form says who is connected, to which `istiod`, and on which version. The long form gives one of four states per xDS type, and only `SYNCED` means the configuration arrived. What the table cannot show is a proxy that has no connection at all, and that missing row is the most common finding of all.
 

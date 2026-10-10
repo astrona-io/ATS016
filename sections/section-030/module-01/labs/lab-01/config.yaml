@@ -39,7 +39,7 @@ validation:
       type: "file"
       source: "validation/validate-istiod-healthy.sh"
     - name: "validate-rejected-config-removed"
-      description: "Confirms the invalid weighted VirtualService no longer exists"
+      description: "Confirms the invalid VirtualService (redirect and route in one rule) no longer exists"
       type: "file"
       source: "validation/validate-rejected-config-removed.sh"
     - name: "validate-workload-resynced"

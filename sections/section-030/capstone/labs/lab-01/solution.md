@@ -8,13 +8,13 @@ List the pods in both namespaces with their containers, and list the connected p
 
 ```sh
 kubectl -n cpcapstone-demo get pods \
-  -o custom-columns='POD:.metadata.name,READY:.status.containerStatuses[*].ready,CONTAINERS:.spec.containers[*].name'
+  -o custom-columns='POD:.metadata.name,CONTAINERS:.spec.containers[*].name,INIT:.spec.initContainers[*].name'
 kubectl -n cpcapstone-legacy get pods \
-  -o custom-columns='POD:.metadata.name,CONTAINERS:.spec.containers[*].name'
+  -o custom-columns='POD:.metadata.name,CONTAINERS:.spec.containers[*].name,INIT:.spec.initContainers[*].name'
 istioctl proxy-status -v 1 | grep -E 'cpcapstone'
 ```
 
-The container lists show one container for `orders-service` and `billing-service`, and two (the application and `istio-proxy`) for `payments-service` and `tester`. If the cluster runs the proxy as a native sidecar, `istio-proxy` appears under `.spec.initContainers` instead, and the `READY` column of `kubectl get pods` (`1/1` against `2/2`) shows the same difference. The proxy list has rows only for `payments-service` and `tester`, both `SYNCED`:
+The `CONTAINERS` column shows only the application for every pod. The lab's node runs Kubernetes 1.33 or later, so Istio 1.30 adds `istio-proxy` as a native sidecar, and it shows up in the `INIT` column: for `payments-service` and `tester`, and not for `orders-service` and `billing-service`. The `READY` column of plain `kubectl get pods` (`1/1` against `2/2`) shows the same difference. The proxy list has rows only for `payments-service` and `tester`, both `SYNCED`:
 
 ```text
 payments-service-...cpcapstone-demo   Kubernetes   SYNCED (5m)   IGNORED   SYNCED (5m)   SYNCED (5m)   SYNCED (5m)   ...
@@ -85,9 +85,9 @@ kubectl -n cpcapstone-legacy rollout status deployment/billing-service --timeout
 
 Remove the stale revision label rather than leaving both. If `istio-injection` and `istio.io/rev` are both present, `istio-injection` wins and the revision label is ignored, which is how this kind of fault survives an upgrade. Here the label change does **not** recreate pods, so the explicit `rollout restart` is required. That is the difference from step 2.
 
-## Step 4: payments-service, accepted and never applied
+## Step 4: payments-service, stored without validation
 
-This workload is in the mesh and `SYNCED`, so injection is not its problem. The complaint was that a `VirtualService` "did nothing". List it, search the `istiod` log, and run the analyzer:
+This workload is in the mesh and `SYNCED`, so injection is not its problem. The complaint is that requests to it get a `301` redirect to `/v2` until the cause is removed or corrected. List the `VirtualService` objects, search the `istiod` log, and run the analyzer:
 
 ```sh
 kubectl -n cpcapstone-demo get virtualservice
@@ -95,13 +95,13 @@ kubectl -n istio-system logs deploy/istiod --tail=200 | grep -i -E 'reject|inval
 istioctl analyze -n cpcapstone-demo
 ```
 
-The analyzer reports an `Error` with the code `IST0106` (`SchemaValidationError`) on the `payments-split` `VirtualService`, with the reason `total destination weight 120 != 100`. The object exists in etcd, and `istiod` refuses it every time it builds configuration. It was stored because the validating webhook was skipped when it was applied. `kubectl get` shows it, and `kubectl describe` shows no events, because Istio networking objects carry no status conditions. Only the `istiod` log, the `pilot_total_xds_rejects` counter and the analyzer report it. Remove it:
+The analyzer reports an `Error` with the code `IST0106` (`SchemaValidationError`) on `VirtualService cpcapstone-demo/payments-redirect`, with the reason `HTTP route cannot contain both route and redirect`. Its one HTTP rule both redirects the request and routes it, which a rule may never do. It was stored in etcd only because both validating webhooks were skipped when it was applied. `istiod` does not check a stored object again, so it serves the rule as it is, and the proxies apply the redirect; that is also why the `istiod` log shows nothing about it. Remove it:
 
 ```sh
-kubectl -n cpcapstone-demo delete virtualservice payments-split
+kubectl -n cpcapstone-demo delete virtualservice payments-redirect
 ```
 
-Correcting the weights so they add up to 100 is also accepted.
+Correcting the rule so it only routes is also accepted.
 
 Submit to see your progress:
 
